@@ -1,0 +1,42 @@
+{
+  "name": "scm-admin",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Web admin panel for the SCM operator app — Singha Constructions & Machinery",
+  "scripts": {
+    "dev": "vite",
+    "dev:emulators": "vite --mode emulators",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "emulators": "firebase emulators:start --only auth,firestore --project demo-scm",
+    "seed:emulators": "node scripts/seed-emulators.mjs",
+    "test:rules": "firebase emulators:exec --only firestore --project demo-scm \"vitest run\"",
+    "create-admin": "node scripts/create-admin.mjs",
+    "deploy": "npm run build && firebase deploy --only hosting"
+  },
+  "dependencies": {
+    "firebase": "^12.19.0",
+    "jsqr": "^1.4.0",
+    "lucide-react": "^1.45.0",
+    "qrcode": "^1.5.4",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-router": "^8.3.1"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.2",
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/qrcode": "^1.5.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "firebase-admin": "^14.4.0",
+    "firebase-tools": "^15.30.0",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.0",
+    "vitest": "^5.0.0"
+  }
+}

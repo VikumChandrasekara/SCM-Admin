@@ -1,0 +1,92 @@
+@import "tailwindcss";
+
+/*
+ * The operator app's palette (lib/theme/app_theme.dart): a slate page, blue
+ * panels, green for the target, cyan for data entry, orange for numbers and
+ * the primary action, yellow for a warning. Purple is new — the mockup's
+ * money boxes.
+ */
+@theme {
+  /* The Sinhala font already on the device — Nirmala UI on Windows, Noto Sans
+     Sinhala on Android, Sinhala Sangam MN on Apple — so no font file is
+     downloaded at all. */
+  --font-sans: "Noto Sans Sinhala", "Nirmala UI", "Iskoola Pota", "Sinhala Sangam MN", "Sinhala MN",
+    system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+  --color-page: #21486f;
+  --color-page-deep: #17334f;
+  --color-blue-hi: #4c82c4;
+  --color-blue-lo: #35659e;
+  --color-lime-hi: #a6d24f;
+  --color-lime-lo: #79ac2c;
+  --color-sky-hi: #45bcea;
+  --color-sky-lo: #1b90c7;
+  --color-amber-hi: #f7a340;
+  --color-amber-lo: #dd7a1b;
+  --color-grape-hi: #9d86d8;
+  --color-grape-lo: #7157b3;
+  --color-ink: #17110a;
+  --color-signal: #fff200;
+  --color-alarm: #b4232a;
+  --color-well: rgb(0 0 0 / 0.2);
+  --color-hairline: rgb(255 255 255 / 0.18);
+
+  --shadow-panel: 0 8px 18px rgb(0 0 0 / 0.2);
+  --shadow-control: 0 4px 10px rgb(0 0 0 / 0.18);
+}
+
+@utility panel-blue {
+  background-image: linear-gradient(135deg, var(--color-blue-hi), var(--color-blue-lo));
+}
+
+@utility panel-lime {
+  background-image: linear-gradient(135deg, var(--color-lime-hi), var(--color-lime-lo));
+}
+
+@utility panel-sky {
+  background-image: linear-gradient(135deg, var(--color-sky-hi), var(--color-sky-lo));
+}
+
+@utility panel-grape {
+  background-image: linear-gradient(135deg, var(--color-grape-hi), var(--color-grape-lo));
+}
+
+@utility chip-amber {
+  background-image: linear-gradient(180deg, var(--color-amber-hi), var(--color-amber-lo));
+}
+
+@utility chip-signal {
+  background-image: linear-gradient(180deg, #fff75e, var(--color-signal));
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+    /* Behind the fixed body gradient, so overscroll never shows black. */
+    background: var(--color-page-deep);
+  }
+
+  body {
+    min-height: 100vh;
+    color: white;
+    background: linear-gradient(180deg, var(--color-page), var(--color-page-deep)) fixed;
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  ::selection {
+    background: rgb(247 163 64 / 0.45);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-amber-hi);
+    outline-offset: 2px;
+  }
+
+  /* Native date and select popups follow the dark scheme. */
+  input,
+  select,
+  textarea {
+    color-scheme: dark;
+  }
+}

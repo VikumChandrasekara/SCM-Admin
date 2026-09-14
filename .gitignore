@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.firebase/
+*.log
+firebase-debug.log*
+firestore-debug.log*
+ui-debug.log*
+
+# Environment files (may contain secrets). Never commit them.
+.env
+.env.*
+!.env.example
+
+# A service-account key grants full access to the project. Never commit it.
+scripts/service-account.json
+*-service-account.json
