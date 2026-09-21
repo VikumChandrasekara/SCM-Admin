@@ -1,0 +1,126 @@
+name: CI/CD
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push replaces a running check, but never cancels a deploy midway.
+concurrency:
+  group: ci-cd-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  check:
+    name: Typecheck & build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build (typecheck + vite build)
+        run: npm run build
+        env:
+          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}
+          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}
+          VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
+
+      # Deploy ships exactly what was built and checked here.
+      - uses: actions/upload-artifact@v4
+        if: github.event_name != 'pull_request'
+        with:
+          name: dist
+          path: dist
+          if-no-files-found: error
+          retention-days: 7
+
+  # firestore.rules lives in the SCM app repo, so this job runs only when that
+  # repo is configured: repository variable SCM_REPO (owner/name) and, if it
+  # is private, secret SCM_REPO_TOKEN (a token with read access to it).
+  rules:
+    name: Firestore rules tests
+    runs-on: ubuntu-latest
+    if: vars.SCM_REPO != ''
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.SCM_REPO }}
+          token: ${{ secrets.SCM_REPO_TOKEN || github.token }}
+          path: SCM
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - run: npm ci
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/firebase/emulators
+          key: firebase-emulators-${{ hashFiles('package-lock.json') }}
+
+      - run: npm run test:rules
+        env:
+          RULES_PATH: ${{ github.workspace }}/SCM/firestore.rules
+
+  deploy:
+    name: Deploy to Firebase Hosting
+    needs: [check, rules]
+    # `rules` is skipped when SCM_REPO isn't set; that must not block deploys.
+    if: >-
+      always() &&
+      github.event_name != 'pull_request' &&
+      github.ref == 'refs/heads/main' &&
+      needs.check.result == 'success' &&
+      (needs.rules.result == 'success' || needs.rules.result == 'skipped')
+    runs-on: ubuntu-latest
+    environment:
+      name: "production"
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # Only for the firebase CLI; dist/ is already built.
+      - run: npm ci --ignore-scripts
+
+      - name: Deploy
+        run: |
+          key="$RUNNER_TEMP/firebase-key.json"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$key"
+          GOOGLE_APPLICATION_CREDENTIALS="$key" npx firebase deploy --only hosting --project scm-thrimaa --non-interactive
+          rm -f "$key"
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}

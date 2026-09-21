@@ -246,6 +246,24 @@ npm run deploy    # builds, then deploys dist/ to Firebase Hosting
 
 This publishes the panel at `https://scm-thrimaa.web.app`.
 
+### CI/CD
+
+`.github/workflows/ci-cd.yml` runs on GitHub Actions:
+
+- **Every pull request and push to `main`:** typecheck and build. If the SCM
+  repo is configured (below), the Firestore rules tests run too.
+- **Push to `main`:** after those pass, the built `dist/` is deployed to
+  Firebase Hosting (`production` environment).
+
+Set these under the repo's Settings > Secrets and variables > Actions:
+
+| Name | Kind | What |
+| --- | --- | --- |
+| `FIREBASE_SERVICE_ACCOUNT` | secret | Full JSON key of a service account that can deploy Hosting (role *Firebase Hosting Admin*) |
+| `VITE_FIREBASE_*` (6 values, see `.env.example`) | secrets | The web app config the panel is built with |
+| `SCM_REPO` | variable | `owner/name` of the SCM app repo, where `firestore.rules` lives. Leave unset to skip the rules tests |
+| `SCM_REPO_TOKEN` | secret | Read-only token for that repo, if it is private |
+
 ## Code map
 
 | Path | What is there |
