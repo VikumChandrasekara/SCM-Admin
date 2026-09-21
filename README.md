@@ -258,3 +258,25 @@ This publishes the panel at `https://scm-thrimaa.web.app`.
 | `src/pages/`, `src/components/` | The UI |
 | `scripts/` | Creating the first admin, and seeding the emulators |
 | `tests/rules.test.ts` | The security rules, tested against the emulator |
+
+## CI/CD
+
+GitHub Actions, in `.github/workflows/`:
+
+- `ci.yml` runs on every PR and push to `main`: typecheck, production build,
+  and (optional) the Firestore rules tests.
+- `deploy.yml` deploys to Firebase Hosting (`scm-thrimaa`): pushes to `main` go
+  live, pull requests get a 7-day preview channel.
+
+Repository secrets to add (Settings > Secrets and variables > Actions):
+
+- `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`,
+  `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_STORAGE_BUCKET`,
+  `VITE_FIREBASE_MESSAGING_SENDER_ID`, `VITE_FIREBASE_APP_ID`: the same values
+  as in `.env`.
+- `FIREBASE_SERVICE_ACCOUNT`: the JSON key of a service account with the
+  Firebase Hosting Admin role (`firebase init hosting:github` creates one).
+
+To run the rules tests in CI, set the repository variable `SCM_REPO`
+(e.g. `owner/SCM`) to the repo holding `firestore.rules`; if it is private,
+also add a read-only `SCM_REPO_TOKEN` secret.
