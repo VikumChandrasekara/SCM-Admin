@@ -160,7 +160,7 @@ function SaleCheck({ sale, now, busy, onVerify }: { sale: Sale; now: number; bus
         <SaleStatusBadge status={status} />
       </div>
 
-      <div className="mb-4 rounded-2xl px-4 py-3 text-ink shadow-control chip-amber">
+      <div className="mb-4 rounded-card px-4 py-3 text-ink shadow-control chip-amber">
         <p className="text-sm font-bold">
           {SALE_TYPE[sale.type].label} · {quantity(sale.quantity)} {SALE_TYPE[sale.type].unit} × {money(sale.unitPrice)}
         </p>
@@ -306,9 +306,9 @@ function CameraScanner({ onCode }: { onCode: (code: string) => void }) {
 
   return (
     <div>
-      <div className="relative aspect-video overflow-hidden rounded-2xl bg-black ring-1 ring-hairline">
+      <div className="relative aspect-video overflow-hidden rounded-card bg-black ring-1 ring-hairline">
         <video ref={video} muted playsInline className={state === 'on' ? 'size-full object-cover' : 'hidden'} />
-        {state === 'on' && <div className="pointer-events-none absolute inset-[18%] rounded-2xl border-4 border-amber-hi/80" />}
+        {state === 'on' && <div className="pointer-events-none absolute inset-[18%] rounded-card border-4 border-amber-hi/80" />}
         {state !== 'on' && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-white/60">
             <Camera className="size-10" />

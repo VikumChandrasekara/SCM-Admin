@@ -14,7 +14,7 @@ interface Toast {
 const ToastContext = createContext<(tone: Tone, message: string) => void>(() => {});
 
 const toneStyles: Record<Tone, { className: string; icon: ReactNode }> = {
-  success: { className: 'panel-lime text-ink', icon: <CircleCheck className="size-5" /> },
+  success: { className: 'panel-lime text-white', icon: <CircleCheck className="size-5" /> },
   error: { className: 'bg-alarm text-white', icon: <CircleAlert className="size-5" /> },
   warning: { className: 'chip-signal text-ink', icon: <TriangleAlert className="size-5" /> },
   info: { className: 'panel-blue text-white', icon: <Info className="size-5" /> },
@@ -69,7 +69,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           <div
             key={toast.id}
             className={cx(
-              'pointer-events-auto flex w-full items-start gap-3 rounded-2xl px-4 py-3 text-sm font-semibold shadow-panel',
+              'pointer-events-auto flex w-full items-start gap-3 rounded-card px-4 py-3 text-[13px] font-medium shadow-pop ring-1 ring-black/15',
               toneStyles[toast.tone].className,
             )}
           >

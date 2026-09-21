@@ -103,7 +103,7 @@ export function SaleSheet({ sale }: { sale: Sale }) {
   const cell = 'px-2 py-1.5 text-right';
 
   return (
-    <div className="print-sheet mx-auto max-w-sm overflow-hidden rounded-2xl bg-white text-[12.5px] text-black shadow-panel">
+    <div className="print-sheet mx-auto max-w-sm overflow-hidden rounded-card bg-white text-[12.5px] text-black shadow-panel">
       {/* Letterhead */}
       <div className="flex items-center gap-3 px-5 pt-5 pb-4">
         <LogoMark className="size-12 shrink-0" />

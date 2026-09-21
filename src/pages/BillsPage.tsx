@@ -75,7 +75,7 @@ export function BillsPage() {
         subtitle="ඇඩ්වාන්ස්, කෑම, වතුර බිල සහ වෙනත් වියදම්. ඇඩ්වාන්ස් සහ කෑම කණ්ඩායම් සාමාජිකයාගේ පඩියෙන් අඩු වේ."
         actions={
           <>
-            <div className="flex items-center gap-1 rounded-2xl bg-well p-1">
+            <div className="flex items-center gap-1 rounded-card bg-well p-1">
               <IconButton label="පෙර මාසය" onClick={() => setMonth((value) => addMonths(value, -1))}>
                 <ChevronLeft className="size-5" />
               </IconButton>
@@ -100,7 +100,7 @@ export function BillsPage() {
             type="button"
             onClick={() => setCategory((selected) => (selected === value ? '' : value))}
             className={cx(
-              'rounded-2xl px-4 py-3 text-left ring-1 transition',
+              'rounded-card px-4 py-3 text-left ring-1 transition',
               category === value ? 'bg-amber-hi/15 ring-amber-hi' : 'bg-well ring-hairline hover:bg-black/30',
             )}
           >
@@ -108,7 +108,7 @@ export function BillsPage() {
             <p className="mt-1 text-xl font-extrabold tabular-nums">{money(total(all.filter((bill) => bill.category === value)))}</p>
           </button>
         ))}
-        <div className="col-span-2 rounded-2xl px-4 py-3 text-ink shadow-control chip-amber md:col-span-1">
+        <div className="col-span-2 rounded-card px-4 py-3 text-ink shadow-control chip-amber md:col-span-1">
           <p className="text-xs font-bold">මුළු එකතුව</p>
           <p className="mt-1 text-xl font-extrabold tabular-nums">{rupees(total(all))}</p>
         </div>

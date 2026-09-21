@@ -157,7 +157,7 @@ export function UnitPicker({
               width,
               ...(below ? { top: anchor.bottom + 6 } : { bottom: window.innerHeight - anchor.top + 6 }),
             }}
-            className="z-[70] overflow-hidden rounded-2xl bg-blue-lo text-white shadow-panel ring-1 ring-hairline"
+            className="z-[70] overflow-hidden rounded-card panel-surface text-white shadow-pop ring-1 ring-hairline-hi"
           >
             <div className="relative border-b border-hairline p-2">
               <Search className="pointer-events-none absolute top-1/2 left-5 size-4 -translate-y-1/2 text-white/50" />

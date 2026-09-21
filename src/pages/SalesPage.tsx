@@ -59,7 +59,7 @@ export function SalesPage() {
         subtitle="කියුබ් සහ ට්‍රැක්ටර් ලෝඩ් බිල්පත්. QR එක ස්කෑන් කර තහවුරු කළ පසු පමණක් ආදායමක් ලෙස ගණන් වේ; පැය 24ක් ඇතුළත තහවුරු නොකළ බිල්පත් අවලංගු වේ."
         actions={
           <>
-            <div className="flex items-center gap-1 rounded-2xl bg-well p-1">
+            <div className="flex items-center gap-1 rounded-card bg-well p-1">
               <IconButton label="පෙර මාසය" onClick={() => setMonth((value) => addMonths(value, -1))}>
                 <ChevronLeft className="size-5" />
               </IconButton>
@@ -225,7 +225,7 @@ function Tile({
   tone?: 'ok' | 'low' | 'out';
 }) {
   return (
-    <div className="rounded-2xl bg-well px-4 py-3 ring-1 ring-hairline">
+    <div className="rounded-card bg-well px-4 py-3 ring-1 ring-hairline">
       <p className="text-xs font-semibold text-white/60">{label}</p>
       <p
         className={cx(

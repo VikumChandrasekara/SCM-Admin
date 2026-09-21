@@ -20,7 +20,7 @@ export function LogoPlaque({ className }: { className?: string }) {
   return (
     <div
       className={cx(
-        'flex flex-col items-center rounded-[26px] bg-gradient-to-br from-white to-[#f1eee8] px-8 py-5 text-ink shadow-panel',
+        'flex flex-col items-center rounded-panel bg-gradient-to-br from-white to-[#f1eee8] px-8 py-5 text-ink shadow-panel',
         className,
       )}
     >

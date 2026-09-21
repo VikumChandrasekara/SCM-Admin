@@ -118,7 +118,7 @@ export function ExplosivesPage() {
                     <Badge tone={Object.keys(sheet.amounts).length ? 'low' : 'muted'}>තවම OK කර නැත</Badge>
                   )}
                 </div>
-                <ul className="space-y-1.5 rounded-2xl bg-well p-3">
+                <ul className="space-y-1.5 rounded-card bg-well p-3">
                   {BLAST_ITEMS.map((item) => (
                     <li key={item} className="flex items-center justify-between gap-3 text-sm">
                       <span className="text-white/80">{BLAST[item].label}</span>

@@ -211,7 +211,7 @@ export function HistoryPage() {
 
 function Total({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl bg-well px-4 py-3 ring-1 ring-hairline">
+    <div className="rounded-card bg-well px-4 py-3 ring-1 ring-hairline">
       <p className="truncate text-xs font-semibold text-white/60">{label}</p>
       <p className="mt-1 text-xl font-extrabold tabular-nums">{value}</p>
     </div>

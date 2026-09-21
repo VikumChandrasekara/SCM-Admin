@@ -53,7 +53,7 @@ export function FinancePage() {
         subtitle="ආදායම් ලැබුණු ආකාරය සහ වියදම් ගිය ආකාරය — එක් එක් ගණනට පිටුපස ඇති සියලු සටහන් සමඟ."
         actions={
           <>
-            <div className="flex items-center gap-1 rounded-2xl bg-well p-1">
+            <div className="flex items-center gap-1 rounded-card bg-well p-1">
               <IconButton label="පෙර මාසය" onClick={() => setMonth((value) => addMonths(value, -1))}>
                 <ChevronLeft className="size-5" />
               </IconButton>
@@ -392,7 +392,7 @@ function Headline({
   return (
     <div
       className={cx(
-        'rounded-2xl px-4 py-4 ring-1',
+        'rounded-card px-4 py-4 ring-1',
         emphasis ? 'text-ink shadow-control chip-amber ring-transparent' : 'bg-well ring-hairline',
       )}
     >

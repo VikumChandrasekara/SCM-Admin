@@ -56,30 +56,34 @@ export const CrewColumn = memo(function CrewColumn({
   return (
     <article
       className={cx(
-        '@container flex flex-col rounded-[28px] bg-page-deep/55 p-3 ring-1 transition',
-        selected ? 'ring-2 ring-amber-hi' : 'ring-hairline',
+        '@container flex flex-col rounded-panel panel-surface p-3 shadow-panel ring-1 transition',
+        selected ? 'ring-amber-hi/60' : 'ring-hairline',
       )}
     >
       <button
         type="button"
         onClick={() => onSelect(person.id)}
         aria-pressed={selected}
-        className="mb-3 flex items-center gap-3 rounded-2xl px-2 py-1.5 text-left transition hover:bg-white/5"
+        className="mb-3 flex items-center gap-3 rounded-card px-2 py-1.5 text-left transition hover:bg-white/[0.06]"
       >
         <span
           className={cx(
-            'flex size-11 shrink-0 items-center justify-center rounded-xl',
-            role.tracksBonus ? 'bg-amber-hi/20 text-amber-hi' : 'bg-sky-hi/20 text-sky-hi',
+            'flex size-10 shrink-0 items-center justify-center rounded-control ring-1',
+            role.tracksBonus
+              ? 'bg-amber-hi/15 text-amber-hi ring-amber-hi/25'
+              : 'bg-sky-hi/15 text-sky-hi ring-sky-hi/25',
           )}
         >
-          {role.tracksBonus ? <Truck className="size-6" /> : <Hammer className="size-6" />}
+          {role.tracksBonus ? <Truck className="size-5" /> : <Hammer className="size-5" />}
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block text-[11px] font-extrabold tracking-[0.2em] text-white/55 uppercase">
+          <span className="block text-[10px] font-bold tracking-[0.18em] text-white/55 uppercase">
             {role.english}
           </span>
-          <span className="block truncate text-lg leading-tight font-extrabold">{nameOf(person)}</span>
-          <span className="block truncate text-xs text-white/55">{person.machineId || 'යන්ත්‍රයක් පවරා නැත'}</span>
+          <span className="block truncate text-[17px] leading-tight font-bold tracking-tight">{nameOf(person)}</span>
+          <span className="block truncate text-[11.5px] text-white/55">
+            {person.machineId || 'යන්ත්‍රයක් පවරා නැත'}
+          </span>
         </span>
         {alerts.length > 0 && (
           <TriangleAlert
@@ -90,12 +94,12 @@ export const CrewColumn = memo(function CrewColumn({
       </button>
 
       <div className="grid gap-3 @md:grid-cols-2">
-        <section className="rounded-3xl p-4 shadow-panel panel-blue">
+        <section className="rounded-card p-4 shadow-panel panel-blue">
           <PanelTitle>පරික්ෂාව</PanelTitle>
           <ul className="space-y-1.5">
             {role.inspectionItems.map((item) => (
               <li key={item} className="flex items-center gap-2">
-                <span className="flex-1 text-sm font-semibold">{INSPECTION_LABEL[item]}</span>
+                <span className="flex-1 text-[13px] font-medium">{INSPECTION_LABEL[item]}</span>
                 <Mark value={day.inspection[item]} />
               </li>
             ))}
@@ -105,11 +109,18 @@ export const CrewColumn = memo(function CrewColumn({
               const status = serviceStatus(machine, task);
               const alert = !!status && (status.isDue || status.isDueSoon);
               return (
-                <div key={task} className="flex items-center gap-2">
-                  <span className={cx('flex-1 text-[11.5px] leading-snug', alert ? 'font-bold text-signal' : 'text-white/80')}>
+                // Top-aligned, not centred: these labels run to two lines and
+                // a centred chip then floated between them.
+                <div key={task} className="flex items-start gap-2">
+                  <span
+                    className={cx(
+                      'min-w-0 flex-1 text-[11.5px] leading-snug',
+                      alert ? 'font-semibold text-signal' : 'text-white/75',
+                    )}
+                  >
                     {SERVICE[task].label}
                   </span>
-                  <ValueChip tone={alert ? 'signal' : 'amber'} className="min-w-12 text-xs">
+                  <ValueChip tone={alert ? 'signal' : 'amber'} className="min-w-12 shrink-0 text-xs">
                     {status ? signedHours(status.remaining) : '—'}
                   </ValueChip>
                 </div>
@@ -118,7 +129,7 @@ export const CrewColumn = memo(function CrewColumn({
           </div>
         </section>
 
-        <section className="rounded-3xl p-4 shadow-panel panel-sky">
+        <section className="rounded-card p-4 shadow-panel panel-sky">
           <PanelTitle trailing={<span className="text-xs font-bold text-white/85">{lockedSlotCount(day)}/{role.fillingSlots}</span>}>
             පිරවීම
           </PanelTitle>
@@ -130,9 +141,9 @@ export const CrewColumn = memo(function CrewColumn({
               const price = prices[item];
               return (
                 <li key={item} className="flex items-center gap-1.5">
-                  <span className="min-w-0 flex-1 truncate text-sm font-semibold">{FILL_LABEL[item]}</span>
-                  <ValueChip className="min-w-12 text-xs">{litres ? quantity(litres, 'L') : '—'}</ValueChip>
-                  <span className="w-[4.75rem] text-right text-[11px] font-bold text-white/90 tabular-nums">
+                  <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{FILL_LABEL[item]}</span>
+                  <ValueChip className="min-w-12 shrink-0 text-xs">{litres ? quantity(litres, 'L') : '—'}</ValueChip>
+                  <span className="w-[4.75rem] shrink-0 text-right text-[11px] font-semibold text-white/85 tabular-nums">
                     {litres && price ? `රු. ${money(litres * price)}` : 'Rs —'}
                   </span>
                 </li>
@@ -140,32 +151,33 @@ export const CrewColumn = memo(function CrewColumn({
             })}
           </ul>
           {dayCost > 0 && (
-            <p className="mt-3 flex justify-between border-t border-white/25 pt-2 text-xs font-bold">
+            <p className="mt-3 flex justify-between border-t border-white/20 pt-2 text-[11.5px] font-semibold">
               <span>අද වියදම</span>
               <span className="tabular-nums">රු. {money(dayCost)}</span>
             </p>
           )}
           {role.tracksBlasting && (
-            <p className="mt-2 text-xs font-semibold">
+            <p className="mt-2 text-[11.5px] font-medium">
               වෙඩි බඩු:{' '}
-              {day.blasting.lockedAt ? `OK · අයිතම ${blastCount}` : <span className="text-white/70">තවම නැත</span>}
+              {day.blasting.lockedAt ? `OK · අයිතම ${blastCount}` : <span className="text-white/65">තවම නැත</span>}
             </p>
           )}
         </section>
       </div>
 
       <footer className="mt-3 flex items-center gap-3 px-1">
-        <p className="text-sm">
-          <span className="text-white/60">{role.tracksBonus ? 'ලෝඩ් ' : 'ආඩි '}</span>
-          <span className="font-extrabold text-amber-hi tabular-nums">
+        <p className="text-[13px]">
+          <span className="text-white/55">{role.tracksBonus ? 'ලෝඩ් ' : 'ආඩි '}</span>
+          <span className="text-[15px] font-bold text-amber-hi tabular-nums">
             {role.tracksBonus ? day.loads : hours(day.feet)}
           </span>
         </p>
         <Button
-          variant="success"
+          variant="secondary"
+          size="sm"
           className="ml-auto rounded-full"
           onClick={() => onInfo(person.id)}
-          icon={<Info className="size-4" />}
+          icon={<Info className="size-3.5" />}
         >
           තොරතුරු
         </Button>
@@ -176,8 +188,8 @@ export const CrewColumn = memo(function CrewColumn({
 
 function PanelTitle({ children, trailing }: { children: ReactNode; trailing?: ReactNode }) {
   return (
-    <div className="mb-3 flex items-center">
-      <h3 className="flex-1 text-base font-extrabold">{children}</h3>
+    <div className="mb-3 flex items-center border-b border-white/15 pb-2">
+      <h3 className="flex-1 text-[13px] font-bold tracking-[0.06em]">{children}</h3>
       {trailing}
     </div>
   );
@@ -186,20 +198,20 @@ function PanelTitle({ children, trailing }: { children: ReactNode; trailing?: Re
 function Mark({ value }: { value: boolean | undefined }) {
   if (value === true) {
     return (
-      <span className="flex size-6 items-center justify-center rounded-md bg-lime-lo text-white" aria-label="හරි">
+      <span className="flex size-6 items-center justify-center rounded-[6px] bg-lime-lo text-white" aria-label="හරි">
         <Check className="size-4" strokeWidth={3} />
       </span>
     );
   }
   if (value === false) {
     return (
-      <span className="flex size-6 items-center justify-center rounded-md bg-alarm text-white" aria-label="වැරදියි">
+      <span className="flex size-6 items-center justify-center rounded-[6px] bg-alarm text-white" aria-label="වැරදියි">
         <X className="size-4" strokeWidth={3} />
       </span>
     );
   }
   return (
-    <span className="flex size-6 items-center justify-center rounded-md bg-well text-white/45" aria-label="සලකුණු කර නැත">
+    <span className="flex size-6 items-center justify-center rounded-[6px] bg-black/20 text-white/40" aria-label="සලකුණු කර නැත">
       <Minus className="size-4" />
     </span>
   );
@@ -209,8 +221,8 @@ function Mark({ value }: { value: boolean | undefined }) {
 function Meter({ label, value }: { label: string; value: number | null }) {
   return (
     <div className="mb-1.5 flex items-center gap-2">
-      <span className="w-16 text-xs font-bold">{label}</span>
-      <span className="flex-1 rounded-lg bg-ink px-3 py-1.5 text-right font-extrabold tracking-wider text-amber-hi tabular-nums">
+      <span className="w-16 text-[11px] font-semibold tracking-wide text-white/85">{label}</span>
+      <span className="flex-1 rounded-[7px] bg-ink/85 px-3 py-1.5 text-right text-[15px] font-bold tracking-wide text-amber-hi ring-1 ring-black/25 tabular-nums">
         {value == null ? '—' : hours(value)}
       </span>
     </div>

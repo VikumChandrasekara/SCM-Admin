@@ -96,7 +96,7 @@ export function CrewInfoModal({ person, date, onClose }: { person: Person; date:
       <div className="grid gap-6 md:grid-cols-2">
         <div>
           <SectionLabel>තොරතුරු</SectionLabel>
-          <div className="space-y-3 rounded-2xl bg-well p-4">
+          <div className="space-y-3 rounded-card bg-well p-4">
             <Field label="නිවාඩු ගත් දින ගණන">
               <Input type="number" min="0" step="1" value={leave} onChange={(event) => setLeave(event.target.value)} />
             </Field>
@@ -116,7 +116,7 @@ export function CrewInfoModal({ person, date, onClose }: { person: Person; date:
           <SectionLabel>
             <span className="mt-5 block">පඩි ගාස්තු</span>
           </SectionLabel>
-          <div className="space-y-2 rounded-2xl bg-well p-4 text-sm">
+          <div className="space-y-2 rounded-card bg-well p-4 text-sm">
             <p className="flex justify-between">
               <span className="text-white/70">දවසේ පඩිය</span>
               <b>{live.dailyWage > 0 ? rupees(live.dailyWage) : '—'}</b>
@@ -139,7 +139,7 @@ export function CrewInfoModal({ person, date, onClose }: { person: Person; date:
           <SectionLabel trailing={<span className="text-xs text-white/55">{date}</span>}>
             {role.tracksBonus ? 'පැටවූ ලෝඩ් ගණන' : 'ආඩි ගණන'}
           </SectionLabel>
-          <div className="flex items-end gap-2 rounded-2xl bg-well p-4">
+          <div className="flex items-end gap-2 rounded-card bg-well p-4">
             <Field label="මෙම දිනයට" className="flex-1">
               <Input
                 type="number"
@@ -165,7 +165,7 @@ export function CrewInfoModal({ person, date, onClose }: { person: Person; date:
           <SectionLabel>
             <span className="mt-5 block">සේවා</span>
           </SectionLabel>
-          <ul className="space-y-2 rounded-2xl bg-well p-4">
+          <ul className="space-y-2 rounded-card bg-well p-4">
             {role.serviceTasks.map((task) => {
               const status = serviceStatus(machine, task);
               const alert = !!status && (status.isDue || status.isDueSoon);

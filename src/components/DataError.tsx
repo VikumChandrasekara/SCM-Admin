@@ -15,7 +15,7 @@ export function DataError({ error }: { error: unknown }) {
   return (
     <Panel tone="deep" className="mx-auto mt-6 max-w-2xl p-6">
       <div className="flex items-start gap-4">
-        <span className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-signal/15 text-signal">
+        <span className="flex size-12 shrink-0 items-center justify-center rounded-card bg-signal/15 text-signal">
           <TriangleAlert className="size-6" />
         </span>
         <div className="min-w-0 flex-1">

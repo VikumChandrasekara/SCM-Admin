@@ -14,7 +14,7 @@ export function DateStepper({
   max: string;
 }) {
   return (
-    <div className="flex items-center gap-1 rounded-2xl bg-well p-1">
+    <div className="flex items-center gap-1 rounded-control bg-well p-1 ring-1 ring-hairline">
       <IconButton label="පෙර දිනය" onClick={() => onChange(addDays(value, -1))}>
         <ChevronLeft className="size-5" />
       </IconButton>
@@ -24,7 +24,7 @@ export function DateStepper({
         value={value}
         max={max}
         onChange={(event) => event.target.value && onChange(event.target.value)}
-        className="w-[9.5rem] bg-transparent py-1.5 text-center"
+        className="w-[9.5rem] bg-transparent py-1.5 text-center ring-0 hover:ring-0"
       />
       <IconButton label="ඊළඟ දිනය" disabled={value >= max} onClick={() => onChange(addDays(value, 1))}>
         <ChevronRight className="size-5" />

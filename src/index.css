@@ -3,8 +3,14 @@
 /*
  * The operator app's palette (lib/theme/app_theme.dart): a slate page, blue
  * panels, green for the target, cyan for data entry, orange for numbers and
- * the primary action, yellow for a warning. Purple is new — the mockup's
- * money boxes.
+ * the primary action, yellow for a warning, purple for the money boxes.
+ *
+ * Every hue appears at two strengths, and which one you want depends on how
+ * much of the screen it covers. Small marks — a chip, an icon, a ring, a line
+ * of coloured text — take the accent scale at full strength. Large filled
+ * panels take the fill scale, the same hues taken deep. Using the accent
+ * strength on a panel is what made this look like a highlighter set: a colour
+ * that is right at 20px is fluorescent at 400px.
  */
 @theme {
   /* The Sinhala font already on the device — Nirmala UI on Windows, Noto Sans
@@ -13,50 +19,107 @@
   --font-sans: "Noto Sans Sinhala", "Nirmala UI", "Iskoola Pota", "Sinhala Sangam MN", "Sinhala MN",
     system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 
-  --color-page: #21486f;
-  --color-page-deep: #17334f;
-  --color-blue-hi: #4c82c4;
-  --color-blue-lo: #35659e;
-  --color-lime-hi: #a6d24f;
-  --color-lime-lo: #79ac2c;
-  --color-sky-hi: #45bcea;
-  --color-sky-lo: #1b90c7;
-  --color-amber-hi: #f7a340;
-  --color-amber-lo: #dd7a1b;
-  --color-grape-hi: #9d86d8;
-  --color-grape-lo: #7157b3;
-  --color-ink: #17110a;
-  --color-signal: #fff200;
-  --color-alarm: #b4232a;
-  --color-well: rgb(0 0 0 / 0.2);
-  --color-hairline: rgb(255 255 255 / 0.18);
+  /* The canvas, darkest last: page → page-deep is the body wash, and the
+     header, wells and menus sit on page-deep so they read as one plane. */
+  --color-page: #1d4066;
+  --color-page-deep: #11283f;
+  /* A card lifted off the canvas, and the same card hovered. */
+  --color-surface: #1c3d5f;
+  --color-surface-hi: #24496f;
 
-  --shadow-panel: 0 8px 18px rgb(0 0 0 / 0.2);
-  --shadow-control: 0 4px 10px rgb(0 0 0 / 0.18);
+  /* The accent scale: full-strength hues, for text, icons, rings and chips —
+     small marks on a dark ground, where a bright colour is exactly right. */
+  --color-blue-hi: #6f9ed6;
+  --color-blue-lo: #315e93;
+  --color-lime-hi: #9ccb4d;
+  --color-lime-lo: #71a32a;
+  --color-sky-hi: #4cbce8;
+  --color-sky-lo: #1785bb;
+  --color-amber-hi: #f5a341;
+  --color-amber-lo: #db7a1a;
+  --color-grape-hi: #a494e0;
+  --color-grape-lo: #6d54ab;
+
+  /* The panel scale: the same hues taken deep, for the large filled surfaces.
+     A panel covers a quarter of the screen, and at that size the accent
+     strength above reads as fluorescent — a lime block on navy looked like a
+     highlighter. Deep enough to belong to the dark page, saturated enough to
+     still be unmistakably green / cyan / purple, and white text clears AA on
+     every one of them. */
+  --color-fill-blue-hi: #35608f;
+  --color-fill-blue-lo: #254a72;
+  --color-fill-lime-hi: #4a7733;
+  --color-fill-lime-lo: #3a6224;
+  --color-fill-sky-hi: #26769c;
+  --color-fill-sky-lo: #175878;
+  --color-fill-grape-hi: #5f4f99;
+  --color-fill-grape-lo: #443873;
+
+  --color-ink: #12100c;
+  --color-signal: #ffe14d;
+  --color-alarm: #c23b3b;
+  --color-well: rgb(4 14 26 / 0.32);
+  --color-hairline: rgb(255 255 255 / 0.14);
+  --color-hairline-hi: rgb(255 255 255 / 0.22);
+
+  /* One radius per role, so a page never mixes four corner sizes. */
+  --radius-control: 10px;
+  --radius-card: 14px;
+  --radius-panel: 18px;
+
+  /* Close, tight contact shadow + a wide soft one: reads as depth instead of
+     as a drop shadow. */
+  --shadow-panel: 0 1px 2px rgb(0 0 0 / 0.22), 0 12px 28px -16px rgb(0 0 0 / 0.55);
+  --shadow-control: 0 1px 2px rgb(0 0 0 / 0.24);
+  --shadow-pop: 0 2px 6px rgb(0 0 0 / 0.3), 0 32px 64px -24px rgb(0 0 0 / 0.7);
 }
 
+/*
+ * A panel is its hue, a soft wash of light down from the top edge, and a crisp
+ * 1px lit rim — the rim is what keeps a filled panel from looking flat. The rim
+ * is drawn as a background layer, not a box-shadow, so that `shadow-panel` and
+ * `ring-*` still compose on top of these.
+ */
 @utility panel-blue {
-  background-image: linear-gradient(135deg, var(--color-blue-hi), var(--color-blue-lo));
+  background-image: linear-gradient(180deg, rgb(255 255 255 / 0.14) 0 1px, transparent 1px),
+    linear-gradient(180deg, rgb(255 255 255 / 0.06), transparent 42%),
+    linear-gradient(158deg, var(--color-fill-blue-hi), var(--color-fill-blue-lo));
 }
 
 @utility panel-lime {
-  background-image: linear-gradient(135deg, var(--color-lime-hi), var(--color-lime-lo));
+  background-image: linear-gradient(180deg, rgb(255 255 255 / 0.14) 0 1px, transparent 1px),
+    linear-gradient(180deg, rgb(255 255 255 / 0.06), transparent 42%),
+    linear-gradient(158deg, var(--color-fill-lime-hi), var(--color-fill-lime-lo));
 }
 
 @utility panel-sky {
-  background-image: linear-gradient(135deg, var(--color-sky-hi), var(--color-sky-lo));
+  background-image: linear-gradient(180deg, rgb(255 255 255 / 0.14) 0 1px, transparent 1px),
+    linear-gradient(180deg, rgb(255 255 255 / 0.06), transparent 42%),
+    linear-gradient(158deg, var(--color-fill-sky-hi), var(--color-fill-sky-lo));
 }
 
 @utility panel-grape {
-  background-image: linear-gradient(135deg, var(--color-grape-hi), var(--color-grape-lo));
+  background-image: linear-gradient(180deg, rgb(255 255 255 / 0.14) 0 1px, transparent 1px),
+    linear-gradient(180deg, rgb(255 255 255 / 0.06), transparent 42%),
+    linear-gradient(158deg, var(--color-fill-grape-hi), var(--color-fill-grape-lo));
+}
+
+/* A card on the canvas: the lifted navy with the same lit rim. Pair it with
+   `ring-1 ring-hairline` for the edge. */
+@utility panel-surface {
+  background-color: var(--color-surface);
+  background-image: linear-gradient(180deg, rgb(255 255 255 / 0.07) 0 1px, transparent 1px),
+    linear-gradient(180deg, rgb(255 255 255 / 0.04), transparent 38%);
 }
 
 @utility chip-amber {
-  background-image: linear-gradient(180deg, var(--color-amber-hi), var(--color-amber-lo));
+  background-image: linear-gradient(180deg, rgb(255 255 255 / 0.28) 0 1px, transparent 1px),
+    linear-gradient(180deg, var(--color-amber-hi), var(--color-amber-lo));
 }
 
 @utility chip-signal {
-  background-image: linear-gradient(180deg, #fff75e, var(--color-signal));
+  background-image: linear-gradient(180deg, rgb(255 255 255 / 0.45) 0 1px, transparent 1px),
+    linear-gradient(180deg, #ffef8f, var(--color-signal));
 }
 
 @layer base {
@@ -72,10 +135,11 @@
     background: linear-gradient(180deg, var(--color-page), var(--color-page-deep)) fixed;
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
   }
 
   ::selection {
-    background: rgb(247 163 64 / 0.45);
+    background: rgb(245 163 65 / 0.4);
   }
 
   :focus-visible {
@@ -88,5 +152,37 @@
   select,
   textarea {
     color-scheme: dark;
+  }
+
+  /* The default Windows scrollbar is a wide grey slab — on a page of navy
+     panels it is the first thing the eye lands on. These are the same bars,
+     thin and in the page's own colours. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(255 255 255 / 0.22) transparent;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    border: 3px solid transparent;
+    border-radius: 999px;
+    background-clip: content-box;
+    background-color: rgb(255 255 255 / 0.2);
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: rgb(255 255 255 / 0.32);
+  }
+
+  ::-webkit-scrollbar-corner {
+    background: transparent;
   }
 }

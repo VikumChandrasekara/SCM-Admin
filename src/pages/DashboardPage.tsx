@@ -1,26 +1,10 @@
 import { collection, query, where } from 'firebase/firestore';
-import {
-  Banknote,
-  Bomb,
-  Coins,
-  Droplets,
-  FileText,
-  HandCoins,
-  History,
-  Package,
-  ReceiptText,
-  TriangleAlert,
-  Users,
-  UtensilsCrossed,
-  Wallet,
-  type LucideIcon,
-} from 'lucide-react';
+import { Banknote, Coins, HandCoins, History, TriangleAlert, Users, Wallet } from 'lucide-react';
 import { useMemo, useState, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router';
 
 import { useSession } from '../auth/AuthContext';
 import { permissionsFor } from '../auth/permissions';
-import { BillModal } from '../components/BillModal';
 import { CrewColumn } from '../components/CrewColumn';
 import { CrewInfoModal } from '../components/CrewInfoModal';
 import { DateStepper } from '../components/DateStepper';
@@ -34,7 +18,6 @@ import { db } from '../db';
 import { serviceAlertsFor, stockAlerts } from '../lib/alerts';
 import { money, monthBounds, monthLabel, quantity, rupees } from '../lib/format';
 import {
-  BILL,
   ROLES,
   STOCK_LABEL,
   dayFrom,
@@ -42,7 +25,6 @@ import {
   monthFrom,
   nameOf,
   serviceMessage,
-  type BillCategory,
   type FillItem,
   type Person,
 } from '../lib/model';
@@ -58,7 +40,6 @@ export function DashboardPage() {
 
   const [date, setDate] = useState(today);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [billCategory, setBillCategory] = useState<BillCategory | null>(null);
   const [infoId, setInfoId] = useState<string | null>(null);
 
   const selected = crew.find((person) => person.id === selectedId) ?? crew[0] ?? null;
@@ -119,31 +100,39 @@ export function DashboardPage() {
       />
 
       {(stock.length > 0 || service.length > 0) && (
-        <div className="mb-5 flex flex-wrap items-center gap-2 rounded-2xl px-4 py-3 text-ink shadow-panel chip-signal">
-          <TriangleAlert className="size-5 shrink-0" />
-          <span className="mr-1 text-sm font-extrabold">අවධානය</span>
+        // A tinted strip with a signal rail down its edge, rather than a
+        // full bleed of warning yellow: the page has one loud element at a
+        // time, and at this width the yellow was the whole top of the screen.
+        <div className="mb-5 flex flex-wrap items-center gap-2 overflow-hidden rounded-panel bg-signal/[0.07] px-4 py-3 ring-1 ring-signal/25 [border-left:3px_solid_var(--color-signal)]">
+          <TriangleAlert className="size-[18px] shrink-0 text-signal" />
+          <span className="mr-1 text-[13px] font-bold tracking-wide text-signal">අවධානය</span>
           {stock.slice(0, 4).map(({ item, status }) => (
-            <Link key={item.id} to="/store" className="rounded-full bg-ink/10 px-3 py-1 text-xs font-bold hover:bg-ink/20">
+            <Link
+              key={item.id}
+              to="/store"
+              className="rounded-full bg-white/[0.07] px-3 py-1 text-[11.5px] font-semibold ring-1 ring-hairline transition hover:bg-white/[0.14]"
+            >
               {item.name}: {STOCK_LABEL[status]} ({quantity(item.quantity, item.unit)})
             </Link>
           ))}
           {service.slice(0, 3).map(({ person, status }) => (
-            <span key={person.id} className="rounded-full bg-ink/10 px-3 py-1 text-xs font-bold">
+            <span
+              key={person.id}
+              className="rounded-full bg-white/[0.07] px-3 py-1 text-[11.5px] font-semibold ring-1 ring-hairline"
+            >
               {nameOf(person)}: {serviceMessage(status)}
             </span>
           ))}
-          {stock.length + service.length > 7 && <span className="text-xs font-bold">+{stock.length + service.length - 7}</span>}
+          {stock.length + service.length > 7 && (
+            <span className="text-[11.5px] font-semibold text-white/60">
+              +{stock.length + service.length - 7}
+            </span>
+          )}
         </div>
       )}
 
-      <QuickActions
-        canManageUsers={permissions.manageUsers}
-        onNavigate={(path) => navigate(path)}
-        onBill={setBillCategory}
-      />
-
       {crew.length === 0 ? (
-        <div className="rounded-[26px] bg-page-deep/60 ring-1 ring-hairline">
+        <div className="rounded-panel panel-surface shadow-panel ring-1 ring-hairline">
           <EmptyState
             icon={<Users className="size-7" />}
             title="තවම කණ්ඩායම් සාමාජිකයින් නැත"
@@ -153,32 +142,42 @@ export function DashboardPage() {
         </div>
       ) : (
         <>
-          <div className="mb-4 flex flex-wrap items-center gap-2">
-            <span className="mr-1 text-xs font-bold tracking-[0.14em] text-white/60 uppercase">මුදල් සහ ඉලක්කය</span>
+          <SectionLabel>මුදල් සහ ඉලක්කය</SectionLabel>
+          <div className="mb-4 flex flex-wrap items-center gap-1.5">
             {crew.map((person) => (
               <button
                 key={person.id}
                 type="button"
                 onClick={() => setSelectedId(person.id)}
+                aria-pressed={person.id === selected?.id}
                 className={cx(
-                  'rounded-full px-3.5 py-1.5 text-sm font-bold transition',
-                  person.id === selected?.id ? 'chip-amber text-ink shadow-control' : 'bg-well text-white/80 hover:bg-black/30',
+                  'rounded-full px-3.5 py-1.5 text-[13px] font-semibold ring-1 transition',
+                  person.id === selected?.id
+                    ? 'bg-amber-hi/15 text-amber-hi ring-amber-hi/35'
+                    : 'bg-white/[0.05] text-white/70 ring-hairline hover:bg-white/[0.1] hover:text-white',
                 )}
               >
                 {nameOf(person)}
-                <span className="ml-1.5 text-[11px] font-semibold opacity-70">{ROLES[person.role].english}</span>
+                <span className="ml-1.5 text-[10.5px] font-medium opacity-65">{ROLES[person.role].english}</span>
               </button>
             ))}
           </div>
 
           {selected && pay && (
             <section className="mb-8 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.75fr)_minmax(0,1fr)]">
-              <div className="grid content-start gap-4 sm:grid-cols-2 lg:grid-cols-1">
+              {/* flex + flex-1 rather than the grid's own stretch: a grid
+                  item stretches to the row's height, but its content still
+                  hugs the top unless something inside claims the leftover
+                  space. These two tiles now grow to fill it, so the column's
+                  bottom lands on the target panel's, instead of stopping
+                  short with a bare gap underneath. */}
+              <div className="grid gap-4 sm:grid-cols-2 lg:flex lg:flex-col">
                 <MoneyTile
                   icon={<Coins className="size-5" />}
                   label="මුදල් ප්‍රමාණය"
                   value={pay.gross}
                   caption={grossCaption(selected, pay)}
+                  className="lg:flex-1"
                 />
                 <MoneyTile
                   icon={<Wallet className="size-5" />}
@@ -186,42 +185,51 @@ export function DashboardPage() {
                   value={pay.net}
                   caption="උපයා ඇති මුදලින් ණය අඩු කළ පසු"
                   emphasis
+                  className="lg:flex-1"
                 />
               </div>
 
               <TargetPanel person={selected} month={monthTally} today={today} />
 
-              <div className="grid content-start gap-4 sm:grid-cols-2 lg:grid-cols-1">
+              <div className="grid gap-4 sm:grid-cols-2 lg:flex lg:flex-col">
                 <MoneyTile
                   icon={<HandCoins className="size-5" />}
                   label="ණය මුදල් ප්‍රමාණය"
                   value={pay.deductions}
                   caption="මේ මාසයේ ඇඩ්වාන්ස් + කෑම බිල්පත්"
+                  className="lg:flex-1"
                 />
                 <MoneyTile
                   icon={<Banknote className="size-5" />}
                   label="දවසේ මුදල් ප්‍රමාණය"
                   value={pay.dayEarnings}
                   caption={selected.dailyWage > 0 ? `දවසේ පඩිය ${rupees(selected.dailyWage)} · ${date}` : 'දවසේ පඩිය සකසා නැත'}
+                  className="lg:flex-1"
                 />
+                {/* Fixed-size, not flex-1: a shortcut link, not a stat — the
+                    two tiles above absorb the leftover height and this sits
+                    at its natural size right after them. */}
                 <Link
                   to={`/history?person=${selected.id}`}
-                  className="group flex items-center gap-3 rounded-2xl bg-well px-4 py-3 hover:bg-black/30"
+                  className="group flex shrink-0 items-center gap-3 rounded-card panel-surface px-4 py-3 ring-1 ring-hairline transition hover:bg-surface-hi"
                 >
-                  <span className="relative flex h-11 w-12 items-end justify-center">
-                    <span className="absolute inset-0 bg-signal [clip-path:polygon(50%_0,100%_100%,0_100%)]" />
-                    <History className="relative mb-1 size-4 text-ink" />
+                  <span className="flex size-9 shrink-0 items-center justify-center rounded-control bg-signal/15 text-signal ring-1 ring-signal/25">
+                    <History className="size-[18px]" />
                   </span>
-                  <span className="text-sm font-bold">
+                  <span className="min-w-0 text-[13px] font-semibold">
                     ඉතිහාසය
-                    <span className="block text-xs font-normal text-white/60">{nameOf(selected)} — පෙර දවස්</span>
+                    <span className="block truncate text-[11.5px] font-normal text-white/60">
+                      {nameOf(selected)} — පෙර දවස්
+                    </span>
                   </span>
                 </Link>
               </div>
             </section>
           )}
 
-          <SectionLabel trailing={<span className="text-xs text-white/55">{date === today ? 'අද' : date}</span>}>
+          <SectionLabel
+            trailing={<span className="text-[11.5px] text-white/60 tabular-nums">{date === today ? 'අද' : date}</span>}
+          >
             කණ්ඩායම
           </SectionLabel>
           <div className="grid gap-5 md:grid-cols-2 2xl:grid-cols-3">
@@ -241,14 +249,6 @@ export function DashboardPage() {
         </>
       )}
 
-      {billCategory && (
-        <BillModal
-          category={billCategory}
-          personId={BILL[billCategory].deduction ? selected?.id ?? null : null}
-          date={date}
-          onClose={() => setBillCategory(null)}
-        />
-      )}
       {infoPerson && <CrewInfoModal person={infoPerson} date={date} onClose={() => setInfoId(null)} />}
     </>
   );
@@ -267,82 +267,40 @@ function MoneyTile({
   value,
   caption,
   emphasis = false,
+  className,
 }: {
   icon: ReactNode;
   label: string;
   value: number;
   caption: string;
   emphasis?: boolean;
+  className?: string;
 }) {
   return (
-    <div className={cx('rounded-[22px] p-4 shadow-panel panel-grape', emphasis && 'ring-2 ring-amber-hi/70')}>
-      <p className="flex items-center gap-2 text-sm font-bold text-white/90">
-        <span className="flex size-8 items-center justify-center rounded-lg bg-white/15">{icon}</span>
-        {label}
-      </p>
-      <p className="mt-2 text-[28px] leading-none font-extrabold tabular-nums">
-        <span className="mr-1 text-base font-bold text-white/70">රු.</span>
-        {money(value)}
-      </p>
-      <p className="mt-2 text-xs text-white/70">{caption}</p>
-    </div>
-  );
-}
-
-interface Action {
-  label: string;
-  icon: LucideIcon;
-  className: string;
-  onClick: () => void;
-}
-
-/** The mockup's top row, in its own colours. */
-function QuickActions({
-  canManageUsers,
-  onNavigate,
-  onBill,
-}: {
-  canManageUsers: boolean;
-  onNavigate: (path: string) => void;
-  onBill: (category: BillCategory) => void;
-}) {
-  const pages: Action[] = [
-    { label: 'බිල්', icon: ReceiptText, className: 'bg-white text-ink', onClick: () => onNavigate('/bills') },
-    { label: 'වෙඩි බඩු', icon: Bomb, className: 'chip-signal text-ink', onClick: () => onNavigate('/explosives') },
-    { label: 'ගබඩාව', icon: Package, className: 'chip-amber text-ink', onClick: () => onNavigate('/store') },
-    ...(canManageUsers
-      ? [{ label: 'පරිශීලකයින්', icon: Users, className: 'bg-[#c0504d] text-white', onClick: () => onNavigate('/users') }]
-      : []),
-    { label: 'ඉතිහාසය', icon: History, className: 'bg-[#cbbde9] text-ink', onClick: () => onNavigate('/history') },
-  ];
-  const bills: (Action & { category: BillCategory })[] = [
-    { category: 'advance', label: 'Advance', icon: HandCoins, className: 'bg-[#4f81bd] text-white', onClick: () => onBill('advance') },
-    { category: 'food', label: 'Food', icon: UtensilsCrossed, className: 'bg-[#9bbb59] text-ink', onClick: () => onBill('food') },
-    { category: 'water', label: 'Water bill', icon: Droplets, className: 'bg-[#b7dee8] text-ink', onClick: () => onBill('water') },
-    { category: 'other', label: 'වෙනත්', icon: FileText, className: 'bg-[#d0d0d0] text-ink', onClick: () => onBill('other') },
-  ];
-
-  const render = (action: Action) => (
-    <button
-      key={action.label}
-      type="button"
-      onClick={action.onClick}
+    <div
       className={cx(
-        'flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-extrabold shadow-control ring-1 ring-black/10 transition hover:brightness-105 active:scale-[0.97]',
-        action.className,
+        // justify-between spreads the three rows apart only once the tile
+        // has more height than its content needs — at its natural size
+        // (mobile, tablet) this does nothing and the mt-* spacing below
+        // still carries it; grown to lg:flex-1, the label stays pinned to
+        // the top and the caption to the bottom instead of both drifting
+        // toward a lone strip at the top of a tall, empty box.
+        'flex min-h-0 flex-col justify-between rounded-panel p-4 shadow-panel panel-grape',
+        emphasis && 'ring-1 ring-amber-hi/60',
+        className,
       )}
     >
-      <action.icon className="size-4" />
-      {action.label}
-    </button>
-  );
-
-  return (
-    <div className="mb-6 flex flex-wrap items-center gap-2">
-      {pages.map(render)}
-      <span className="mx-1 hidden h-7 w-px bg-hairline sm:block" />
-      <span className="text-xs font-bold text-white/55">බිල්පතක් එකතු කරන්න:</span>
-      {bills.map(render)}
+      <p className="flex items-center gap-2.5 text-[12.5px] font-semibold tracking-wide text-white/85">
+        <span className="flex size-8 shrink-0 items-center justify-center rounded-control bg-white/15 ring-1 ring-white/10">
+          {icon}
+        </span>
+        {label}
+      </p>
+      <p className="mt-3 flex items-baseline gap-1.5 text-[30px] leading-none font-bold tracking-tight tabular-nums">
+        <span className="text-[15px] font-medium text-white/60">රු.</span>
+        {money(value)}
+      </p>
+      <p className="mt-2.5 text-[11.5px] leading-relaxed text-white/70">{caption}</p>
     </div>
   );
 }

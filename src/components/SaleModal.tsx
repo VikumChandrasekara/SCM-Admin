@@ -97,7 +97,7 @@ export function SaleModal({ onClose, onCreated }: { onClose: () => void; onCreat
           />
         </Field>
 
-        <div className="flex items-center justify-between rounded-2xl px-4 py-3 text-ink shadow-control chip-amber">
+        <div className="flex items-center justify-between rounded-card px-4 py-3 text-ink shadow-control chip-amber">
           <span className="text-sm font-bold">
             {total != null && unitPrice != null
               ? `${quantity(count)} × ${money(unitPrice)}`
