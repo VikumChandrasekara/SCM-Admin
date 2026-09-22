@@ -11,6 +11,7 @@ import {
   DashboardPage,
   ExplosivesPage,
   FinancePage,
+  GetAppPage,
   HistoryPage,
   LoginPage,
   SalesPage,
@@ -30,6 +31,16 @@ export function App() {
           <PageBoundary fullScreen>
             <Routes>
               <Route path="/login" element={<LoginRoute />} />
+              {/* No sign-in: operator and compressor crews, who cannot sign
+                  in to this panel at all, reach this one page directly. */}
+              <Route
+                path="/get-app"
+                element={
+                  <Suspense fallback={<FullScreenLoading />}>
+                    <GetAppPage />
+                  </Suspense>
+                }
+              />
               <Route element={<RequireSession />}>
                 <Route index element={<DashboardPage />} />
                 <Route path="store" element={<StorePage />} />
