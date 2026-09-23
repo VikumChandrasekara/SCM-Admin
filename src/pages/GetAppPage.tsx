@@ -64,7 +64,12 @@ function useApkQr(): string | null {
   const [url, setUrl] = useState<string | null>(null);
   useEffect(() => {
     let active = true;
-    QRCode.toDataURL(APP_APK_URL, { margin: 1, width: 320, errorCorrectionLevel: 'M' })
+    // APP_APK_URL is same-origin and relative (e.g. "/app/scm-latest.apk"),
+    // which a browser resolves fine for the button but means nothing to a
+    // phone camera scanning this off a printed poster — the QR needs an
+    // absolute URL.
+    const absoluteUrl = new URL(APP_APK_URL, window.location.origin).toString();
+    QRCode.toDataURL(absoluteUrl, { margin: 1, width: 320, errorCorrectionLevel: 'M' })
       .then((dataUrl) => {
         if (active) setUrl(dataUrl);
       })
