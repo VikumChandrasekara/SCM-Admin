@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 
 import { LogoPlaque } from '../components/Logo';
 import { Button, Panel } from '../components/ui';
-import { APP_APK_URL } from '../lib/appDownload';
+import { APP_APK_FILENAME, APP_APK_URL } from '../lib/appDownload';
 
 /**
  * A public page — no sign-in — that hands out the operator app's APK.
@@ -34,7 +34,7 @@ export function GetAppPage() {
             />
           )}
 
-          <a href={APP_APK_URL} rel="noopener" className="mt-5 block">
+          <a href={APP_APK_URL} download={APP_APK_FILENAME} rel="noopener" className="mt-5 block">
             <Button size="lg" icon={<Download className="size-4.5" />} className="w-full">
               APK එක බාගත කරන්න
             </Button>

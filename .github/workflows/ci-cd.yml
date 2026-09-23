@@ -46,15 +46,22 @@ jobs:
       # etc.) must not fail the whole site's deploy over a stale download
       # link, so it warns and leaves dist/app/ empty rather than exiting
       # non-zero; GetAppPage's link 404s until the next successful deploy.
+      #
+      # Saved as .bin, not .apk: Firebase Hosting's Spark (no-cost) plan
+      # rejects the whole deploy outright if it contains a .apk/.exe/.ipa
+      # file (see firebase.google.com/docs/hosting/faq-and-troubleshooting).
+      # firebase.json sends this path back with the right Content-Type and
+      # a Content-Disposition filename, so it still saves as scm-latest.apk
+      # on the phone regardless of the URL's own extension.
       - name: Fetch the current operator APK
         if: github.event_name != 'pull_request'
         run: |
           mkdir -p dist/app
           if ! curl -fsSL --retry 3 --retry-delay 5 --max-time 60 \
-              -o dist/app/scm-latest.apk \
+              -o dist/app/scm-latest-apk.bin \
               http://169.58.29.10:8091/app/scm-latest.apk; then
             echo "::warning::Could not fetch the operator APK from the VPS — GetAppPage's download link will 404 until the next successful deploy."
-            rm -f dist/app/scm-latest.apk
+            rm -f dist/app/scm-latest-apk.bin
           fi
 
       # Deploy ships exactly what was built and checked here.
