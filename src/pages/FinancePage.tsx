@@ -84,7 +84,7 @@ export function FinancePage() {
 
 function FinanceReport({ finance }: { finance: Finance }) {
   const expenseLines: { label: string; value: number; detail: string }[] = [
-    { label: 'කණ්ඩායම් වැටුප්', value: finance.salaryTotal, detail: 'දවසේ පඩිය, බෝනස් සහ ආඩි — ඇඩ්වාන්ස් සහ කෑම ඇතුළුව' },
+    { label: 'කණ්ඩායම් වැටුප්', value: finance.salaryTotal, detail: 'දවසේ පඩිය, බෝනස් සහ අඩි — ඇඩ්වාන්ස් සහ කෑම ඇතුළුව' },
     { label: 'ගබඩා මිලදී ගැනීම්', value: finance.purchaseTotal, detail: 'නව අයිතම සහ තොග එකතු කිරීම්' },
     ...BILL_CATEGORIES.filter((category) => finance.siteBills[category] > 0).map((category) => ({
       label: `${BILL[category].label} බිල්පත්`,
@@ -199,7 +199,7 @@ function FinanceReport({ finance }: { finance: Finance }) {
                     <th className={th}>නම</th>
                     <th className={cx(th, 'text-right')}>වැඩ කළ දින</th>
                     <th className={cx(th, 'text-right')}>දවසේ පඩිය</th>
-                    <th className={cx(th, 'text-right')}>බෝනස් / ආඩි</th>
+                    <th className={cx(th, 'text-right')}>බෝනස් / අඩි / ලෝඩ්</th>
                     <th className={cx(th, 'text-right')}>මුළු වැටුප</th>
                     <th className={cx(th, 'text-right')}>ඇඩ්වාන්ස්</th>
                     <th className={cx(th, 'text-right')}>කෑම</th>
@@ -217,7 +217,7 @@ function FinanceReport({ finance }: { finance: Finance }) {
                       </td>
                       <td className={cx(td, 'text-right tabular-nums')}>{pay.workedDays}</td>
                       <td className={cx(td, 'text-right tabular-nums')}>{money(pay.wagePay)}</td>
-                      <td className={cx(td, 'text-right tabular-nums')}>{money(pay.bonusPay + pay.feetPay)}</td>
+                      <td className={cx(td, 'text-right tabular-nums')}>{money(pay.bonusPay + pay.ratePay)}</td>
                       <td className={cx(td, 'text-right font-extrabold tabular-nums')}>{money(pay.gross)}</td>
                       <td className={cx(td, 'text-right text-white/75 tabular-nums')}>{money(advances)}</td>
                       <td className={cx(td, 'text-right text-white/75 tabular-nums')}>{money(food)}</td>

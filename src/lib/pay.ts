@@ -1,4 +1,4 @@
-import { BILL, ROLES, dayOnHours, type Bill, type Day, type MonthTally, type Person } from './model';
+import { BILL, ROLES, dayOnHours, paidPerLoad, rateOf, type Bill, type Day, type MonthTally, type Person } from './model';
 import { bonusEarned } from './target';
 
 /**
@@ -14,8 +14,11 @@ export interface PayFigures {
   wagePay: number;
   /** The excavator crew's bonus ladder for the month's loads. */
   bonusPay: number;
-  /** The compressor crew's ආඩි × rate per foot. */
-  feetPay: number;
+  /**
+   * The compressor crew's month × their rate: අඩි × the foot rate, or ලෝඩ් ×
+   * the load rate, whichever the admin set them up on.
+   */
+  ratePay: number;
   /** මුදල් ප්‍රමාණය — everything earned this month. */
   gross: number;
   /** ණය මුදල් ප්‍රමාණය — advances and food charged to them this month. */
@@ -38,8 +41,9 @@ export function payFor(
   const workedDays = monthDays.filter((entry) => dayOnHours(entry) != null).length;
   const wagePay = workedDays * person.dailyWage;
   const bonusPay = role.tracksBonus ? bonusEarned(month.loads) : 0;
-  const feetPay = role.tracksBonus ? 0 : month.feet * person.ratePerFoot;
-  const gross = wagePay + bonusPay + feetPay;
+  const rate = rateOf(person);
+  const ratePay = role.tracksBonus ? 0 : (paidPerLoad(person) ? month.loads : month.feet) * rate;
+  const gross = wagePay + bonusPay + ratePay;
 
   const deductions = bills
     .filter(
@@ -53,14 +57,14 @@ export function payFor(
   const worked = day != null && dayOnHours(day) != null;
   const dayEarnings =
     (worked ? person.dailyWage : 0) +
-    (role.tracksBonus ? 0 : (day?.feet ?? 0) * person.ratePerFoot);
+    (role.tracksBonus ? 0 : (paidPerLoad(person) ? (day?.loads ?? 0) : (day?.feet ?? 0)) * rate);
 
   return {
     workedDays,
     dailyWage: person.dailyWage,
     wagePay,
     bonusPay,
-    feetPay,
+    ratePay,
     gross,
     deductions,
     net: gross - deductions,

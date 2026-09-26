@@ -9,7 +9,7 @@ import { deleteDoc, doc, serverTimestamp, writeBatch, type WriteBatch } from 'fi
 
 import { db } from '../db';
 import { emailFor, provisioningAuth } from '../firebase';
-import { ROLES, SERVICE, type Machine, type Person, type RoleId } from '../lib/model';
+import { ROLES, SERVICE, type Machine, type PayBasis, type Person, type RoleId } from '../lib/model';
 import { commit } from './commit';
 
 /**
@@ -31,7 +31,10 @@ export interface UserFields {
   role: RoleId;
   machineId: string;
   dailyWage: number;
+  /** Which rate a compressor crew member is paid on. */
+  payBasis: PayBasis;
   ratePerFoot: number;
+  ratePerLoad: number;
 }
 
 /** A crew member's machine, set up the first time someone is put on it. */
@@ -58,7 +61,11 @@ function recordFields(fields: UserFields) {
     role: fields.role,
     machineId: crew ? fields.machineId.trim() : '',
     dailyWage: crew ? fields.dailyWage : 0,
+    // Rates and the basis only mean something to a compressor crew; the
+    // excavator crew works to the bonus ladder.
+    payBasis: fields.role === 'compressor' ? fields.payBasis : 'foot',
     ratePerFoot: fields.role === 'compressor' ? fields.ratePerFoot : 0,
+    ratePerLoad: fields.role === 'compressor' ? fields.ratePerLoad : 0,
   };
 }
 
@@ -80,6 +87,7 @@ export async function createAccount(
       username: fields.username.trim().toLowerCase(),
       leaveDays: 0,
       advanceAmount: 0,
+      receivableAmount: 0,
       bonusTotal: 0,
       createdAt: serverTimestamp(),
     });
@@ -100,6 +108,7 @@ export async function updateAccount(
   fields: UserFields & {
     leaveDays: number;
     advanceAmount: number;
+    receivableAmount: number;
     bonusTotal: number;
     /** Only read when the person is moved onto a machine that is new. */
     meterHours: number;
@@ -111,6 +120,7 @@ export async function updateAccount(
     ...recordFields(fields),
     leaveDays: fields.leaveDays,
     advanceAmount: fields.advanceAmount,
+    receivableAmount: fields.receivableAmount,
     bonusTotal: fields.bonusTotal,
   });
   addMachineIfNew(batch, fields, machines, fields.meterHours);

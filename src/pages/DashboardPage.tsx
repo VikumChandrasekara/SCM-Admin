@@ -18,12 +18,14 @@ import { db } from '../db';
 import { serviceAlertsFor, stockAlerts } from '../lib/alerts';
 import { money, monthBounds, monthLabel, quantity, rupees } from '../lib/format';
 import {
+  PAY_BASIS_LABEL,
   ROLES,
   STOCK_LABEL,
   dayFrom,
   emptyDay,
   monthFrom,
   nameOf,
+  paidPerLoad,
   serviceMessage,
   type FillItem,
   type Person,
@@ -257,7 +259,7 @@ export function DashboardPage() {
 function grossCaption(person: Person, pay: NonNullable<ReturnType<typeof payFor>>): string {
   const parts = [`දින ${pay.workedDays} × ${money(person.dailyWage)}`];
   if (pay.bonusPay > 0) parts.push(`බෝනස් ${money(pay.bonusPay)}`);
-  if (pay.feetPay > 0) parts.push(`ආඩි ${money(pay.feetPay)}`);
+  if (pay.ratePay > 0) parts.push(`${PAY_BASIS_LABEL[paidPerLoad(person) ? 'load' : 'foot'].unit} ${money(pay.ratePay)}`);
   return parts.join(' + ');
 }
 

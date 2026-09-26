@@ -119,7 +119,7 @@ try {
       machineId: '',
       ...(existing.exists
         ? {}
-        : { leaveDays: 0, advanceAmount: 0, bonusTotal: 0, ratePerFoot: 0, dailyWage: 0, createdAt: FieldValue.serverTimestamp() }),
+        : { leaveDays: 0, advanceAmount: 0, bonusTotal: 0, ratePerFoot: 0, ratePerLoad: 0, payBasis: 'foot', dailyWage: 0, createdAt: FieldValue.serverTimestamp() }),
     },
     { merge: true },
   );

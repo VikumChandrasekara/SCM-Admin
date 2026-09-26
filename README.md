@@ -32,13 +32,13 @@ These are worked out for one crew member, for the month of the date the
 dashboard is showing:
 
 - **මුදල් ප්‍රමාණය** is worked days × daily wage, plus either the bonus ladder
-  (excavator crew) or ආඩි × rate per foot (compressor crew). A worked day is
+  (excavator crew) or අඩි × rate per foot (compressor crew). A worked day is
   one with an ON reading in පිරවීම 1.
 - **ණය මුදල් ප්‍රමාණය** is the month's advance and food bills charged to that
   person.
 - **ලැබිය යුතු මුදල් ප්‍රමාණය** is the first figure minus the second.
 - **දවසේ මුදල් ප්‍රමාණය** is what the selected day earned: the daily wage if
-  the machine was started that day, plus that day's ආඩි × rate for a
+  the machine was started that day, plus that day's අඩි × rate for a
   compressor crew.
 
 The daily wage and rate per foot are set on each person in පරිශීලකයින්.
@@ -105,7 +105,7 @@ The admin's **මූල්‍ය** page shows a month's money.
 - **Income** is verified sales, split into cubes and tractor loads. Pending
   and cancelled sales are listed, but not counted.
 - **Expenses** count each rupee once:
-  - Crew pay in full: worked days × daily wage, plus the bonus or ආඩි pay.
+  - Crew pay in full: worked days × daily wage, plus the bonus or අඩි pay.
     Advances and food charged to a crew member are part of that pay, paid
     early, so they appear in the pay table rather than again as bills.
   - Every other bill: water, other, and food charged to nobody.
@@ -153,7 +153,7 @@ crosses a slow line, and how often.
   to be created once, so a repeat is refused as a whole instead of counted
   twice.
 - **Running totals go through transactions.** Bills move the advance
-  figure, and ලෝඩ් / ආඩි move the month. These are written in transactions,
+  figure, and ලෝඩ් / අඩි move the month. These are written in transactions,
   which are never queued and check the server first, so a retry finds the
   work already done. They need a connection; offline, they fail and say so.
   With no connection at all, a නොබැඳි badge and banner show in the header.

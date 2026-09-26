@@ -9,7 +9,19 @@ import { useLiveData } from '../data/LiveData';
 import { dayRef, resetService, saveFigures, saveTally } from '../data/machines';
 import { errorMessage } from '../lib/errors';
 import { hours, quantity, rupees, signedHours } from '../lib/format';
-import { ROLES, SERVICE, dayFrom, nameOf, serviceStatus, type Person, type ServiceTask } from '../lib/model';
+import {
+  PAY_BASIS_LABEL,
+  ROLES,
+  SERVICE,
+  dayFrom,
+  nameOf,
+  paidPerLoad,
+  rateOf,
+  serviceStatus,
+  tallyField,
+  type Person,
+  type ServiceTask,
+} from '../lib/model';
 import { useToast } from './Toasts';
 import { Button, Field, Input, Modal, SectionLabel, ValueChip, cx } from './ui';
 
@@ -30,12 +42,17 @@ export function CrewInfoModal({ person, date, onClose }: { person: Person; date:
 
   const [leave, setLeave] = useState(String(live.leaveDays));
   const [advance, setAdvance] = useState(String(live.advanceAmount));
+  const [receivable, setReceivable] = useState(String(live.receivableAmount));
   const [bonus, setBonus] = useState(String(live.bonusTotal));
   const [tally, setTally] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<ServiceTask | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
-  const storedTally = day.data ? (role.tracksBonus ? day.data.loads : day.data.feet) : 0;
+  // Loads for an excavator crew and for a compressor crew paid per load, අඩි
+  // for the rest.
+  const field = tallyField(live);
+  const whole = field === 'loads';
+  const storedTally = day.data ? day.data[field] : 0;
 
   /** The store item fitted for [task], when the store stocks one. */
   const partFor = (task: ServiceTask) => store.find((item) => item.link === `service:${task}`) ?? null;
@@ -56,7 +73,12 @@ export function CrewInfoModal({ person, date, onClose }: { person: Person; date:
   }
 
   function saveInfo() {
-    const figures = { leaveDays: Number(leave), advanceAmount: Number(advance), bonusTotal: Number(bonus) };
+    const figures = {
+      leaveDays: Number(leave),
+      advanceAmount: Number(advance),
+      receivableAmount: Number(receivable),
+      bonusTotal: Number(bonus),
+    };
     if (Object.values(figures).some((value) => !Number.isFinite(value) || value < 0)) {
       toast.error('අගයන් ඍණ නොවන සංඛ්‍යා විය යුතුය.');
       return;
@@ -69,8 +91,8 @@ export function CrewInfoModal({ person, date, onClose }: { person: Person; date:
     if (tally == null || !Number.isFinite(value) || value < 0) return;
     void run(
       'tally',
-      () => saveTally(live.machineId, date, role.tracksBonus ? 'loads' : 'feet', role.tracksBonus ? Math.round(value) : value),
-      `${role.tracksBonus ? 'ලෝඩ්' : 'ආඩි'} ගණන සුරැකුණා.`,
+      () => saveTally(live.machineId, date, field, whole ? Math.round(value) : value),
+      `${whole ? 'ලෝඩ්' : 'අඩි'} ගණන සුරැකුණා.`,
     ).then((saved) => saved && setTally(null));
   }
 
@@ -103,6 +125,16 @@ export function CrewInfoModal({ person, date, onClose }: { person: Person; date:
             <Field label="ඇඩ්වාන්ස් ගණන (රු.)" hint="ඇඩ්වාන්ස් බිල්පත් එකතු කරන විට මෙය ස්වයංක්‍රීයව වැඩි වේ.">
               <Input type="number" min="0" step="any" value={advance} onChange={(event) => setAdvance(event.target.value)} />
             </Field>
+            <Field
+              label="ලැබිය යුතු මුදල (රු.)"
+              hint={
+                Number(receivable) > 0
+                  ? `ඇඩ්වාන්ස් අඩු කළ පසු කණ්ඩායමට පෙනෙන්නේ: ${rupees(Number(receivable) - Number(advance))}`
+                  : 'අගයක් දමන තුරු කණ්ඩායමට මෙය නොපෙනේ.'
+              }
+            >
+              <Input type="number" min="0" step="any" value={receivable} onChange={(event) => setReceivable(event.target.value)} />
+            </Field>
             {role.tracksBonus && (
               <Field label="බෝනස් මුදල් එකතුව (රු.)">
                 <Input type="number" min="0" step="any" value={bonus} onChange={(event) => setBonus(event.target.value)} />
@@ -123,8 +155,10 @@ export function CrewInfoModal({ person, date, onClose }: { person: Person; date:
             </p>
             {!role.tracksBonus && (
               <p className="flex justify-between">
-                <span className="text-white/70">ආඩියක ගාස්තුව</span>
-                <b>{live.ratePerFoot > 0 ? rupees(live.ratePerFoot) : '—'}</b>
+                <span className="text-white/70">
+                  {paidPerLoad(live) ? 'ලෝඩ් එකක ගාස්තුව' : 'අඩියක ගාස්තුව'}
+                </span>
+                <b>{rateOf(live) > 0 ? `${rupees(rateOf(live))} (${PAY_BASIS_LABEL[live.payBasis].per})` : '—'}</b>
               </p>
             )}
             {permissions.setRates && (
@@ -137,14 +171,14 @@ export function CrewInfoModal({ person, date, onClose }: { person: Person; date:
 
         <div>
           <SectionLabel trailing={<span className="text-xs text-white/55">{date}</span>}>
-            {role.tracksBonus ? 'පැටවූ ලෝඩ් ගණන' : 'ආඩි ගණන'}
+            {whole ? 'පැටවූ ලෝඩ් ගණන' : 'අඩි ගණන'}
           </SectionLabel>
           <div className="flex items-end gap-2 rounded-card bg-well p-4">
             <Field label="මෙම දිනයට" className="flex-1">
               <Input
                 type="number"
                 min="0"
-                step={role.tracksBonus ? '1' : 'any'}
+                step={whole ? '1' : 'any'}
                 value={tally ?? String(storedTally)}
                 onChange={(event) => setTally(event.target.value)}
                 disabled={!live.machineId}

@@ -23,16 +23,74 @@ import { dateTime, monthBounds, monthLabel, quantity } from '../lib/format';
 import {
   BLAST,
   BLAST_ITEMS,
+  METRES_PER_FOOT,
   ROLES,
+  SIZED_ITEMS,
+  SIZED_LABEL,
   STOCK_LABEL,
+  blastMetres,
   dayFrom,
   emptyDay,
   nameOf,
+  sizeLines,
   stockStatus,
   type BlastItem,
+  type SizeQuantities,
+  type SizedItem,
   type StoreItem,
 } from '../lib/model';
 import { useToday } from '../lib/useToday';
+
+/**
+ * An amount with its unit. The wire is counted in අඩි, so it also carries the
+ * conversion to metres, worked through: `100 ft × 0.3048 = 30.48 m`.
+ */
+function BlastValue({ item, amount }: { item: BlastItem; amount: number | undefined }) {
+  if (amount == null) return <b className="tabular-nums">—</b>;
+  const metres = blastMetres(item, amount);
+  return (
+    <span className="text-right">
+      <b className="tabular-nums">{quantity(amount, BLAST[item].unit)}</b>
+      {metres != null && (
+        <span className="block text-xs font-normal text-white/60 tabular-nums">
+          {quantity(amount, 'ft')} × {METRES_PER_FOOT} = {quantity(metres, 'm')}
+        </span>
+      )}
+    </span>
+  );
+}
+
+/**
+ * බිට් and කටු, one line per size: `36 — 4`. Nothing drawn is a dash, like the
+ * single-figure items around it.
+ */
+function SizedLines({ sizes }: { sizes: Partial<Record<SizedItem, SizeQuantities>> }) {
+  return (
+    <>
+      {SIZED_ITEMS.map((item) => {
+        const lines = sizeLines(sizes[item]);
+        return (
+          <li key={item} className="text-sm">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-white/80">{SIZED_LABEL[item]}</span>
+              {lines.length === 0 && <b className="tabular-nums">—</b>}
+            </div>
+            {lines.length > 0 && (
+              <ul className="mt-1 space-y-1 pl-3">
+                {lines.map(([size, count]) => (
+                  <li key={size} className="flex items-center justify-between gap-3 text-white/85">
+                    <span>සයිස් {quantity(size)}</span>
+                    <b className="tabular-nums">{count}</b>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </li>
+        );
+      })}
+    </>
+  );
+}
 
 /** වෙඩි බඩු — what each compressor crew drew, the month's totals, and the stock left. */
 export function ExplosivesPage() {
@@ -49,7 +107,11 @@ export function ExplosivesPage() {
   const days = useLiveDocs(refs, (snapshot) => dayFrom(date, snapshot.data()));
 
   const month = date.slice(0, 7);
-  const [totals, setTotals] = useState<{ month: string; amounts: Partial<Record<BlastItem, number>> } | null>(null);
+  const [totals, setTotals] = useState<{
+    month: string;
+    amounts: Partial<Record<BlastItem, number>>;
+    sizes: Partial<Record<SizedItem, SizeQuantities>>;
+  } | null>(null);
 
   // The month is read again whenever a sheet on the day in view is OK'd, so
   // the totals take it in straight away.
@@ -66,16 +128,23 @@ export function ExplosivesPage() {
       .then((lists) => {
         if (!live) return;
         const amounts: Partial<Record<BlastItem, number>> = {};
+        const sizes: Partial<Record<SizedItem, SizeQuantities>> = {};
         for (const day of lists.flat()) {
           if (!day.blasting.lockedAt) continue;
           for (const item of BLAST_ITEMS) {
             const value = day.blasting.amounts[item];
             if (value) amounts[item] = (amounts[item] ?? 0) + value;
           }
+          for (const item of SIZED_ITEMS) {
+            for (const [size, count] of Object.entries(day.blasting.sizes[item] ?? {})) {
+              const bucket = (sizes[item] ??= {});
+              bucket[size] = (bucket[size] ?? 0) + count;
+            }
+          }
         }
-        setTotals({ month, amounts });
+        setTotals({ month, amounts, sizes });
       })
-      .catch(() => live && setTotals({ month, amounts: {} }));
+      .catch(() => live && setTotals({ month, amounts: {}, sizes: {} }));
     return () => {
       live = false;
     };
@@ -85,6 +154,7 @@ export function ExplosivesPage() {
 
   const explosives = store.filter((item) => item.link?.startsWith('blast:'));
   const monthTotals = totals?.month === month ? totals.amounts : null;
+  const monthSizes = totals?.month === month ? totals.sizes : {};
 
   return (
     <>
@@ -122,11 +192,10 @@ export function ExplosivesPage() {
                   {BLAST_ITEMS.map((item) => (
                     <li key={item} className="flex items-center justify-between gap-3 text-sm">
                       <span className="text-white/80">{BLAST[item].label}</span>
-                      <b className="tabular-nums">
-                        {sheet.amounts[item] != null ? quantity(sheet.amounts[item]!, BLAST[item].unit) : '—'}
-                      </b>
+                      <BlastValue item={item} amount={sheet.amounts[item]} />
                     </li>
                   ))}
+                  <SizedLines sizes={sheet.sizes} />
                 </ul>
               </Panel>
             );
@@ -145,7 +214,24 @@ export function ExplosivesPage() {
                 {BLAST_ITEMS.map((item) => (
                   <li key={item} className="flex items-center justify-between gap-3 rounded-xl bg-well px-3 py-2 text-sm">
                     <span>{BLAST[item].label}</span>
-                    <b className="tabular-nums">{quantity(monthTotals[item] ?? 0, BLAST[item].unit)}</b>
+                    <BlastValue item={item} amount={monthTotals[item] ?? 0} />
+                  </li>
+                ))}
+                {SIZED_ITEMS.map((item) => (
+                  <li key={item} className="rounded-xl bg-well px-3 py-2 text-sm">
+                    <span>{SIZED_LABEL[item]}</span>
+                    {sizeLines(monthSizes[item]).length === 0 ? (
+                      <b className="float-right tabular-nums">—</b>
+                    ) : (
+                      <ul className="mt-1 space-y-1 pl-3 text-white/85">
+                        {sizeLines(monthSizes[item]).map(([size, count]) => (
+                          <li key={size} className="flex items-center justify-between gap-3">
+                            <span>සයිස් {quantity(size)}</span>
+                            <b className="tabular-nums">{count}</b>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                   </li>
                 ))}
               </ul>

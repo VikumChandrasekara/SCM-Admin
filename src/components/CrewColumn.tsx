@@ -13,6 +13,7 @@ import {
   nameOf,
   serviceAlerts,
   serviceStatus,
+  tallyField,
   totalFilled,
   type Day,
   type FillItem,
@@ -167,9 +168,9 @@ export const CrewColumn = memo(function CrewColumn({
 
       <footer className="mt-3 flex items-center gap-3 px-1">
         <p className="text-[13px]">
-          <span className="text-white/55">{role.tracksBonus ? 'ලෝඩ් ' : 'ආඩි '}</span>
+          <span className="text-white/55">{tallyField(person) === 'loads' ? 'ලෝඩ් ' : 'අඩි '}</span>
           <span className="text-[15px] font-bold text-amber-hi tabular-nums">
-            {role.tracksBonus ? day.loads : hours(day.feet)}
+            {tallyField(person) === 'loads' ? day.loads : hours(day.feet)}
           </span>
         </p>
         <Button

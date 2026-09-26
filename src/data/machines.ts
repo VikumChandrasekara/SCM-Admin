@@ -46,7 +46,7 @@ export async function fetchDays(machineId: string, from: string, to: string): Pr
 }
 
 /**
- * Sets a day's ලෝඩ් or ආඩි and moves the month by the difference — the same
+ * Sets a day's ලෝඩ් or අඩි and moves the month by the difference — the same
  * write the supervisor console makes, so re-entering a total corrects the
  * month instead of double-counting it.
  *
@@ -111,10 +111,10 @@ export async function resetService(
   await commit(batch);
 }
 
-/** The three තොරතුරු figures — the only fields a supervisor may write. */
+/** The four තොරතුරු figures — the only fields a supervisor may write. */
 export async function saveFigures(
   personId: string,
-  figures: { leaveDays: number; advanceAmount: number; bonusTotal: number },
+  figures: { leaveDays: number; advanceAmount: number; bonusTotal: number; receivableAmount: number },
 ): Promise<void> {
   const batch = writeBatch(db);
   batch.update(doc(db, 'operators', personId), figures);

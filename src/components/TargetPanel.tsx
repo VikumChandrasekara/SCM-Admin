@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 
 import { hours, money, rupees } from '../lib/format';
-import { ROLES, type MonthTally, type Person } from '../lib/model';
+import { PAY_BASIS_LABEL, ROLES, paidPerLoad, rateOf, type MonthTally, type Person } from '../lib/model';
 import {
   BONUS_PER_TIER,
   TIERS,
@@ -16,11 +16,14 @@ import {
 /** The mockup's green panel: the month's figures beside the bonus ladder. */
 export function TargetPanel({ person, month, today }: { person: Person; month: MonthTally; today: string }) {
   const role = ROLES[person.role];
+  const perLoad = paidPerLoad(person);
+  const basis = PAY_BASIS_LABEL[perLoad ? 'load' : 'foot'];
+  const rate = rateOf(person);
   return (
     <section className="rounded-panel p-5 text-white shadow-panel ring-1 ring-lime-hi/20 panel-lime">
       <div className="mb-4 flex items-baseline gap-2 border-b border-white/15 pb-3">
         <h2 className="flex-1 text-base font-bold tracking-tight">
-          {role.tracksBonus ? 'ඉලක්කය සහ බෝනස්' : 'මේ මාසයේ ආඩි'}
+          {role.tracksBonus ? 'ඉලක්කය සහ බෝනස්' : `මේ මාසයේ ${basis.unit}`}
         </h2>
         <span className="text-[11px] font-semibold text-white/60 tabular-nums">{month.month}</span>
       </div>
@@ -44,17 +47,21 @@ export function TargetPanel({ person, month, today }: { person: Person; month: M
         <div className="grid items-center gap-5 md:grid-cols-[minmax(0,15rem)_minmax(0,1fr)]">
           <div className="space-y-2.5">
             <Row label="මාසේ දිනයන් ගණන" value={daysInMonth(month.month)} />
-            <Row label="ආඩි ගණන" value={hours(month.feet)} />
+            {perLoad ? (
+              <Row label="ලෝඩ් ගණන" value={month.loads} />
+            ) : (
+              <Row label="අඩි ගණන" value={hours(month.feet)} />
+            )}
             <Row label="පැය ගණන" value={hours(month.hours)} />
             <Row label="ඉතිරි දින" value={daysRemaining(month.month, today)} />
           </div>
           <div className="rounded-card bg-black/20 p-5 text-center ring-1 ring-white/10">
-            <p className="text-[12.5px] font-semibold text-white/75">ආඩි වලින් උපයා ඇති මුදල</p>
+            <p className="text-[12.5px] font-semibold text-white/75">{basis.unit} වලින් උපයා ඇති මුදල</p>
             <p className="mt-1.5 text-[34px] leading-none font-bold tracking-tight tabular-nums">
-              {person.ratePerFoot > 0 ? money(month.feet * person.ratePerFoot) : '—'}
+              {rate > 0 ? money((perLoad ? month.loads : month.feet) * rate) : '—'}
             </p>
             <p className="mt-2 text-[11.5px] font-medium text-white/65">
-              {person.ratePerFoot > 0 ? `ආඩියකට ${rupees(person.ratePerFoot)}` : 'ආඩියක ගාස්තුව සකසා නැත'}
+              {rate > 0 ? `${basis.per} ${rupees(rate)}` : `${perLoad ? 'ලෝඩ් එකක' : 'අඩියක'} ගාස්තුව සකසා නැත`}
             </p>
           </div>
         </div>

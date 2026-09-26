@@ -98,6 +98,8 @@ for (const person of people) {
     advanceAmount: advances[person.username] ?? 0,
     bonusTotal: 0,
     ratePerFoot: person.ratePerFoot ?? 0,
+    ratePerLoad: person.ratePerLoad ?? 0,
+    payBasis: person.payBasis ?? 'foot',
     dailyWage: person.dailyWage ?? 0,
     createdAt: Timestamp.fromDate(daysAgo(40)),
   });
@@ -170,7 +172,8 @@ for (const person of crews) {
       day.feet = isToday ? between(5, 9) : between(15, 28);
       month.feet += day.feet;
       day.blasting = {
-        amounts: { caps: between(8, 16), fuse: between(20, 45), ammonia: between(10, 25), shells: between(4, 10) },
+        amounts: { caps: between(8, 16), blastingWire: between(60, 150), ammonia: between(10, 25), shells: between(4, 10) },
+        sizes: { bits: { 36: 4, 38: 4 }, rods: { 2.5: 1, 5: 3 } },
         lockedAt: at(date, 11, between(0, 50)),
       };
     }
@@ -219,7 +222,7 @@ const items = [
   ['fill-coolant', 'කුලන්ට්', 'L', 25, 10, 950, 'fill:coolant'],
   ['fill-compressorOil', 'කම්පසර් ඔයිල්', 'L', 6, 10, 2100, 'fill:compressorOil'],
   ['blast-caps', 'කැප්', 'ගණන', 180, 50, 85, 'blast:caps'],
-  ['blast-fuse', 'ෆියුස්', 'm', 420, 100, 45, 'blast:fuse'],
+  ['blast-blastingWire', 'වෙඩි නූල්', 'ft', 1400, 350, 15, 'blast:blastingWire'],
   ['blast-ammonia', 'ඇමෝනියා', 'kg', 60, 50, 320, 'blast:ammonia'],
   ['blast-shells', 'වෙඩි කරල්', 'ගණන', 90, 30, 450, 'blast:shells'],
   ['service-dieselFilter', 'ඩීසල් ෆිල්ටර්', 'ගණන', 3, 2, 4200, 'service:dieselFilter'],

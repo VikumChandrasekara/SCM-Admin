@@ -164,9 +164,10 @@ describe('accounts', () => {
     await assertSucceeds(getDocs(collection(as('admin1'), 'operators')));
   });
 
-  it('a supervisor sets the three තොරතුරු figures and nothing else', async () => {
+  it('a supervisor sets the four තොරතුරු figures and nothing else', async () => {
     const record = doc(as('sup1'), 'operators', 'op1');
     await assertSucceeds(updateDoc(record, { advanceAmount: 5000, leaveDays: 2 }));
+    await assertSucceeds(updateDoc(record, { receivableAmount: 100000 }));
     await assertFails(updateDoc(record, { role: 'admin' }));
     await assertFails(updateDoc(record, { dailyWage: 4000 }));
   });

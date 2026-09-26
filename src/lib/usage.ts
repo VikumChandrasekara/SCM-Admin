@@ -13,6 +13,7 @@ import {
   linkDocId,
   nameOf,
   storeItemFrom,
+  usageInStoreUnit,
   type Day,
   type MovementLine,
   type Person,
@@ -103,7 +104,13 @@ export async function postUsage(
       unmatched.push(link);
       continue;
     }
-    lines.push({ itemId: item.id, name: item.name, unit: item.unit, delta: -amount, unitPrice: item.unitPrice });
+    lines.push({
+      itemId: item.id,
+      name: item.name,
+      unit: item.unit,
+      delta: -usageInStoreUnit(link, item.unit, amount),
+      unitPrice: item.unitPrice,
+    });
   }
 
   const batch = writeBatch(db);

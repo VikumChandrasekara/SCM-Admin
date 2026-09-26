@@ -138,7 +138,7 @@ export function Layout() {
         {!online && (
           <p className="bg-signal px-4 py-1.5 text-center text-xs font-semibold text-ink">
             අන්තර්ජාලය නැත — පෙන්වන්නේ මෙම පරිගණකයේ සුරැකි දත්ත. ගබඩා වෙනස්කම් සම්බන්ධ වූ විට යවයි; බිල්පත් සහ
-            ලෝඩ් / ආඩි සඳහා සම්බන්ධතාවය අවශ්‍යයි.
+            ලෝඩ් / අඩි සඳහා සම්බන්ධතාවය අවශ්‍යයි.
           </p>
         )}
       </header>

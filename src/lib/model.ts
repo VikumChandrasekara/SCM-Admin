@@ -52,7 +52,7 @@ export type ServiceTask = 'engineOil' | 'dieselFilter' | 'hydraulicFilter';
 export type BlastItem =
   | 'shells'
   | 'caps'
-  | 'fuse'
+  | 'blastingWire'
   | 'ammonia'
   | 'yaramila'
   | 'blastPowder'
@@ -106,7 +106,7 @@ export const REMIND_WITHIN_HOURS = 50;
 export const BLAST_ITEMS: readonly BlastItem[] = [
   'shells',
   'caps',
-  'fuse',
+  'blastingWire',
   'ammonia',
   'yaramila',
   'blastPowder',
@@ -116,12 +116,67 @@ export const BLAST_ITEMS: readonly BlastItem[] = [
 export const BLAST: Record<BlastItem, { label: string; unit: string }> = {
   shells: { label: 'වෙඩි කරල් 1 / 1.5 / 1.25', unit: '' },
   caps: { label: 'කැප්', unit: '' },
-  fuse: { label: 'ෆියුස්', unit: 'm' },
+  // Counted off the reel in අඩි and stored that way; shown in metres too.
+  blastingWire: { label: 'වෙඩි නූල් (අඩි)', unit: 'ft' },
   ammonia: { label: 'ඇමෝනියා', unit: 'kg' },
   yaramila: { label: 'යාරමීලා', unit: 'kg' },
   blastPowder: { label: 'වෙඩි කුඩු', unit: 'kg' },
   dieselMix: { label: 'ඩීසල් මිශ්‍ර', unit: 'L' },
 };
+
+/**
+ * Things drawn in several sizes, each with a quantity: 4 of the 36 bits, 4 of
+ * the 38. Mirrors SizedItem in the operator app.
+ */
+export type SizedItem = 'bits' | 'rods';
+
+export const SIZED_ITEMS: readonly SizedItem[] = ['bits', 'rods'];
+
+export const SIZED_LABEL: Record<SizedItem, string> = { bits: 'බිට්', rods: 'කටු' };
+
+/** Quantity by size; the size is the key, written as `36` or `2.5`. */
+export type SizeQuantities = Record<string, number>;
+
+/** [sizes] as size / quantity pairs, smallest size first. */
+export function sizeLines(sizes: SizeQuantities | undefined): [number, number][] {
+  return Object.entries(sizes ?? {})
+    .map(([size, count]) => [Number(size), count] as [number, number])
+    .filter(([size, count]) => Number.isFinite(size) && count > 0)
+    .sort((a, b) => a[0] - b[0]);
+}
+
+function sizesFrom(raw: unknown): Partial<Record<SizedItem, SizeQuantities>> {
+  const sizes: Partial<Record<SizedItem, SizeQuantities>> = {};
+  if (!raw || typeof raw !== 'object') return sizes;
+  for (const item of SIZED_ITEMS) {
+    const lines = (raw as Record<string, unknown>)[item];
+    if (!lines || typeof lines !== 'object') continue;
+    const parsed: SizeQuantities = {};
+    for (const [size, count] of Object.entries(lines)) {
+      if (typeof count === 'number' && Number.isFinite(count) && count > 0) parsed[size] = count;
+    }
+    if (Object.keys(parsed).length > 0) sizes[item] = parsed;
+  }
+  return sizes;
+}
+
+export const METRES_PER_FOOT = 0.3048;
+
+/** [amount] in metres for the one item that is a length, else null. */
+export function blastMetres(item: BlastItem, amount: number): number | null {
+  return item === 'blastingWire' ? amount * METRES_PER_FOOT : null;
+}
+
+/**
+ * [amount] as a store item counted in [storeUnit] holds it. A store item for
+ * the wire may be kept in metres, and drawing it down by the අඩි figure would
+ * be out by a factor of three. [link] is a `blast:…` link; anything else, and
+ * any other unit, passes through untouched.
+ */
+export function usageInStoreUnit(link: string, storeUnit: string, amount: number): number {
+  const item = link.startsWith('blast:') ? link.slice('blast:'.length) : null;
+  return item === 'blastingWire' && storeUnit === 'm' ? amount * METRES_PER_FOOT : amount;
+}
 
 // ---- roles ------------------------------------------------------------------
 
@@ -218,12 +273,51 @@ export interface Person {
   leaveDays: number;
   /** ඇඩ්වාන්ස් ගණන */
   advanceAmount: number;
+  /**
+   * ලැබිය යුතු මුදල — what they are owed before the advance comes off. Set by
+   * hand; the crew's own app shows it less [advanceAmount].
+   */
+  receivableAmount: number;
   /** බෝනස් මුදල් එකතුව */
   bonusTotal: number;
-  /** What one ආඩිය pays a compressor crew. */
+  /** What one අඩිය pays a compressor crew member paid per foot. */
   ratePerFoot: number;
+  /** What one ලෝඩ් එක pays a compressor crew member paid per load. */
+  ratePerLoad: number;
+  /** Which of the two rates a compressor crew member's month is paid on. */
+  payBasis: PayBasis;
   /** දවසේ පඩිය — a worked day's wage. */
   dailyWage: number;
+}
+
+export type PayBasis = 'foot' | 'load';
+
+export const PAY_BASIS_LABEL: Record<PayBasis, { choice: string; per: string; unit: string }> = {
+  foot: { choice: 'අඩියකට', per: 'අඩියකට', unit: 'අඩි' },
+  load: { choice: 'ලෝඩ් එකකට', per: 'ලෝඩ් එකකට', unit: 'ලෝඩ්' },
+};
+
+/** Records written before the basis existed are paid per foot, as they were. */
+export function payBasisById(value: unknown): PayBasis {
+  return value === 'load' ? 'load' : 'foot';
+}
+
+/** A compressor crew member paid per load rather than per foot. */
+export function paidPerLoad(person: Pick<Person, 'role' | 'payBasis'>): boolean {
+  return person.role === 'compressor' && person.payBasis === 'load';
+}
+
+/** The rate that applies to [person]: the load rate or the foot rate. */
+export function rateOf(person: Pick<Person, 'role' | 'payBasis' | 'ratePerFoot' | 'ratePerLoad'>): number {
+  return paidPerLoad(person) ? person.ratePerLoad : person.ratePerFoot;
+}
+
+/**
+ * Which daily figure staff enter for [person] — loads for an excavator crew
+ * and for a compressor crew paid per load, අඩි otherwise.
+ */
+export function tallyField(person: Pick<Person, 'role' | 'payBasis'>): 'loads' | 'feet' {
+  return ROLES[person.role].tracksBonus || paidPerLoad(person) ? 'loads' : 'feet';
 }
 
 export function personFrom(id: string, data: DocumentData): Person {
@@ -235,8 +329,11 @@ export function personFrom(id: string, data: DocumentData): Person {
     role: roleById(data.role),
     leaveDays: num(data.leaveDays),
     advanceAmount: num(data.advanceAmount),
+    receivableAmount: num(data.receivableAmount),
     bonusTotal: num(data.bonusTotal),
     ratePerFoot: num(data.ratePerFoot),
+    ratePerLoad: num(data.ratePerLoad),
+    payBasis: payBasisById(data.payBasis),
     dailyWage: num(data.dailyWage),
   };
 }
@@ -324,6 +421,8 @@ export interface Filling {
 
 export interface Blasting {
   amounts: Partial<Record<BlastItem, number>>;
+  /** බිට් and කටු, by size. */
+  sizes: Partial<Record<SizedItem, SizeQuantities>>;
   lockedAt: Date | null;
 }
 
@@ -335,7 +434,7 @@ export interface Day {
   inspection: Partial<Record<InspectionItem, boolean>>;
   /** පැටවූ ලෝඩ් ගණන */
   loads: number;
-  /** ආඩි ගණන */
+  /** අඩි ගණන */
   feet: number;
   /** The OFF meter, carried back from the next morning's ON. */
   closingHours: number | null;
@@ -351,7 +450,7 @@ export function emptyDay(date: string): Day {
     loads: 0,
     feet: 0,
     closingHours: null,
-    blasting: { amounts: {}, lockedAt: null },
+    blasting: { amounts: {}, sizes: {}, lockedAt: null },
   };
 }
 
@@ -392,6 +491,7 @@ export function dayFrom(date: string, data: DocumentData | undefined): Day {
     closingHours: numOrNull(data.closingHours),
     blasting: {
       amounts: amountsFrom(rawBlasting?.amounts, BLAST_ITEMS),
+      sizes: sizesFrom(rawBlasting?.sizes),
       lockedAt: toDate(rawBlasting?.lockedAt),
     },
   };
