@@ -182,7 +182,6 @@ export function CrewInfoModal({ person, date, onClose }: { person: Person; date:
                 {pay ? rupees(pay.net) : '—'}
               </b>
             </p>
-            <p className="text-xs text-white/55">පඩිය + බෝනස් − (ඇඩ්වාන්ස් + කෑම බිල්පත්). මෙම මාසේ වාර්තා වලින් ගණනය වේ.</p>
             {permissions.setRates && (
               <Link to="/users" className="inline-block pt-1 text-xs font-bold text-amber-hi hover:underline">
                 පරිශීලකයින් පිටුවෙන් වෙනස් කරන්න →
