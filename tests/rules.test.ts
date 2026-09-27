@@ -51,7 +51,7 @@ beforeEach(async () => {
     const people: Record<string, object> = {
       admin1: { name: 'Pivithuru', role: 'admin', machineId: '' },
       sup1: { name: 'Nimal', role: 'supervisor', machineId: '' },
-      op1: { name: 'Kamal', role: 'operator', machineId: 'ex1', leaveDays: 0, advanceAmount: 0, bonusTotal: 0 },
+      op1: { name: 'Kamal', role: 'operator', machineId: 'ex1', advanceAmount: 0 },
       comp1: { name: 'Ruwan', role: 'compressor', machineId: 'cp1' },
       // Written before roles existed.
       legacy: { name: 'Old', machineId: 'ex2' },
@@ -164,16 +164,18 @@ describe('accounts', () => {
     await assertSucceeds(getDocs(collection(as('admin1'), 'operators')));
   });
 
-  it('a supervisor sets the තොරතුරු figures and the wage, and nothing else', async () => {
+  it('a supervisor sets the advance and the wage, and nothing else', async () => {
     const record = doc(as('sup1'), 'operators', 'op1');
-    await assertSucceeds(updateDoc(record, { advanceAmount: 5000, leaveDays: 2 }));
-    await assertSucceeds(updateDoc(record, { receivableAmount: 100000 }));
+    await assertSucceeds(updateDoc(record, { advanceAmount: 5000 }));
     await assertFails(updateDoc(record, { role: 'admin' }));
-    // The wage rate is theirs too — what a day, an hour or a load is paid —
-    // but the rate a compressor crew is paid per foot is not.
+    // The wage rate is theirs too — what a day, an hour, a foot or a load is
+    // paid — but leave and what is owed are never written at all: both are
+    // worked out from the month's records.
     await assertSucceeds(updateDoc(record, { dailyWage: 4000, wageBasis: 'hour' }));
+    await assertSucceeds(updateDoc(record, { wageBasis: 'foot' }));
     await assertFails(updateDoc(record, { wageBasis: 'week' }));
-    await assertFails(updateDoc(record, { ratePerFoot: 400 }));
+    await assertFails(updateDoc(record, { leaveDays: 2 }));
+    await assertFails(updateDoc(record, { receivableAmount: 100000 }));
   });
 
   it('the admin edits a record written before roles existed', async () => {

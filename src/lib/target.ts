@@ -42,3 +42,18 @@ export function daysRemaining(month: string, today: string): number {
     ? daysInMonth(month) - Number(today.slice(8, 10))
     : daysInMonth(month);
 }
+
+/** Calendar days that have passed in [month] up to [today] — the whole month once it has passed. */
+export function daysElapsed(month: string, today: string): number {
+  return daysInMonth(month) - daysRemaining(month, today);
+}
+
+/**
+ * නිවාඩු ගත් දින ගණන — every day so far the crew did not start the machine:
+ * on leave, or simply away. Worked out fresh from the month's records each
+ * time rather than kept anywhere, mirroring TargetProgress.leaveDays in the
+ * operator app.
+ */
+export function leaveDaysFor(month: string, today: string, workedDays: number): number {
+  return Math.min(Math.max(daysElapsed(month, today) - workedDays, 0), daysInMonth(month));
+}

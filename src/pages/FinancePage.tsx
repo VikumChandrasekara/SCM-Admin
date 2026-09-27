@@ -11,6 +11,7 @@ import { errorMessage } from '../lib/errors';
 import { financeFor, type Finance, type LedgerKind, type StockRow } from '../lib/finance';
 import { addMonths, money, monthKey, monthLabel, quantity, rupees } from '../lib/format';
 import { BILL, BILL_CATEGORIES, ROLES, SALE_TYPE, SALE_TYPES, nameOf } from '../lib/model';
+import { useToday } from '../lib/useToday';
 
 /**
  * මූල්‍ය — where the month's money came from and where it went, down to the
@@ -19,6 +20,7 @@ import { BILL, BILL_CATEGORIES, ROLES, SALE_TYPE, SALE_TYPES, nameOf } from '../
 export function FinancePage() {
   const { crew, store } = useLiveData();
   const now = useNow();
+  const today = useToday();
   const current = monthKey(new Date());
   const [month, setMonth] = useState(current);
   const [version, setVersion] = useState(0);
@@ -39,9 +41,10 @@ export function FinancePage() {
             crewMonths: crewMonths.data,
             store,
             now,
+            today,
           })
         : null,
-    [month, sales.data, bills.data, movements.data, crewMonths.data, store, now],
+    [month, sales.data, bills.data, movements.data, crewMonths.data, store, now, today],
   );
 
   const failure = sales.error ?? bills.error ?? movements.error;
@@ -198,8 +201,8 @@ function FinanceReport({ finance }: { finance: Finance }) {
                   <tr className="border-b border-hairline">
                     <th className={th}>නම</th>
                     <th className={cx(th, 'text-right')}>වැඩ කළ දින</th>
-                    <th className={cx(th, 'text-right')}>දවසේ පඩිය</th>
-                    <th className={cx(th, 'text-right')}>බෝනස් / අඩි / ලෝඩ්</th>
+                    <th className={cx(th, 'text-right')}>වැටුප</th>
+                    <th className={cx(th, 'text-right')}>බෝනස්</th>
                     <th className={cx(th, 'text-right')}>මුළු වැටුප</th>
                     <th className={cx(th, 'text-right')}>ඇඩ්වාන්ස්</th>
                     <th className={cx(th, 'text-right')}>කෑම</th>
@@ -217,7 +220,7 @@ function FinanceReport({ finance }: { finance: Finance }) {
                       </td>
                       <td className={cx(td, 'text-right tabular-nums')}>{pay.workedDays}</td>
                       <td className={cx(td, 'text-right tabular-nums')}>{money(pay.wagePay)}</td>
-                      <td className={cx(td, 'text-right tabular-nums')}>{money(pay.bonusPay + pay.ratePay)}</td>
+                      <td className={cx(td, 'text-right tabular-nums')}>{pay.bonusPay > 0 ? money(pay.bonusPay) : '—'}</td>
                       <td className={cx(td, 'text-right font-extrabold tabular-nums')}>{money(pay.gross)}</td>
                       <td className={cx(td, 'text-right text-white/75 tabular-nums')}>{money(advances)}</td>
                       <td className={cx(td, 'text-right text-white/75 tabular-nums')}>{money(food)}</td>

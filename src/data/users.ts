@@ -9,7 +9,7 @@ import { deleteDoc, doc, serverTimestamp, writeBatch, type WriteBatch } from 'fi
 
 import { db } from '../db';
 import { emailFor, provisioningAuth } from '../firebase';
-import { ROLES, SERVICE, type Machine, type PayBasis, type Person, type RoleId, type WageBasis } from '../lib/model';
+import { ROLES, SERVICE, type Machine, type Person, type RoleId, type WageBasis } from '../lib/model';
 import { commit } from './commit';
 
 /**
@@ -31,12 +31,8 @@ export interface UserFields {
   role: RoleId;
   machineId: string;
   dailyWage: number;
-  /** What the daily wage is paid for: a day, an hour or a load. */
+  /** What the daily wage is paid for: a day, an hour, a foot or a load. */
   wageBasis: WageBasis;
-  /** Which rate a compressor crew member is paid on. */
-  payBasis: PayBasis;
-  ratePerFoot: number;
-  ratePerLoad: number;
 }
 
 /** A crew member's machine, set up the first time someone is put on it. */
@@ -64,11 +60,6 @@ function recordFields(fields: UserFields) {
     machineId: crew ? fields.machineId.trim() : '',
     dailyWage: crew ? fields.dailyWage : 0,
     wageBasis: crew ? fields.wageBasis : 'day',
-    // Rates and the basis only mean something to a compressor crew; the
-    // excavator crew works to the bonus ladder.
-    payBasis: fields.role === 'compressor' ? fields.payBasis : 'foot',
-    ratePerFoot: fields.role === 'compressor' ? fields.ratePerFoot : 0,
-    ratePerLoad: fields.role === 'compressor' ? fields.ratePerLoad : 0,
   };
 }
 
@@ -88,10 +79,7 @@ export async function createAccount(
     batch.set(doc(db, 'operators', credential.user.uid), {
       ...recordFields(fields),
       username: fields.username.trim().toLowerCase(),
-      leaveDays: 0,
       advanceAmount: 0,
-      receivableAmount: 0,
-      bonusTotal: 0,
       createdAt: serverTimestamp(),
     });
     addMachineIfNew(batch, fields, machines, fields.meterHours);
@@ -109,10 +97,7 @@ export async function createAccount(
 export async function updateAccount(
   person: Person,
   fields: UserFields & {
-    leaveDays: number;
     advanceAmount: number;
-    receivableAmount: number;
-    bonusTotal: number;
     /** Only read when the person is moved onto a machine that is new. */
     meterHours: number;
   },
@@ -121,10 +106,7 @@ export async function updateAccount(
   const batch = writeBatch(db);
   batch.update(doc(db, 'operators', person.id), {
     ...recordFields(fields),
-    leaveDays: fields.leaveDays,
     advanceAmount: fields.advanceAmount,
-    receivableAmount: fields.receivableAmount,
-    bonusTotal: fields.bonusTotal,
   });
   addMachineIfNew(batch, fields, machines, fields.meterHours);
   await commit(batch);

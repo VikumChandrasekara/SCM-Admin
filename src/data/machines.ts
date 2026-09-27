@@ -112,14 +112,15 @@ export async function resetService(
   await commit(batch);
 }
 
-/** The තොරතුරු figures and the wage rate — the only fields a supervisor may write. */
+/**
+ * The advance and the wage rate — the only fields a supervisor may write.
+ * Leave and ලැබිය යුතු මුදල are never written at all; both are worked out
+ * from the month's records (see payFor) wherever they are shown.
+ */
 export async function saveFigures(
   personId: string,
   figures: {
-    leaveDays: number;
     advanceAmount: number;
-    bonusTotal: number;
-    receivableAmount: number;
     dailyWage: number;
     wageBasis: WageBasis;
   },

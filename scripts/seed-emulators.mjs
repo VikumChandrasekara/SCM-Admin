@@ -74,7 +74,7 @@ const people = [
   { username: 'nimal', name: 'නිමල්', role: 'supervisor' },
   { username: 'kamal', name: 'කමල්', role: 'operator', machineId: 'excavator-01', dailyWage: 3500 },
   { username: 'sunil', name: 'සුනිල්', role: 'operator', machineId: 'excavator-02', dailyWage: 3500 },
-  { username: 'ruwan', name: 'රුවන්', role: 'compressor', machineId: 'compressor-01', dailyWage: 3000, ratePerFoot: 250 },
+  { username: 'ruwan', name: 'රුවන්', role: 'compressor', machineId: 'compressor-01', dailyWage: 250, wageBasis: 'foot' },
 ];
 
 const uids = {};
@@ -94,13 +94,9 @@ for (const person of people) {
     username: person.username,
     role: person.role,
     machineId: person.machineId ?? '',
-    leaveDays: person.username === 'sunil' ? 1 : 0,
     advanceAmount: advances[person.username] ?? 0,
-    bonusTotal: 0,
-    ratePerFoot: person.ratePerFoot ?? 0,
-    ratePerLoad: person.ratePerLoad ?? 0,
-    payBasis: person.payBasis ?? 'foot',
     dailyWage: person.dailyWage ?? 0,
+    wageBasis: person.wageBasis ?? 'day',
     createdAt: Timestamp.fromDate(daysAgo(40)),
   });
 }

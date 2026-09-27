@@ -1,30 +1,33 @@
+import { collection, query, where } from 'firebase/firestore';
 import { RotateCcw, Save, Wrench } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router';
 
 import { useSession } from '../auth/AuthContext';
 import { permissionsFor } from '../auth/permissions';
-import { useLiveDoc } from '../data/live';
+import { useMonthBills } from '../data/bills';
+import { useLiveDoc, useLiveQuery } from '../data/live';
 import { useLiveData } from '../data/LiveData';
-import { dayRef, resetService, saveFigures, saveTally } from '../data/machines';
+import { dayRef, monthRef, resetService, saveFigures, saveTally } from '../data/machines';
+import { db } from '../db';
 import { errorMessage } from '../lib/errors';
-import { hours, quantity, rupees, signedHours } from '../lib/format';
+import { hours, monthBounds, quantity, rupees, signedHours } from '../lib/format';
 import {
-  PAY_BASIS_LABEL,
   ROLES,
   SERVICE,
   WAGE_BASES,
   WAGE_BASIS_LABEL,
   dayFrom,
+  monthFrom,
   nameOf,
-  paidPerLoad,
-  rateOf,
   serviceStatus,
   tallyField,
   type Person,
   type ServiceTask,
   type WageBasis,
 } from '../lib/model';
+import { payFor } from '../lib/pay';
+import { useToday } from '../lib/useToday';
 import { useToast } from './Toasts';
 import { Button, Field, Input, Modal, SectionLabel, Select, ValueChip, cx } from './ui';
 
@@ -34,6 +37,7 @@ export function CrewInfoModal({ person, date, onClose }: { person: Person; date:
   const { machines, peopleById, store } = useLiveData();
   const toast = useToast();
   const permissions = permissionsFor(profile);
+  const today = useToday();
 
   // The list handed us a snapshot; the live record keeps up with edits.
   const live = peopleById.get(person.id) ?? person;
@@ -43,10 +47,30 @@ export function CrewInfoModal({ person, date, onClose }: { person: Person; date:
     dayFrom(date, snapshot.data()),
   );
 
-  const [leave, setLeave] = useState(String(live.leaveDays));
+  // ලැබිය යුතු මුදල and නිවාඩු ගත් දින ගණන are worked out here, the same way
+  // the operator app works them out — never typed in, never stored.
+  const month = today.slice(0, 7);
+  const bounds = monthBounds(month);
+  const monthTally = useLiveDoc(live.machineId ? monthRef(live.machineId, month) : null, (snapshot) =>
+    monthFrom(month, snapshot.data()),
+  );
+  const monthDays = useLiveQuery(
+    live.machineId ? `crew-info-days:${live.machineId}:${month}` : null,
+    () =>
+      query(
+        collection(db, 'machines', live.machineId, 'days'),
+        where('date', '>=', bounds.from),
+        where('date', '<=', bounds.to),
+      ),
+    (snapshot) => dayFrom(snapshot.id, snapshot.data()),
+  );
+  const bills = useMonthBills(month);
+  const pay =
+    monthDays.data && bills.data
+      ? payFor(live, monthDays.data, monthTally.data ?? monthFrom(month, undefined), bills.data, day.data ?? null, today)
+      : null;
+
   const [advance, setAdvance] = useState(String(live.advanceAmount));
-  const [receivable, setReceivable] = useState(String(live.receivableAmount));
-  const [bonus, setBonus] = useState(String(live.bonusTotal));
   const [wage, setWage] = useState(live.dailyWage ? String(live.dailyWage) : '');
   const [wageBasis, setWageBasis] = useState<WageBasis>(live.wageBasis);
   const [tally, setTally] = useState<string | null>(null);
@@ -78,18 +102,13 @@ export function CrewInfoModal({ person, date, onClose }: { person: Person; date:
   }
 
   function saveInfo() {
-    const figures = {
-      leaveDays: Number(leave),
-      advanceAmount: Number(advance),
-      receivableAmount: Number(receivable),
-      bonusTotal: Number(bonus),
-    };
+    const advanceAmount = Number(advance);
     const rate = wage.trim() === '' ? 0 : Number(wage);
-    if ([...Object.values(figures), rate].some((value) => !Number.isFinite(value) || value < 0)) {
+    if ([advanceAmount, rate].some((value) => !Number.isFinite(value) || value < 0)) {
       toast.error('අගයන් ඍණ නොවන සංඛ්‍යා විය යුතුය.');
       return;
     }
-    void run('info', () => saveFigures(live.id, { ...figures, leaveDays: Math.round(figures.leaveDays), dailyWage: rate, wageBasis }), 'තොරතුරු සුරැකුණා.');
+    void run('info', () => saveFigures(live.id, { advanceAmount, dailyWage: rate, wageBasis }), 'තොරතුරු සුරැකුණා.');
   }
 
   function saveDayTally() {
@@ -125,23 +144,10 @@ export function CrewInfoModal({ person, date, onClose }: { person: Person; date:
         <div>
           <SectionLabel>තොරතුරු</SectionLabel>
           <div className="space-y-3 rounded-card bg-well p-4">
-            <Field label="නිවාඩු ගත් දින ගණන">
-              <Input type="number" min="0" step="1" value={leave} onChange={(event) => setLeave(event.target.value)} />
-            </Field>
             <Field label="ඇඩ්වාන්ස් ගණන (රු.)" hint="ඇඩ්වාන්ස් බිල්පත් එකතු කරන විට මෙය ස්වයංක්‍රීයව වැඩි වේ.">
               <Input type="number" min="0" step="any" value={advance} onChange={(event) => setAdvance(event.target.value)} />
             </Field>
-            <Field
-              label="ලැබිය යුතු මුදල (රු.)"
-              hint={
-                Number(receivable) > 0
-                  ? `ඇඩ්වාන්ස් අඩු කළ පසු කණ්ඩායමට පෙනෙන්නේ: ${rupees(Number(receivable) - Number(advance))}`
-                  : 'අගයක් දමන තුරු කණ්ඩායමට මෙය නොපෙනේ.'
-              }
-            >
-              <Input type="number" min="0" step="any" value={receivable} onChange={(event) => setReceivable(event.target.value)} />
-            </Field>
-            <Field label="පඩිය ගණනය කරන්නේ" hint="වැඩ කළ දින, යන්ත්‍රය ධාවනය වූ පැය, හෝ ලෝඩ් ගණනින්.">
+            <Field label="පඩිය ගණනය කරන්නේ" hint="වැඩ කළ දින, යන්ත්‍රය ධාවනය වූ පැය, අඩි, හෝ ලෝඩ් ගණනින්.">
               <Select value={wageBasis} onChange={(event) => setWageBasis(event.target.value as WageBasis)}>
                 {WAGE_BASES.map((id) => (
                   <option key={id} value={id}>
@@ -150,37 +156,33 @@ export function CrewInfoModal({ person, date, onClose }: { person: Person; date:
                 ))}
               </Select>
             </Field>
-            <Field label={`පඩිය (රු.) — ${WAGE_BASIS_LABEL[wageBasis].per}`} hint="යෙදුමේ දවසේ පඩිය මෙයින් ගණනය වේ.">
+            <Field label={`පඩිය (රු.) — ${WAGE_BASIS_LABEL[wageBasis].per}`} hint="මාසයේ මුදල් ගණනයටත්, යෙදුමේ දවසේ පඩිය පෙන්වීමටත් යොදයි.">
               <Input type="number" min="0" step="any" value={wage} onChange={(event) => setWage(event.target.value)} />
             </Field>
-            {role.tracksBonus && (
-              <Field label="බෝනස් මුදල් එකතුව (රු.)">
-                <Input type="number" min="0" step="any" value={bonus} onChange={(event) => setBonus(event.target.value)} />
-              </Field>
-            )}
             <Button icon={<Save className="size-4" />} busy={busy === 'info'} onClick={saveInfo} className="w-full">
               තොරතුරු සුරකින්න
             </Button>
           </div>
 
           <SectionLabel>
-            <span className="mt-5 block">පඩි ගාස්තු</span>
+            <span className="mt-5 block">මේ මාසය — ස්වයංක්‍රීයව ගණනය කළ</span>
           </SectionLabel>
           <div className="space-y-2 rounded-card bg-well p-4 text-sm">
             <p className="flex justify-between">
-              <span className="text-white/70">දවසේ පඩිය</span>
-              <b>
-                {live.dailyWage > 0 ? `${rupees(live.dailyWage)} (${WAGE_BASIS_LABEL[live.wageBasis].per})` : '—'}
+              <span className="text-white/70">නිවාඩු ගත් දින ගණන</span>
+              <b>{pay ? pay.leaveDays : '—'}</b>
+            </p>
+            <p className="flex justify-between">
+              <span className="text-white/70">වැඩ කළ දින</span>
+              <b>{pay ? pay.workedDays : '—'}</b>
+            </p>
+            <p className="flex justify-between border-t border-hairline pt-2">
+              <span className="font-semibold text-white/85">ලැබිය යුතු මුදල</span>
+              <b className={cx('font-extrabold', pay && pay.net < 0 && 'text-red-300')}>
+                {pay ? rupees(pay.net) : '—'}
               </b>
             </p>
-            {!role.tracksBonus && (
-              <p className="flex justify-between">
-                <span className="text-white/70">
-                  {paidPerLoad(live) ? 'ලෝඩ් එකක ගාස්තුව' : 'අඩියක ගාස්තුව'}
-                </span>
-                <b>{rateOf(live) > 0 ? `${rupees(rateOf(live))} (${PAY_BASIS_LABEL[live.payBasis].per})` : '—'}</b>
-              </p>
-            )}
+            <p className="text-xs text-white/55">පඩිය + බෝනස් − (ඇඩ්වාන්ස් + කෑම බිල්පත්). මෙම මාසේ වාර්තා වලින් ගණනය වේ.</p>
             {permissions.setRates && (
               <Link to="/users" className="inline-block pt-1 text-xs font-bold text-amber-hi hover:underline">
                 පරිශීලකයින් පිටුවෙන් වෙනස් කරන්න →

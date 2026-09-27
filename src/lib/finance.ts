@@ -134,6 +134,7 @@ export function financeFor({
   crewMonths,
   store,
   now,
+  today,
 }: {
   month: string;
   sales: readonly Sale[];
@@ -142,6 +143,8 @@ export function financeFor({
   crewMonths: readonly CrewMonth[];
   store: readonly StoreItem[];
   now: number;
+  /** `yyyy-MM-dd` — only feeds payFor's leaveDays, which this report never shows. */
+  today: string;
 }): Finance {
   const ledger: LedgerEntry[] = [];
 
@@ -175,7 +178,7 @@ export function financeFor({
     const theirs = bills.filter((bill) => bill.operatorId === person.id);
     return {
       person,
-      pay: payFor(person, days, tally, bills, null),
+      pay: payFor(person, days, tally, bills, null, today),
       advances: sum(theirs.filter((bill) => bill.category === 'advance').map((bill) => bill.amount)),
       food: sum(theirs.filter((bill) => bill.category === 'food').map((bill) => bill.amount)),
     };

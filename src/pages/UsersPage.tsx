@@ -27,14 +27,11 @@ import { USERNAME_DOMAIN } from '../firebase';
 import { errorMessage } from '../lib/errors';
 import { money } from '../lib/format';
 import {
-  PAY_BASIS_LABEL,
   ROLES,
   ROLE_IDS,
   WAGE_BASES,
   WAGE_BASIS_LABEL,
   nameOf,
-  rateOf,
-  type PayBasis,
   type Person,
   type RoleId,
   type WageBasis,
@@ -82,8 +79,7 @@ export function UsersPage() {
                   <th className={th}>පරිශීලක නාමය</th>
                   <th className={th}>භූමිකාව</th>
                   <th className={th}>යන්ත්‍රය</th>
-                  <th className={cx(th, 'text-right')}>දවසේ පඩිය</th>
-                  <th className={cx(th, 'text-right')}>අඩියකට / ලෝඩ් එකකට</th>
+                  <th className={cx(th, 'text-right')}>පඩිය</th>
                   <th className={cx(th, 'text-right')}>ක්‍රියා</th>
                 </tr>
               </thead>
@@ -105,12 +101,11 @@ export function UsersPage() {
                         <Badge tone={roleTone[person.role]}>{ROLES[person.role].label}</Badge>
                       </td>
                       <td className={cx(td, 'text-white/80')}>{person.machineId || '—'}</td>
-                      <td className={cx(td, 'text-right tabular-nums')}>{person.dailyWage > 0 ? money(person.dailyWage) : '—'}</td>
                       <td className={cx(td, 'text-right tabular-nums')}>
-                        {person.role === 'compressor' && rateOf(person) > 0 ? (
+                        {person.dailyWage > 0 ? (
                           <>
-                            {money(rateOf(person))}
-                            <span className="block text-xs text-white/55">{PAY_BASIS_LABEL[person.payBasis].per}</span>
+                            {money(person.dailyWage)}
+                            <span className="block text-xs text-white/55">{WAGE_BASIS_LABEL[person.wageBasis].per}</span>
                           </>
                         ) : (
                           '—'
@@ -177,13 +172,7 @@ function UserModal({ person, onClose }: { person: Person | null; onClose: () => 
   const [meter, setMeter] = useState('');
   const [wage, setWage] = useState(person?.dailyWage ? String(person.dailyWage) : '');
   const [wageBasis, setWageBasis] = useState<WageBasis>(person?.wageBasis ?? 'day');
-  const [payBasis, setPayBasis] = useState<PayBasis>(person?.payBasis ?? 'foot');
-  const [rate, setRate] = useState(person?.ratePerFoot ? String(person.ratePerFoot) : '');
-  const [loadRate, setLoadRate] = useState(person?.ratePerLoad ? String(person.ratePerLoad) : '');
-  const [leave, setLeave] = useState(String(person?.leaveDays ?? 0));
   const [advance, setAdvance] = useState(String(person?.advanceAmount ?? 0));
-  const [receivable, setReceivable] = useState(String(person?.receivableAmount ?? 0));
-  const [bonus, setBonus] = useState(String(person?.bonusTotal ?? 0));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -194,7 +183,7 @@ function UserModal({ person, onClose }: { person: Person | null; onClose: () => 
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    const figures = [number(wage), number(rate), number(loadRate), number(leave), number(advance), number(receivable), number(bonus), number(meter)];
+    const figures = [number(wage), number(advance), number(meter)];
     if (!name.trim()) return setError('නම ඇතුළත් කරන්න.');
     if (!person && !USERNAME_PATTERN.test(username.trim().toLowerCase())) {
       return setError('පරිශීලක නාමය අකුරු 3–32ක් විය යුතුය: a–z, 0–9, . _ - පමණි.');
@@ -212,9 +201,6 @@ function UserModal({ person, onClose }: { person: Person | null; onClose: () => 
       machineId: machine,
       dailyWage: number(wage),
       wageBasis,
-      payBasis,
-      ratePerFoot: number(rate),
-      ratePerLoad: number(loadRate),
     };
     try {
       if (person) {
@@ -222,10 +208,7 @@ function UserModal({ person, onClose }: { person: Person | null; onClose: () => 
           person,
           {
             ...fields,
-            leaveDays: Math.round(number(leave)),
             advanceAmount: number(advance),
-            receivableAmount: number(receivable),
-            bonusTotal: number(bonus),
             meterHours: number(meter),
           },
           machines,
@@ -338,45 +321,11 @@ function UserModal({ person, onClose }: { person: Person | null; onClose: () => 
           </div>
         )}
 
-        {role === 'compressor' && (
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="ගෙවන ආකාරය" hint="මාසයේ මුදල ගණනය කරන්නේ අඩි ගණනින්ද, ලෝඩ් ගණනින්ද යන්න.">
-              <Select value={payBasis} onChange={(event) => setPayBasis(event.target.value as PayBasis)}>
-                {(Object.keys(PAY_BASIS_LABEL) as PayBasis[]).map((id) => (
-                  <option key={id} value={id}>
-                    {PAY_BASIS_LABEL[id].choice}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            {payBasis === 'load' ? (
-              <Field label="ලෝඩ් එකක ගාස්තුව (රු.)" hint="යෙදුමේ ඔහුගේ ලැබිය යුතු මුදල මෙයින් ගණනය වේ.">
-                <Input type="number" min="0" step="any" value={loadRate} onChange={(event) => setLoadRate(event.target.value)} />
-              </Field>
-            ) : (
-              <Field label="අඩියක ගාස්තුව (රු.)" hint="යෙදුමේ ඔහුගේ ලැබිය යුතු මුදල මෙයින් ගණනය වේ.">
-                <Input type="number" min="0" step="any" value={rate} onChange={(event) => setRate(event.target.value)} />
-              </Field>
-            )}
-          </div>
-        )}
-
         {person && crew && (
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="නිවාඩු දින">
-              <Input type="number" min="0" step="1" value={leave} onChange={(event) => setLeave(event.target.value)} />
-            </Field>
-            <Field label="ඇඩ්වාන්ස් (රු.)">
+            <Field label="ඇඩ්වාන්ස් (රු.)" hint="ඇඩ්වාන්ස් බිල්පත් එකතු කරන විට මෙය ස්වයංක්‍රීයව වැඩි වේ.">
               <Input type="number" min="0" step="any" value={advance} onChange={(event) => setAdvance(event.target.value)} />
             </Field>
-            <Field label="ලැබිය යුතු මුදල (රු.)" hint="ඇඩ්වාන්ස් අඩු කළ පසු ඉතිරිය කණ්ඩායමට පෙනේ.">
-              <Input type="number" min="0" step="any" value={receivable} onChange={(event) => setReceivable(event.target.value)} />
-            </Field>
-            {role === 'operator' && (
-              <Field label="බෝනස් එකතුව (රු.)">
-                <Input type="number" min="0" step="any" value={bonus} onChange={(event) => setBonus(event.target.value)} />
-              </Field>
-            )}
           </div>
         )}
 

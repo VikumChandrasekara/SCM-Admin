@@ -1,38 +1,27 @@
-import {
-  BILL,
-  ROLES,
-  dayOnHours,
-  paidPerLoad,
-  rateOf,
-  workedHours,
-  type Bill,
-  type Day,
-  type MonthTally,
-  type Person,
-} from './model';
-import { bonusEarned } from './target';
+import { BILL, ROLES, dayOnHours, workedHours, type Bill, type Day, type MonthTally, type Person } from './model';
+import { bonusEarned, leaveDaysFor } from './target';
 
 /**
- * A crew member's month in money — the four purple boxes on the dashboard.
+ * A crew member's month in money — the purple boxes on the dashboard.
  *
  * A worked day is one the machine was started on (an ON reading in පිරවීම 1),
  * which is the same test the operator app uses to call a day recorded.
+ * ලැබිය යුතු මුදල (`net`) and නිවාඩු ගත් දින ගණන (`leaveDays`) are worked out
+ * here rather than stored anywhere, exactly as the operator app does — see
+ * OperatorProfile.receivableFor and TargetProgress.leaveDays there.
  */
 export interface PayFigures {
   workedDays: number;
+  /** නිවාඩු ගත් දින ගණන — calendar days elapsed less days worked. */
+  leaveDays: number;
   dailyWage: number;
-  /** What the wage counts this month: worked days, machine hours or loads, per the person's basis. */
+  /** What the wage counts this month: worked days, machine hours, feet or loads, per the person's basis. */
   wageUnits: number;
   /** [wageUnits] × the wage rate. */
   wagePay: number;
   /** The excavator crew's bonus ladder for the month's loads. */
   bonusPay: number;
-  /**
-   * The compressor crew's month × their rate: අඩි × the foot rate, or ලෝඩ් ×
-   * the load rate, whichever the admin set them up on.
-   */
-  ratePay: number;
-  /** මුදල් ප්‍රමාණය — everything earned this month. */
+  /** මුදල් ප්‍රමාණය — everything earned this month: [wagePay] + [bonusPay]. */
   gross: number;
   /** ණය මුදල් ප්‍රමාණය — advances and food charged to them this month. */
   deductions: number;
@@ -42,23 +31,36 @@ export interface PayFigures {
   dayEarnings: number;
 }
 
+/** [wageBasis]'s count for the month: worked days, machine hours, feet or loads. */
+function wageUnitsOf(basis: Person['wageBasis'], month: MonthTally, workedDays: number): number {
+  switch (basis) {
+    case 'hour':
+      return month.hours;
+    case 'foot':
+      return month.feet;
+    case 'load':
+      return month.loads;
+    case 'day':
+      return workedDays;
+  }
+}
+
 export function payFor(
   person: Person,
   monthDays: readonly Day[],
   month: MonthTally,
   bills: readonly Bill[],
   day: Day | null,
+  today: string,
 ): PayFigures {
   const role = ROLES[person.role];
 
   const workedDays = monthDays.filter((entry) => dayOnHours(entry) != null).length;
-  const wageUnits =
-    person.wageBasis === 'hour' ? month.hours : person.wageBasis === 'load' ? month.loads : workedDays;
+  const leaveDays = leaveDaysFor(month.month, today, workedDays);
+  const wageUnits = wageUnitsOf(person.wageBasis, month, workedDays);
   const wagePay = wageUnits * person.dailyWage;
   const bonusPay = role.tracksBonus ? bonusEarned(month.loads) : 0;
-  const rate = rateOf(person);
-  const ratePay = role.tracksBonus ? 0 : (paidPerLoad(person) ? month.loads : month.feet) * rate;
-  const gross = wagePay + bonusPay + ratePay;
+  const gross = wagePay + bonusPay;
 
   const deductions = bills
     .filter(
@@ -69,28 +71,27 @@ export function payFor(
     )
     .reduce((sum, bill) => sum + bill.amount, 0);
 
-  const worked = day != null && dayOnHours(day) != null;
   const dayWageUnits =
     person.wageBasis === 'hour'
       ? day
         ? (workedHours(day) ?? 0)
         : 0
-      : person.wageBasis === 'load'
-        ? (day?.loads ?? 0)
-        : worked
-          ? 1
-          : 0;
-  const dayEarnings =
-    dayWageUnits * person.dailyWage +
-    (role.tracksBonus ? 0 : (paidPerLoad(person) ? (day?.loads ?? 0) : (day?.feet ?? 0)) * rate);
+      : person.wageBasis === 'foot'
+        ? (day?.feet ?? 0)
+        : person.wageBasis === 'load'
+          ? (day?.loads ?? 0)
+          : day != null && dayOnHours(day) != null
+            ? 1
+            : 0;
+  const dayEarnings = dayWageUnits * person.dailyWage;
 
   return {
     workedDays,
+    leaveDays,
     dailyWage: person.dailyWage,
     wageUnits,
     wagePay,
     bonusPay,
-    ratePay,
     gross,
     deductions,
     net: gross - deductions,

@@ -18,7 +18,6 @@ import { db } from '../db';
 import { serviceAlertsFor, stockAlerts } from '../lib/alerts';
 import { money, monthBounds, monthLabel, quantity, rupees } from '../lib/format';
 import {
-  PAY_BASIS_LABEL,
   ROLES,
   STOCK_LABEL,
   WAGE_BASIS_LABEL,
@@ -26,7 +25,6 @@ import {
   emptyDay,
   monthFrom,
   nameOf,
-  paidPerLoad,
   serviceMessage,
   type FillItem,
   type Person,
@@ -88,7 +86,14 @@ export function DashboardPage() {
 
   const monthTally = tally.data ?? monthFrom(month, undefined);
   const pay = selected
-    ? payFor(selected, monthDays.data ?? [], monthTally, bills.data ?? [], selected.machineId ? dayOf(selected) : null)
+    ? payFor(
+        selected,
+        monthDays.data ?? [],
+        monthTally,
+        bills.data ?? [],
+        selected.machineId ? dayOf(selected) : null,
+        today,
+      )
     : null;
   const infoPerson = infoId ? crew.find((person) => person.id === infoId) ?? null : null;
   const stock = stockAlerts(store);
@@ -192,7 +197,13 @@ export function DashboardPage() {
                 />
               </div>
 
-              <TargetPanel person={selected} month={monthTally} today={today} />
+              <TargetPanel
+                person={selected}
+                month={monthTally}
+                today={today}
+                wageUnits={pay.wageUnits}
+                wagePay={pay.wagePay}
+              />
 
               <div className="grid gap-4 sm:grid-cols-2 lg:flex lg:flex-col">
                 <MoneyTile
@@ -269,7 +280,6 @@ function countOrHours(value: number): string {
 function grossCaption(person: Person, pay: NonNullable<ReturnType<typeof payFor>>): string {
   const parts = [`${WAGE_BASIS_LABEL[person.wageBasis].unit} ${countOrHours(pay.wageUnits)} × ${money(person.dailyWage)}`];
   if (pay.bonusPay > 0) parts.push(`බෝනස් ${money(pay.bonusPay)}`);
-  if (pay.ratePay > 0) parts.push(`${PAY_BASIS_LABEL[paidPerLoad(person) ? 'load' : 'foot'].unit} ${money(pay.ratePay)}`);
   return parts.join(' + ');
 }
 

@@ -269,74 +269,49 @@ export interface Person {
   username: string;
   machineId: string;
   role: RoleId;
-  /** නිවාඩු ගත් දින ගණන */
-  leaveDays: number;
   /** ඇඩ්වාන්ස් ගණන */
   advanceAmount: number;
   /**
-   * ලැබිය යුතු මුදල — what they are owed before the advance comes off. Set by
-   * hand; the crew's own app shows it less [advanceAmount].
-   */
-  receivableAmount: number;
-  /** බෝනස් මුදල් එකතුව */
-  bonusTotal: number;
-  /** What one අඩිය pays a compressor crew member paid per foot. */
-  ratePerFoot: number;
-  /** What one ලෝඩ් එක pays a compressor crew member paid per load. */
-  ratePerLoad: number;
-  /** Which of the two rates a compressor crew member's month is paid on. */
-  payBasis: PayBasis;
-  /**
    * දවසේ පඩිය — the wage rate. Named for what it was first (a day's wage);
-   * [wageBasis] says what one unit of it is now.
+   * [wageBasis] says what one unit of it is now: a day, an hour, a foot
+   * drilled or a load.
    */
   dailyWage: number;
-  /** What [dailyWage] is paid for: a worked day, an hour the machine ran, or a load. */
+  /** What [dailyWage] is paid for. */
   wageBasis: WageBasis;
 }
 
-export type WageBasis = 'day' | 'hour' | 'load';
+/**
+ * One rate, one basis, for every role — an excavator operator usually per
+ * day, a compressor driller per foot drilled or per load, and either can be
+ * put on an hourly rate instead. Mirrors WageBasis in the operator app.
+ */
+export type WageBasis = 'day' | 'hour' | 'foot' | 'load';
 
-export const WAGE_BASES: readonly WageBasis[] = ['day', 'hour', 'load'];
+export const WAGE_BASES: readonly WageBasis[] = ['day', 'hour', 'foot', 'load'];
 
 export const WAGE_BASIS_LABEL: Record<WageBasis, { per: string; unit: string }> = {
   day: { per: 'දවසකට', unit: 'දින' },
   hour: { per: 'පැයකට', unit: 'පැය' },
+  foot: { per: 'අඩියකට', unit: 'අඩි' },
   load: { per: 'ලෝඩ් එකකට', unit: 'ලෝඩ්' },
 };
 
 /** Records written before the basis existed are paid per day, as they were. */
 export function wageBasisById(value: unknown): WageBasis {
-  return value === 'hour' || value === 'load' ? value : 'day';
+  return value === 'hour' || value === 'foot' || value === 'load' ? value : 'day';
 }
 
-export type PayBasis = 'foot' | 'load';
-
-export const PAY_BASIS_LABEL: Record<PayBasis, { choice: string; per: string; unit: string }> = {
-  foot: { choice: 'අඩියකට', per: 'අඩියකට', unit: 'අඩි' },
-  load: { choice: 'ලෝඩ් එකකට', per: 'ලෝඩ් එකකට', unit: 'ලෝඩ්' },
-};
-
-/** Records written before the basis existed are paid per foot, as they were. */
-export function payBasisById(value: unknown): PayBasis {
-  return value === 'load' ? 'load' : 'foot';
-}
-
-/** A compressor crew member paid per load rather than per foot. */
-export function paidPerLoad(person: Pick<Person, 'role' | 'payBasis'>): boolean {
-  return person.role === 'compressor' && person.payBasis === 'load';
-}
-
-/** The rate that applies to [person]: the load rate or the foot rate. */
-export function rateOf(person: Pick<Person, 'role' | 'payBasis' | 'ratePerFoot' | 'ratePerLoad'>): number {
-  return paidPerLoad(person) ? person.ratePerLoad : person.ratePerFoot;
+/** A compressor crew member paid per load rather than per foot drilled. */
+export function paidPerLoad(person: Pick<Person, 'role' | 'wageBasis'>): boolean {
+  return person.role === 'compressor' && person.wageBasis === 'load';
 }
 
 /**
  * Which daily figure staff enter for [person] — loads for an excavator crew
  * and for a compressor crew paid per load, අඩි otherwise.
  */
-export function tallyField(person: Pick<Person, 'role' | 'payBasis'>): 'loads' | 'feet' {
+export function tallyField(person: Pick<Person, 'role' | 'wageBasis'>): 'loads' | 'feet' {
   return ROLES[person.role].tracksBonus || paidPerLoad(person) ? 'loads' : 'feet';
 }
 
@@ -347,13 +322,7 @@ export function personFrom(id: string, data: DocumentData): Person {
     username: str(data.username),
     machineId: str(data.machineId),
     role: roleById(data.role),
-    leaveDays: num(data.leaveDays),
     advanceAmount: num(data.advanceAmount),
-    receivableAmount: num(data.receivableAmount),
-    bonusTotal: num(data.bonusTotal),
-    ratePerFoot: num(data.ratePerFoot),
-    ratePerLoad: num(data.ratePerLoad),
-    payBasis: payBasisById(data.payBasis),
     dailyWage: num(data.dailyWage),
     wageBasis: wageBasisById(data.wageBasis),
   };
