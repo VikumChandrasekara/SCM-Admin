@@ -326,10 +326,11 @@ for (const [day, category, amount, who, note] of bills) {
 // ---- sales -------------------------------------------------------------------
 
 const cubePrice = 8500;
-const tractorPrice = 4500;
+// A lorry's load is always one of these — the yard's own fleet, in cubes —
+// and is priced the same way as a loose cube, by cubePrice.
+const lorrySizes = [1, 2, 2.5, 3, 4, 5];
 await db.doc('settings/sales').set({
   cubePrice,
-  tractorPrice,
   updatedAt: Timestamp.fromDate(daysAgo(30)),
   updatedBy: uids.pivithuru,
 });
@@ -350,8 +351,8 @@ let saleCount = 0;
 const saleCounts = {};
 async function addSale({ createdAt, status, verifiedAt = null, verifier = null }) {
   const type = next() > 0.4 ? 'cube' : 'tractor';
-  const quantity = type === 'cube' ? between(1, 5) : between(1, 3);
-  const unitPrice = type === 'cube' ? cubePrice : tractorPrice;
+  const quantity = type === 'cube' ? between(1, 5) : lorrySizes[Math.floor(next() * lorrySizes.length)];
+  const unitPrice = cubePrice;
   const [customerName, customerPhone, vehicleNo] = customers[saleCount % customers.length];
   const by = saleCount % 3 === 0 ? 'pivithuru' : 'nimal';
   const code = newCode();

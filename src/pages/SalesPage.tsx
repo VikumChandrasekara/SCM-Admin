@@ -56,7 +56,7 @@ export function SalesPage() {
     <>
       <PageHeader
         title="විකුණුම්"
-        subtitle="කියුබ් සහ ට්‍රැක්ටර් ලෝඩ් බිල්පත්. QR එක ස්කෑන් කර තහවුරු කළ පසු පමණක් ආදායමක් ලෙස ගණන් වේ; පැය 24ක් ඇතුළත තහවුරු නොකළ බිල්පත් අවලංගු වේ."
+        subtitle="කියුබ් සහ ලෝඩ් බිල්පත්. QR එක ස්කෑන් කර තහවුරු කළ පසු පමණක් ආදායමක් ලෙස ගණන් වේ; පැය 24ක් ඇතුළත තහවුරු නොකළ බිල්පත් අවලංගු වේ."
         actions={
           <>
             <div className="flex items-center gap-1 rounded-card bg-well p-1">
@@ -81,7 +81,7 @@ export function SalesPage() {
         <Panel tone="deep" className="mb-6 flex flex-wrap items-center gap-3 p-4">
           <TriangleAlert className="size-5 text-signal" />
           <p className="flex-1 text-sm font-bold text-signal">
-            කියුබ් එකක සහ ට්‍රැක්ටර් ලෝඩ් එකක මිල තවම සකසා නැත — බිල්පත් සෑදීමට පෙර සකසන්න.
+            කියුබ් එකක මිල තවම සකසා නැත — බිල්පත් සෑදීමට පෙර සකසන්න.
           </p>
           {permissions.setSalePrices && <Button onClick={() => setEditingPrices(true)}>මිල සකසන්න</Button>}
         </Panel>
@@ -91,9 +91,6 @@ export function SalesPage() {
             <Tag className="size-4 text-white/60" />
             <span className="rounded-full bg-well px-3 py-1.5 text-sm font-bold ring-1 ring-hairline">
               කියුබ් එකක් <span className="text-amber-hi tabular-nums">{rupees(prices.data.cubePrice)}</span>
-            </span>
-            <span className="rounded-full bg-well px-3 py-1.5 text-sm font-bold ring-1 ring-hairline">
-              ට්‍රැක්ටර් ලෝඩ් එකක් <span className="text-amber-hi tabular-nums">{rupees(prices.data.tractorPrice)}</span>
             </span>
             {permissions.setSalePrices && (
               <Button variant="ghost" size="sm" onClick={() => setEditingPrices(true)}>
@@ -168,7 +165,7 @@ export function SalesPage() {
                       <span className="block text-white/55">{sale.createdByName || '—'}</span>
                     </td>
                     <td className={td}>{SALE_TYPE[sale.type].label}</td>
-                    <td className={cx(td, 'text-right tabular-nums')}>{quantity(sale.quantity)}</td>
+                    <td className={cx(td, 'text-right tabular-nums')}>{quantity(sale.quantity, SALE_TYPE[sale.type].unit)}</td>
                     <td className={cx(td, 'text-right text-white/75 tabular-nums')}>{money(sale.unitPrice)}</td>
                     <td className={cx(td, 'text-right text-base font-extrabold tabular-nums')}>{money(sale.amount)}</td>
                     <td className={td}>

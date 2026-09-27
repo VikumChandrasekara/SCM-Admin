@@ -495,7 +495,7 @@ describe('sales', () => {
   async function setPrices() {
     await env.withSecurityRulesDisabled(async (context) => {
       const db = context.firestore() as unknown as Firestore;
-      await setDoc(doc(db, 'settings', 'sales'), { cubePrice: 8500, tractorPrice: 4500 });
+      await setDoc(doc(db, 'settings', 'sales'), { cubePrice: 8500 });
     });
   }
 
@@ -549,20 +549,22 @@ describe('sales', () => {
   });
 
   it('only the admin sets the prices, and never to nothing', async () => {
-    await assertSucceeds(setDoc(doc(as('admin1'), 'settings', 'sales'), { cubePrice: 9000, tractorPrice: 5000 }));
-    await assertFails(setDoc(doc(as('sup1'), 'settings', 'sales'), { cubePrice: 1, tractorPrice: 1 }));
-    await assertFails(setDoc(doc(as('admin1'), 'settings', 'sales'), { cubePrice: 0, tractorPrice: 5000 }));
+    await assertSucceeds(setDoc(doc(as('admin1'), 'settings', 'sales'), { cubePrice: 9000 }));
+    await assertFails(setDoc(doc(as('sup1'), 'settings', 'sales'), { cubePrice: 1 }));
+    await assertFails(setDoc(doc(as('admin1'), 'settings', 'sales'), { cubePrice: 0 }));
     await assertSucceeds(getDoc(doc(as('op1'), 'settings', 'sales')));
   });
 
   it('staff add a sale priced from the settings; crews cannot', async () => {
     await setPrices();
     await assertSucceeds(addSale(as('sup1'), 'CUBE2345', sale('sup1', 'CUBE2345')));
+    // A tractor load is priced the same way as a cube, by its capacity in
+    // cubes — a 2-cube lorry is two cubePrice, same as two loose cubes.
     await assertSucceeds(
       addSale(
         as('admin1'),
         'TRAC2345',
-        sale('admin1', 'TRAC2345', { type: 'tractor', quantity: 2, unitPrice: 4500, amount: 9000, number: 2 }),
+        sale('admin1', 'TRAC2345', { type: 'tractor', quantity: 2, unitPrice: 8500, amount: 17000, number: 2 }),
       ),
     );
     await assertFails(addSale(as('op1'), 'CREW2345', sale('op1', 'CREW2345', { number: 3 })));
@@ -582,7 +584,6 @@ describe('sales', () => {
     const db = as('sup1');
     await assertFails(addSale(db, 'CHEAP234', sale('sup1', 'CHEAP234', { unitPrice: 5000, amount: 15000 })));
     await assertFails(addSale(db, 'WRNGSUM2', sale('sup1', 'WRNGSUM2', { amount: 20000 })));
-    await assertFails(addSale(db, 'TYPE2345', sale('sup1', 'TYPE2345', { type: 'tractor' })));
     await assertFails(addSale(db, 'ZERO2345', sale('sup1', 'ZERO2345', { quantity: 0, amount: 0 })));
     // The id is the code on the bill, in the bill's alphabet.
     await assertFails(addSale(db, 'THRX2345', sale('sup1', 'CUBE2345')));

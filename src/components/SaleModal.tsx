@@ -4,7 +4,7 @@ import { useSession } from '../auth/AuthContext';
 import { createSale, useSalesPrices } from '../data/sales';
 import { errorMessage } from '../lib/errors';
 import { money, quantity, rupees } from '../lib/format';
-import { SALE_TYPE, SALE_TYPES, priceOf, type SaleType } from '../lib/model';
+import { LORRY_SIZES, SALE_TYPE, SALE_TYPES, type SaleType } from '../lib/model';
 import { useToast } from './Toasts';
 import { Button, ErrorNote, Field, Input, Modal, Segmented, Textarea } from './ui';
 
@@ -27,12 +27,12 @@ export function SaleModal({ onClose, onCreated }: { onClose: () => void; onCreat
   const [error, setError] = useState<string | null>(null);
 
   const count = Number(amount);
-  const unitPrice = prices.data ? priceOf(prices.data, type) : null;
+  const unitPrice = prices.data ? prices.data.cubePrice : null;
   const total = unitPrice != null && Number.isFinite(count) && count > 0 ? count * unitPrice : null;
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (!prices.data) return setError('කියුබ් සහ ට්‍රැක්ටර් ලෝඩ් මිල තවම සකසා නැත.');
+    if (!prices.data) return setError('කියුබ් මිල තවම සකසා නැත.');
     if (!Number.isFinite(count) || count <= 0) return setError('ප්‍රමාණය ශුන්‍යයට වඩා වැඩි විය යුතුය.');
     if (!customerName.trim()) return setError('පාරිභෝගිකයාගේ නම ඇතුළත් කරන්න.');
     if (!vehicleNo.trim()) return setError('වාහන අංකය ඇතුළත් කරන්න.');
@@ -76,25 +76,36 @@ export function SaleModal({ onClose, onCreated }: { onClose: () => void; onCreat
           <span className="mb-1.5 block text-[13px] font-semibold text-white/75">වර්ගය</span>
           <Segmented
             value={type}
-            onChange={setType}
+            onChange={(value) => {
+              setType(value);
+              setAmount('');
+            }}
             options={SALE_TYPES.map((value) => ({
               value,
-              label: prices.data ? `${SALE_TYPE[value].label} · ${money(priceOf(prices.data, value))}` : SALE_TYPE[value].label,
+              label: prices.data ? `${SALE_TYPE[value].label} · ${money(prices.data.cubePrice)}` : SALE_TYPE[value].label,
             }))}
           />
         </div>
 
         <Field label={`ප්‍රමාණය (${SALE_TYPE[type].unit})`}>
-          <Input
-            type="number"
-            inputMode="decimal"
-            min="0"
-            step="0.5"
-            autoFocus
-            required
-            value={amount}
-            onChange={(event) => setAmount(event.target.value)}
-          />
+          {type === 'tractor' ? (
+            <Segmented
+              value={amount}
+              onChange={setAmount}
+              options={LORRY_SIZES.map((size) => ({ value: String(size), label: quantity(size) }))}
+            />
+          ) : (
+            <Input
+              type="number"
+              inputMode="decimal"
+              min="0"
+              step="0.5"
+              autoFocus
+              required
+              value={amount}
+              onChange={(event) => setAmount(event.target.value)}
+            />
+          )}
         </Field>
 
         <div className="flex items-center justify-between rounded-card px-4 py-3 text-ink shadow-control chip-amber">

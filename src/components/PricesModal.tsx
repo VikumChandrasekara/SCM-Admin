@@ -7,25 +7,26 @@ import type { SalesPrices } from '../lib/model';
 import { useToast } from './Toasts';
 import { Button, ErrorNote, Field, Input, Modal } from './ui';
 
-/** Admin only: what a cube and a tractor load sell for from now on. */
+/**
+ * Admin only: what one cube sells for from now on. A tractor load is priced
+ * the same way, by its capacity in cubes — there is no separate rate for it.
+ */
 export function PricesModal({ prices, onClose }: { prices: SalesPrices | null; onClose: () => void }) {
   const { profile } = useSession();
   const toast = useToast();
   const [cube, setCube] = useState(prices ? String(prices.cubePrice) : '');
-  const [tractor, setTractor] = useState(prices ? String(prices.tractorPrice) : '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
     const cubePrice = Number(cube);
-    const tractorPrice = Number(tractor);
-    if (!(cubePrice > 0) || !(tractorPrice > 0)) return setError('මිල ශුන්‍යයට වඩා වැඩි විය යුතුය.');
+    if (!(cubePrice > 0)) return setError('මිල ශුන්‍යයට වඩා වැඩි විය යුතුය.');
 
     setBusy(true);
     setError(null);
     try {
-      await saveSalesPrices({ cubePrice, tractorPrice }, profile);
+      await saveSalesPrices({ cubePrice }, profile);
       toast.success('මිල යාවත්කාලීන කළා. නව බිල්පත් මෙම මිලට සෑදේ.');
       onClose();
     } catch (failure) {
@@ -55,9 +56,6 @@ export function PricesModal({ prices, onClose }: { prices: SalesPrices | null; o
       <form id="prices-form" onSubmit={submit} className="space-y-4">
         <Field label="කියුබ් එකක මිල (රු.)">
           <Input type="number" inputMode="decimal" min="0" step="1" autoFocus required value={cube} onChange={(event) => setCube(event.target.value)} />
-        </Field>
-        <Field label="ට්‍රැක්ටර් ලෝඩ් එකක මිල (රු.)">
-          <Input type="number" inputMode="decimal" min="0" step="1" required value={tractor} onChange={(event) => setTractor(event.target.value)} />
         </Field>
         {error && <ErrorNote>{error}</ErrorNote>}
       </form>
