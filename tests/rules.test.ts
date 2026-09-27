@@ -164,12 +164,16 @@ describe('accounts', () => {
     await assertSucceeds(getDocs(collection(as('admin1'), 'operators')));
   });
 
-  it('a supervisor sets the four තොරතුරු figures and nothing else', async () => {
+  it('a supervisor sets the තොරතුරු figures and the wage, and nothing else', async () => {
     const record = doc(as('sup1'), 'operators', 'op1');
     await assertSucceeds(updateDoc(record, { advanceAmount: 5000, leaveDays: 2 }));
     await assertSucceeds(updateDoc(record, { receivableAmount: 100000 }));
     await assertFails(updateDoc(record, { role: 'admin' }));
-    await assertFails(updateDoc(record, { dailyWage: 4000 }));
+    // The wage rate is theirs too — what a day, an hour or a load is paid —
+    // but the rate a compressor crew is paid per foot is not.
+    await assertSucceeds(updateDoc(record, { dailyWage: 4000, wageBasis: 'hour' }));
+    await assertFails(updateDoc(record, { wageBasis: 'week' }));
+    await assertFails(updateDoc(record, { ratePerFoot: 400 }));
   });
 
   it('the admin edits a record written before roles existed', async () => {

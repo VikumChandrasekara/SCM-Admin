@@ -13,6 +13,8 @@ import {
   PAY_BASIS_LABEL,
   ROLES,
   SERVICE,
+  WAGE_BASES,
+  WAGE_BASIS_LABEL,
   dayFrom,
   nameOf,
   paidPerLoad,
@@ -21,9 +23,10 @@ import {
   tallyField,
   type Person,
   type ServiceTask,
+  type WageBasis,
 } from '../lib/model';
 import { useToast } from './Toasts';
-import { Button, Field, Input, Modal, SectionLabel, ValueChip, cx } from './ui';
+import { Button, Field, Input, Modal, SectionLabel, Select, ValueChip, cx } from './ui';
 
 /** තොරතුරු — one crew member's figures, and what staff may set on them. */
 export function CrewInfoModal({ person, date, onClose }: { person: Person; date: string; onClose: () => void }) {
@@ -44,6 +47,8 @@ export function CrewInfoModal({ person, date, onClose }: { person: Person; date:
   const [advance, setAdvance] = useState(String(live.advanceAmount));
   const [receivable, setReceivable] = useState(String(live.receivableAmount));
   const [bonus, setBonus] = useState(String(live.bonusTotal));
+  const [wage, setWage] = useState(live.dailyWage ? String(live.dailyWage) : '');
+  const [wageBasis, setWageBasis] = useState<WageBasis>(live.wageBasis);
   const [tally, setTally] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<ServiceTask | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -79,11 +84,12 @@ export function CrewInfoModal({ person, date, onClose }: { person: Person; date:
       receivableAmount: Number(receivable),
       bonusTotal: Number(bonus),
     };
-    if (Object.values(figures).some((value) => !Number.isFinite(value) || value < 0)) {
+    const rate = wage.trim() === '' ? 0 : Number(wage);
+    if ([...Object.values(figures), rate].some((value) => !Number.isFinite(value) || value < 0)) {
       toast.error('අගයන් ඍණ නොවන සංඛ්‍යා විය යුතුය.');
       return;
     }
-    void run('info', () => saveFigures(live.id, { ...figures, leaveDays: Math.round(figures.leaveDays) }), 'තොරතුරු සුරැකුණා.');
+    void run('info', () => saveFigures(live.id, { ...figures, leaveDays: Math.round(figures.leaveDays), dailyWage: rate, wageBasis }), 'තොරතුරු සුරැකුණා.');
   }
 
   function saveDayTally() {
@@ -135,6 +141,18 @@ export function CrewInfoModal({ person, date, onClose }: { person: Person; date:
             >
               <Input type="number" min="0" step="any" value={receivable} onChange={(event) => setReceivable(event.target.value)} />
             </Field>
+            <Field label="පඩිය ගණනය කරන්නේ" hint="වැඩ කළ දින, යන්ත්‍රය ධාවනය වූ පැය, හෝ ලෝඩ් ගණනින්.">
+              <Select value={wageBasis} onChange={(event) => setWageBasis(event.target.value as WageBasis)}>
+                {WAGE_BASES.map((id) => (
+                  <option key={id} value={id}>
+                    {WAGE_BASIS_LABEL[id].per}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label={`පඩිය (රු.) — ${WAGE_BASIS_LABEL[wageBasis].per}`} hint="යෙදුමේ දවසේ පඩිය මෙයින් ගණනය වේ.">
+              <Input type="number" min="0" step="any" value={wage} onChange={(event) => setWage(event.target.value)} />
+            </Field>
             {role.tracksBonus && (
               <Field label="බෝනස් මුදල් එකතුව (රු.)">
                 <Input type="number" min="0" step="any" value={bonus} onChange={(event) => setBonus(event.target.value)} />
@@ -151,7 +169,9 @@ export function CrewInfoModal({ person, date, onClose }: { person: Person; date:
           <div className="space-y-2 rounded-card bg-well p-4 text-sm">
             <p className="flex justify-between">
               <span className="text-white/70">දවසේ පඩිය</span>
-              <b>{live.dailyWage > 0 ? rupees(live.dailyWage) : '—'}</b>
+              <b>
+                {live.dailyWage > 0 ? `${rupees(live.dailyWage)} (${WAGE_BASIS_LABEL[live.wageBasis].per})` : '—'}
+              </b>
             </p>
             {!role.tracksBonus && (
               <p className="flex justify-between">

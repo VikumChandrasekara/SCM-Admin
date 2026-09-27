@@ -21,6 +21,7 @@ import {
   PAY_BASIS_LABEL,
   ROLES,
   STOCK_LABEL,
+  WAGE_BASIS_LABEL,
   dayFrom,
   emptyDay,
   monthFrom,
@@ -205,7 +206,11 @@ export function DashboardPage() {
                   icon={<Banknote className="size-5" />}
                   label="දවසේ මුදල් ප්‍රමාණය"
                   value={pay.dayEarnings}
-                  caption={selected.dailyWage > 0 ? `දවසේ පඩිය ${rupees(selected.dailyWage)} · ${date}` : 'දවසේ පඩිය සකසා නැත'}
+                  caption={
+                    selected.dailyWage > 0
+                      ? `පඩිය ${rupees(selected.dailyWage)} ${WAGE_BASIS_LABEL[selected.wageBasis].per} · ${date}`
+                      : 'දවසේ පඩිය සකසා නැත'
+                  }
                   className="lg:flex-1"
                 />
                 {/* Fixed-size, not flex-1: a shortcut link, not a stat — the
@@ -256,8 +261,13 @@ export function DashboardPage() {
   );
 }
 
+/** Hours can be fractional; days and loads never are. */
+function countOrHours(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
 function grossCaption(person: Person, pay: NonNullable<ReturnType<typeof payFor>>): string {
-  const parts = [`දින ${pay.workedDays} × ${money(person.dailyWage)}`];
+  const parts = [`${WAGE_BASIS_LABEL[person.wageBasis].unit} ${countOrHours(pay.wageUnits)} × ${money(person.dailyWage)}`];
   if (pay.bonusPay > 0) parts.push(`බෝනස් ${money(pay.bonusPay)}`);
   if (pay.ratePay > 0) parts.push(`${PAY_BASIS_LABEL[paidPerLoad(person) ? 'load' : 'foot'].unit} ${money(pay.ratePay)}`);
   return parts.join(' + ');

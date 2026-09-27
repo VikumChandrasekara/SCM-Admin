@@ -32,6 +32,7 @@ import { DataError } from './DataError';
 import { LogoMark } from './Logo';
 import { PageBoundary } from './PageBoundary';
 import { Badge, IconButton, Loading, cx } from './ui';
+import { useServiceWatcher } from './useServiceWatcher';
 import { useStockWatcher } from './useStockWatcher';
 
 interface NavEntry {
@@ -65,6 +66,7 @@ export function Layout() {
   // These run for as long as any page of the panel is open.
   useUsageReconciler(crew, profile);
   useStockWatcher(store, ready);
+  useServiceWatcher(crew, machines, ready);
   useExpiredSalesSweeper();
 
   // Once the panel is up, the other pages' code follows in the background —
@@ -232,7 +234,18 @@ function AlertsBell({ stock, service }: { stock: StockAlert[]; service: ServiceA
   }, [open]);
 
   return (
-    <div ref={box} className="relative">
+    <div ref={box} className="relative flex items-center gap-1">
+      {/* Out in the open, not only inside the bell: a browser asks once, and
+          someone who never opens the list would never be asked at all. */}
+      {permission === 'default' && (
+        <button
+          type="button"
+          onClick={() => void Notification.requestPermission().then(setPermission)}
+          className="hidden rounded-control bg-white/[0.08] px-3 py-1.5 text-[12.5px] font-semibold text-amber-hi ring-1 ring-hairline transition hover:bg-white/[0.14] md:block"
+        >
+          දැනුම්දීම් ඉඩ දෙන්න
+        </button>
+      )}
       <IconButton label={`අනතුරු ඇඟවීම් ${count}`} onClick={() => setOpen((value) => !value)} className="relative">
         {count > 0 ? <BellRing className="size-5 text-signal" /> : <Bell className="size-5" />}
         {count > 0 && (
@@ -293,8 +306,13 @@ function AlertsBell({ stock, service }: { stock: StockAlert[]; service: ServiceA
               onClick={() => void Notification.requestPermission().then(setPermission)}
               className="w-full border-t border-hairline px-4 py-3 text-left text-[13px] font-semibold text-amber-hi transition hover:bg-white/5"
             >
-              තොග අඩු වූ විට ඩෙස්ක්ටොප් දැනුම්දීම් ලබාගන්න
+              තොග අඩු වූ විට සහ මාරු කිරීමට කාලය ළඟා වූ විට ඩෙස්ක්ටොප් දැනුම්දීම් ලබාගන්න
             </button>
+          )}
+          {permission === 'denied' && 'Notification' in window && (
+            <p className="border-t border-hairline px-4 py-3 text-[12.5px] text-white/65">
+              බ්‍රව්සරයේ දැනුම්දීම් වසා ඇත. ලිපින තීරුවේ අගුලු ලකුණෙන් මෙම අඩවියට දැනුම්දීම් ඉඩ දෙන්න.
+            </p>
           )}
         </div>
       )}

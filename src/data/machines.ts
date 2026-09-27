@@ -21,6 +21,7 @@ import {
   type Person,
   type ServiceTask,
   type StoreItem,
+  type WageBasis,
 } from '../lib/model';
 import { commit } from './commit';
 
@@ -111,10 +112,17 @@ export async function resetService(
   await commit(batch);
 }
 
-/** The four තොරතුරු figures — the only fields a supervisor may write. */
+/** The තොරතුරු figures and the wage rate — the only fields a supervisor may write. */
 export async function saveFigures(
   personId: string,
-  figures: { leaveDays: number; advanceAmount: number; bonusTotal: number; receivableAmount: number },
+  figures: {
+    leaveDays: number;
+    advanceAmount: number;
+    bonusTotal: number;
+    receivableAmount: number;
+    dailyWage: number;
+    wageBasis: WageBasis;
+  },
 ): Promise<void> {
   const batch = writeBatch(db);
   batch.update(doc(db, 'operators', personId), figures);

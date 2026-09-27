@@ -1,4 +1,15 @@
-import { BILL, ROLES, dayOnHours, paidPerLoad, rateOf, type Bill, type Day, type MonthTally, type Person } from './model';
+import {
+  BILL,
+  ROLES,
+  dayOnHours,
+  paidPerLoad,
+  rateOf,
+  workedHours,
+  type Bill,
+  type Day,
+  type MonthTally,
+  type Person,
+} from './model';
 import { bonusEarned } from './target';
 
 /**
@@ -10,7 +21,9 @@ import { bonusEarned } from './target';
 export interface PayFigures {
   workedDays: number;
   dailyWage: number;
-  /** Worked days × the daily wage. */
+  /** What the wage counts this month: worked days, machine hours or loads, per the person's basis. */
+  wageUnits: number;
+  /** [wageUnits] × the wage rate. */
   wagePay: number;
   /** The excavator crew's bonus ladder for the month's loads. */
   bonusPay: number;
@@ -39,7 +52,9 @@ export function payFor(
   const role = ROLES[person.role];
 
   const workedDays = monthDays.filter((entry) => dayOnHours(entry) != null).length;
-  const wagePay = workedDays * person.dailyWage;
+  const wageUnits =
+    person.wageBasis === 'hour' ? month.hours : person.wageBasis === 'load' ? month.loads : workedDays;
+  const wagePay = wageUnits * person.dailyWage;
   const bonusPay = role.tracksBonus ? bonusEarned(month.loads) : 0;
   const rate = rateOf(person);
   const ratePay = role.tracksBonus ? 0 : (paidPerLoad(person) ? month.loads : month.feet) * rate;
@@ -55,13 +70,24 @@ export function payFor(
     .reduce((sum, bill) => sum + bill.amount, 0);
 
   const worked = day != null && dayOnHours(day) != null;
+  const dayWageUnits =
+    person.wageBasis === 'hour'
+      ? day
+        ? (workedHours(day) ?? 0)
+        : 0
+      : person.wageBasis === 'load'
+        ? (day?.loads ?? 0)
+        : worked
+          ? 1
+          : 0;
   const dayEarnings =
-    (worked ? person.dailyWage : 0) +
+    dayWageUnits * person.dailyWage +
     (role.tracksBonus ? 0 : (paidPerLoad(person) ? (day?.loads ?? 0) : (day?.feet ?? 0)) * rate);
 
   return {
     workedDays,
     dailyWage: person.dailyWage,
+    wageUnits,
     wagePay,
     bonusPay,
     ratePay,

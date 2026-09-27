@@ -9,7 +9,7 @@ import { deleteDoc, doc, serverTimestamp, writeBatch, type WriteBatch } from 'fi
 
 import { db } from '../db';
 import { emailFor, provisioningAuth } from '../firebase';
-import { ROLES, SERVICE, type Machine, type PayBasis, type Person, type RoleId } from '../lib/model';
+import { ROLES, SERVICE, type Machine, type PayBasis, type Person, type RoleId, type WageBasis } from '../lib/model';
 import { commit } from './commit';
 
 /**
@@ -31,6 +31,8 @@ export interface UserFields {
   role: RoleId;
   machineId: string;
   dailyWage: number;
+  /** What the daily wage is paid for: a day, an hour or a load. */
+  wageBasis: WageBasis;
   /** Which rate a compressor crew member is paid on. */
   payBasis: PayBasis;
   ratePerFoot: number;
@@ -61,6 +63,7 @@ function recordFields(fields: UserFields) {
     role: fields.role,
     machineId: crew ? fields.machineId.trim() : '',
     dailyWage: crew ? fields.dailyWage : 0,
+    wageBasis: crew ? fields.wageBasis : 'day',
     // Rates and the basis only mean something to a compressor crew; the
     // excavator crew works to the bonus ladder.
     payBasis: fields.role === 'compressor' ? fields.payBasis : 'foot',

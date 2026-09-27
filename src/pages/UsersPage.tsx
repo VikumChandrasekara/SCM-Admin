@@ -26,7 +26,19 @@ import { USERNAME_PATTERN, changePassword, createAccount, removeAccount, updateA
 import { USERNAME_DOMAIN } from '../firebase';
 import { errorMessage } from '../lib/errors';
 import { money } from '../lib/format';
-import { PAY_BASIS_LABEL, ROLES, ROLE_IDS, nameOf, rateOf, type PayBasis, type Person, type RoleId } from '../lib/model';
+import {
+  PAY_BASIS_LABEL,
+  ROLES,
+  ROLE_IDS,
+  WAGE_BASES,
+  WAGE_BASIS_LABEL,
+  nameOf,
+  rateOf,
+  type PayBasis,
+  type Person,
+  type RoleId,
+  type WageBasis,
+} from '../lib/model';
 
 const roleTone: Record<RoleId, 'grape' | 'info' | 'amber' | 'ok'> = {
   admin: 'grape',
@@ -164,6 +176,7 @@ function UserModal({ person, onClose }: { person: Person | null; onClose: () => 
   const [machineId, setMachineId] = useState(person?.machineId ?? '');
   const [meter, setMeter] = useState('');
   const [wage, setWage] = useState(person?.dailyWage ? String(person.dailyWage) : '');
+  const [wageBasis, setWageBasis] = useState<WageBasis>(person?.wageBasis ?? 'day');
   const [payBasis, setPayBasis] = useState<PayBasis>(person?.payBasis ?? 'foot');
   const [rate, setRate] = useState(person?.ratePerFoot ? String(person.ratePerFoot) : '');
   const [loadRate, setLoadRate] = useState(person?.ratePerLoad ? String(person.ratePerLoad) : '');
@@ -198,6 +211,7 @@ function UserModal({ person, onClose }: { person: Person | null; onClose: () => 
       role,
       machineId: machine,
       dailyWage: number(wage),
+      wageBasis,
       payBasis,
       ratePerFoot: number(rate),
       ratePerLoad: number(loadRate),
@@ -309,7 +323,16 @@ function UserModal({ person, onClose }: { person: Person | null; onClose: () => 
 
         {crew && (
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="දවසේ පඩිය (රු.)" hint="වැඩ කළ දිනකට — මාසයේ මුදල් ගණනයට යොදයි.">
+            <Field label="පඩිය ගණනය කරන්නේ" hint="වැඩ කළ දින, යන්ත්‍රය ධාවනය වූ පැය, හෝ ලෝඩ් ගණනින්.">
+              <Select value={wageBasis} onChange={(event) => setWageBasis(event.target.value as WageBasis)}>
+                {WAGE_BASES.map((id) => (
+                  <option key={id} value={id}>
+                    {WAGE_BASIS_LABEL[id].per}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label={`පඩිය (රු.) — ${WAGE_BASIS_LABEL[wageBasis].per}`} hint="මාසයේ මුදල් ගණනයටත්, යෙදුමේ දවසේ පඩිය පෙන්වීමටත් යොදයි.">
               <Input type="number" min="0" step="any" value={wage} onChange={(event) => setWage(event.target.value)} />
             </Field>
           </div>

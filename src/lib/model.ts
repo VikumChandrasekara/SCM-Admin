@@ -286,8 +286,28 @@ export interface Person {
   ratePerLoad: number;
   /** Which of the two rates a compressor crew member's month is paid on. */
   payBasis: PayBasis;
-  /** දවසේ පඩිය — a worked day's wage. */
+  /**
+   * දවසේ පඩිය — the wage rate. Named for what it was first (a day's wage);
+   * [wageBasis] says what one unit of it is now.
+   */
   dailyWage: number;
+  /** What [dailyWage] is paid for: a worked day, an hour the machine ran, or a load. */
+  wageBasis: WageBasis;
+}
+
+export type WageBasis = 'day' | 'hour' | 'load';
+
+export const WAGE_BASES: readonly WageBasis[] = ['day', 'hour', 'load'];
+
+export const WAGE_BASIS_LABEL: Record<WageBasis, { per: string; unit: string }> = {
+  day: { per: 'දවසකට', unit: 'දින' },
+  hour: { per: 'පැයකට', unit: 'පැය' },
+  load: { per: 'ලෝඩ් එකකට', unit: 'ලෝඩ්' },
+};
+
+/** Records written before the basis existed are paid per day, as they were. */
+export function wageBasisById(value: unknown): WageBasis {
+  return value === 'hour' || value === 'load' ? value : 'day';
 }
 
 export type PayBasis = 'foot' | 'load';
@@ -335,6 +355,7 @@ export function personFrom(id: string, data: DocumentData): Person {
     ratePerLoad: num(data.ratePerLoad),
     payBasis: payBasisById(data.payBasis),
     dailyWage: num(data.dailyWage),
+    wageBasis: wageBasisById(data.wageBasis),
   };
 }
 
