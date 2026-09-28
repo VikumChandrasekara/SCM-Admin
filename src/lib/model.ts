@@ -764,26 +764,26 @@ export function billFrom(id: string, data: DocumentData): Bill {
 // ---- sales ------------------------------------------------------------------
 
 /**
- * What the yard sells: material by the cube, or a whole lorry load — which is
- * itself just some number of cubes, depending on which lorry came. Both are
- * priced the same way, per cube — see {@link SalesPrices}.
+ * What the yard sells, by the vehicle it leaves in: a tipper lorry, measured
+ * in the cubes it carried, or a tractor, one trailer load at a time. Both are
+ * priced from one cube — see {@link SalesPrices}.
  */
-export type SaleType = 'cube' | 'tractor';
+export type SaleType = 'tipper' | 'tractor';
 
-export const SALE_TYPES: readonly SaleType[] = ['cube', 'tractor'];
+export const SALE_TYPES: readonly SaleType[] = ['tipper', 'tractor'];
 
+/** `unit` is what the type's quantity counts. */
 export const SALE_TYPE: Record<SaleType, { label: string; unit: string }> = {
-  cube: { label: 'කියුබ්', unit: 'කියුබ්' },
-  tractor: { label: 'ට්‍රැක්ටර් ලෝඩ්', unit: 'කියුබ්' },
+  tipper: { label: 'ටිපර් ලෝඩ්', unit: 'කියුබ්' },
+  tractor: { label: 'ට්‍රැක්ටර් ලෝඩ්', unit: 'ලෝඩ්' },
 };
 
 /**
- * A lorry's load is always one of these — the yard's own fleet, in cubes. A
- * tractor sale's quantity is chosen from here rather than typed in, the way
- * a cube sale's is: a lorry cannot carry an arbitrary amount, only what it
- * was built to.
+ * The cube capacities a tipper comes in. A tipper sale's quantity is chosen
+ * from here rather than typed in: a lorry cannot carry an arbitrary amount,
+ * only what it was built to.
  */
-export const LORRY_SIZES: readonly number[] = [1, 2, 2.5, 3, 4, 5];
+export const TIPPER_SIZES: readonly number[] = [1, 2, 2.5, 3, 4, 5];
 
 export type SaleStatus = 'pending' | 'verified' | 'cancelled';
 
@@ -799,20 +799,39 @@ export const SALE_LIFETIME_MS = 24 * 60 * 60 * 1000;
 /** The letters a sale's code is made of — no 0/O or 1/I to misread. */
 export const SALE_CODE_ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
 
+/** A full tipper load is this many cubes. */
+export const CUBES_PER_TIPPER = 3;
+
 /**
- * What one cube sells for. A lorry load used to carry its own flat price,
- * regardless of the lorry's actual size — it does not any more: a 1-cube
- * lorry and a 5-cube lorry are now the same {@link cubePrice} apart, which is
- * what a cube is actually worth.
+ * The one figure the admin sets — what a full tipper load sells for — and the
+ * cube price worked out from it. Every sale is priced per cube from
+ * {@link cubePrice}, and firestore.rules checks the sum against it.
  */
 export interface SalesPrices {
-  /** Rupees for one cube. */
+  /** Rupees for a full tipper load — {@link CUBES_PER_TIPPER} cubes. */
+  tipperPrice: number;
+  /** Rupees for one cube: {@link tipperPrice} over {@link CUBES_PER_TIPPER}. */
   cubePrice: number;
 }
 
+/** One cube's price for `tipperPrice` — what the admin's figure comes to. */
+export function cubePriceFor(tipperPrice: number): number {
+  return tipperPrice / CUBES_PER_TIPPER;
+}
+
+/**
+ * Null until the admin has set the price, which also means null for a price
+ * set before tipper loads were counted in cubes: that older figure was a
+ * whole load's, and reading it as one cube's would price every sale at three
+ * times what it should be. Better the panel says the price is unset — it will
+ * not write a bill without one — than quietly overcharge until someone
+ * notices.
+ */
 export function pricesFrom(data: DocumentData | undefined): SalesPrices | null {
+  const tipperPrice = numOrNull(data?.tipperPrice);
   const cubePrice = numOrNull(data?.cubePrice);
-  return cubePrice != null ? { cubePrice } : null;
+  if (tipperPrice == null || cubePrice == null || tipperPrice <= 0 || cubePrice <= 0) return null;
+  return { tipperPrice, cubePrice };
 }
 
 export interface Sale {
@@ -850,7 +869,9 @@ export function saleFrom(id: string, data: DocumentData): Sale {
   return {
     code: id,
     number: numOrNull(data.number),
-    type: data.type === 'tractor' ? 'tractor' : 'cube',
+    // A sale written before tipper loads were counted in cubes carries
+    // 'cube'; it was a tipper load as well, so it reads as one.
+    type: data.type === 'tractor' ? 'tractor' : 'tipper',
     quantity: num(data.quantity),
     unitPrice: num(data.unitPrice),
     amount: num(data.amount),

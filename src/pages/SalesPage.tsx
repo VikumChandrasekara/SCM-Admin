@@ -56,7 +56,7 @@ export function SalesPage() {
     <>
       <PageHeader
         title="විකුණුම්"
-        subtitle="කියුබ් සහ ලෝඩ් බිල්පත්. QR එක ස්කෑන් කර තහවුරු කළ පසු පමණක් ආදායමක් ලෙස ගණන් වේ; පැය 24ක් ඇතුළත තහවුරු නොකළ බිල්පත් අවලංගු වේ."
+        subtitle="ටිපර් සහ ට්‍රැක්ටර් ලෝඩ් බිල්පත්. QR එක ස්කෑන් කර තහවුරු කළ පසු පමණක් ආදායමක් ලෙස ගණන් වේ; පැය 24ක් ඇතුළත තහවුරු නොකළ බිල්පත් අවලංගු වේ."
         actions={
           <>
             <div className="flex items-center gap-1 rounded-card bg-well p-1">
@@ -81,7 +81,7 @@ export function SalesPage() {
         <Panel tone="deep" className="mb-6 flex flex-wrap items-center gap-3 p-4">
           <TriangleAlert className="size-5 text-signal" />
           <p className="flex-1 text-sm font-bold text-signal">
-            කියුබ් එකක මිල තවම සකසා නැත — බිල්පත් සෑදීමට පෙර සකසන්න.
+            ටිපර් ලෝඩ් එකක මිල තවම සකසා නැත — බිල්පත් සෑදීමට පෙර සකසන්න.
           </p>
           {permissions.setSalePrices && <Button onClick={() => setEditingPrices(true)}>මිල සකසන්න</Button>}
         </Panel>
@@ -89,6 +89,9 @@ export function SalesPage() {
         prices.data && (
           <div className="mb-6 flex flex-wrap items-center gap-2">
             <Tag className="size-4 text-white/60" />
+            <span className="rounded-full bg-well px-3 py-1.5 text-sm font-bold ring-1 ring-hairline">
+              ටිපර් ලෝඩ් එකක් <span className="text-amber-hi tabular-nums">{rupees(prices.data.tipperPrice)}</span>
+            </span>
             <span className="rounded-full bg-well px-3 py-1.5 text-sm font-bold ring-1 ring-hairline">
               කියුබ් එකක් <span className="text-amber-hi tabular-nums">{rupees(prices.data.cubePrice)}</span>
             </span>

@@ -30,8 +30,8 @@ import { useLiveDoc, useLiveQuery } from './live';
 const pricesRef = () => doc(db, 'settings', 'sales');
 
 /**
- * What one cube sells for; null until the admin sets it. A tractor load is
- * priced the same way, by its capacity in cubes.
+ * What a full tipper load sells for and what one cube comes to; null until
+ * the admin sets them.
  */
 export function useSalesPrices() {
   return useLiveDoc(pricesRef(), (snapshot) => pricesFrom(snapshot.data()));
@@ -99,7 +99,7 @@ export async function createSale(input: SaleInput, by: Person): Promise<string> 
 
   await runTransaction(db, async (tx) => {
     const prices = pricesFrom((await tx.get(pricesRef())).data());
-    if (!prices) throw new Error('කියුබ් මිල තවම සකසා නැත. පරිපාලක අමතන්න.');
+    if (!prices) throw new Error('ටිපර් ලෝඩ් එකක මිල තවම සකසා නැත. පරිපාලක අමතන්න.');
 
     const existing = await tx.get(ref);
     if (existing.exists()) {

@@ -325,11 +325,13 @@ for (const [day, category, amount, who, note] of bills) {
 
 // ---- sales -------------------------------------------------------------------
 
-const cubePrice = 8500;
-// A lorry's load is always one of these — the yard's own fleet, in cubes —
-// and is priced the same way as a loose cube, by cubePrice.
-const lorrySizes = [1, 2, 2.5, 3, 4, 5];
+// A full tipper load is three cubes; the panel divides, and stores both.
+const tipperPrice = 19500;
+const cubePrice = tipperPrice / 3;
+// The cube capacities a tipper comes in — the yard's own fleet.
+const tipperSizes = [1, 2, 2.5, 3, 4, 5];
 await db.doc('settings/sales').set({
+  tipperPrice,
   cubePrice,
   updatedAt: Timestamp.fromDate(daysAgo(30)),
   updatedBy: uids.pivithuru,
@@ -350,8 +352,9 @@ let saleCount = 0;
 // Each month's bills are numbered from 1, the way the apps number them.
 const saleCounts = {};
 async function addSale({ createdAt, status, verifiedAt = null, verifier = null }) {
-  const type = next() > 0.4 ? 'cube' : 'tractor';
-  const quantity = type === 'cube' ? between(1, 5) : lorrySizes[Math.floor(next() * lorrySizes.length)];
+  const type = next() > 0.4 ? 'tipper' : 'tractor';
+  // A tipper's quantity is the cubes it took; a tractor's is whole loads.
+  const quantity = type === 'tipper' ? tipperSizes[Math.floor(next() * tipperSizes.length)] : between(1, 3);
   const unitPrice = cubePrice;
   const [customerName, customerPhone, vehicleNo] = customers[saleCount % customers.length];
   const by = saleCount % 3 === 0 ? 'pivithuru' : 'nimal';

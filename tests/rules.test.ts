@@ -495,16 +495,17 @@ describe('sales', () => {
   async function setPrices() {
     await env.withSecurityRulesDisabled(async (context) => {
       const db = context.firestore() as unknown as Firestore;
-      await setDoc(doc(db, 'settings', 'sales'), { cubePrice: 8500 });
+      await setDoc(doc(db, 'settings', 'sales'), { tipperPrice: 19500, cubePrice: 6500 });
     });
   }
 
   const sale = (by: string, code: string, overrides: object = {}) => ({
     code,
-    type: 'cube',
+    // A full tipper: three cubes at 6,500, the 19,500 the admin set.
+    type: 'tipper',
     quantity: 3,
-    unitPrice: 8500,
-    amount: 25500,
+    unitPrice: 6500,
+    amount: 19500,
     customerName: 'Silva',
     customerPhone: '',
     vehicleNo: '',
@@ -549,39 +550,42 @@ describe('sales', () => {
   });
 
   it('only the admin sets the prices, and never to nothing', async () => {
-    await assertSucceeds(setDoc(doc(as('admin1'), 'settings', 'sales'), { cubePrice: 9000 }));
-    await assertFails(setDoc(doc(as('sup1'), 'settings', 'sales'), { cubePrice: 1 }));
-    await assertFails(setDoc(doc(as('admin1'), 'settings', 'sales'), { cubePrice: 0 }));
+    await assertSucceeds(setDoc(doc(as('admin1'), 'settings', 'sales'), { tipperPrice: 21000, cubePrice: 7000 }));
+    await assertFails(setDoc(doc(as('sup1'), 'settings', 'sales'), { tipperPrice: 3, cubePrice: 1 }));
+    await assertFails(setDoc(doc(as('admin1'), 'settings', 'sales'), { tipperPrice: 21000, cubePrice: 0 }));
+    // The cube price is not optional: every sale is priced from it.
+    await assertFails(setDoc(doc(as('admin1'), 'settings', 'sales'), { tipperPrice: 21000 }));
     await assertSucceeds(getDoc(doc(as('op1'), 'settings', 'sales')));
   });
 
   it('staff add a sale priced from the settings; crews cannot', async () => {
     await setPrices();
     await assertSucceeds(addSale(as('sup1'), 'CUBE2345', sale('sup1', 'CUBE2345')));
-    // A tractor load is priced the same way as a cube, by its capacity in
-    // cubes — a 2-cube lorry is two cubePrice, same as two loose cubes.
+    // A tractor's quantity is whole loads, and one load is one cube.
     await assertSucceeds(
       addSale(
         as('admin1'),
         'TRAC2345',
-        sale('admin1', 'TRAC2345', { type: 'tractor', quantity: 2, unitPrice: 8500, amount: 17000, number: 2 }),
+        sale('admin1', 'TRAC2345', { type: 'tractor', quantity: 2, unitPrice: 6500, amount: 13000, number: 2 }),
       ),
     );
     await assertFails(addSale(as('op1'), 'CREW2345', sale('op1', 'CREW2345', { number: 3 })));
   });
 
-  it('a part-cube is priced the same way, whole and fractional numbers mixing', async () => {
+  it('a 2.5-cube tipper is priced the same way, whole and fractional numbers mixing', async () => {
     await setPrices();
-    // 2.5 is stored as a double and 8500 as an integer; the sum has to hold
+    // 2.5 is stored as a double and 6500 as an integer; the sum has to hold
     // across the two, as it does when the operator app writes it.
     await assertSucceeds(
-      addSale(as('sup1'), 'HALF2345', sale('sup1', 'HALF2345', { quantity: 2.5, unitPrice: 8500, amount: 21250 })),
+      addSale(as('sup1'), 'HALF2345', sale('sup1', 'HALF2345', { quantity: 2.5, unitPrice: 6500, amount: 16250 })),
     );
   });
 
   it('the price and the sum have to be the settings\' own', async () => {
     await setPrices();
     const db = as('sup1');
+    // The tipper's own price, not the cube price every sale is written at.
+    await assertFails(addSale(db, 'WHOLE234', sale('sup1', 'WHOLE234', { unitPrice: 19500, amount: 58500 })));
     await assertFails(addSale(db, 'CHEAP234', sale('sup1', 'CHEAP234', { unitPrice: 5000, amount: 15000 })));
     await assertFails(addSale(db, 'WRNGSUM2', sale('sup1', 'WRNGSUM2', { amount: 20000 })));
     await assertFails(addSale(db, 'ZERO2345', sale('sup1', 'ZERO2345', { quantity: 0, amount: 0 })));

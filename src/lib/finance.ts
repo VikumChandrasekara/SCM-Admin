@@ -149,7 +149,7 @@ export function financeFor({
   const ledger: LedgerEntry[] = [];
 
   // ---- income ----
-  const incomeByType: Record<SaleType, SalesTotal> = { cube: noSales(), tractor: noSales() };
+  const incomeByType: Record<SaleType, SalesTotal> = { tipper: noSales(), tractor: noSales() };
   const pending = noSales();
   const cancelled = noSales();
   for (const sale of sales) {
@@ -159,7 +159,7 @@ export function financeFor({
       ledger.push({
         date: sale.date,
         kind: 'sale',
-        description: `${SALE_TYPE[sale.type].label} ${quantity(sale.quantity)} · ${
+        description: `${SALE_TYPE[sale.type].label} ${quantity(sale.quantity, SALE_TYPE[sale.type].unit)} · ${
           sale.customerName || 'පාරිභෝගිකයා'
         } · බිල් ${saleNumber(sale)}`,
         income: sale.amount,
@@ -171,7 +171,7 @@ export function financeFor({
       addSale(cancelled, sale);
     }
   }
-  const income = incomeByType.cube.amount + incomeByType.tractor.amount;
+  const income = incomeByType.tipper.amount + incomeByType.tractor.amount;
 
   // ---- crew pay ----
   const salaries: SalaryRow[] = crewMonths.map(({ person, days, tally }) => {

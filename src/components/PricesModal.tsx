@@ -3,30 +3,34 @@ import { useState, type FormEvent } from 'react';
 import { useSession } from '../auth/AuthContext';
 import { saveSalesPrices } from '../data/sales';
 import { errorMessage } from '../lib/errors';
-import type { SalesPrices } from '../lib/model';
+import { money } from '../lib/format';
+import { CUBES_PER_TIPPER, cubePriceFor, type SalesPrices } from '../lib/model';
 import { useToast } from './Toasts';
 import { Button, ErrorNote, Field, Input, Modal } from './ui';
 
 /**
- * Admin only: what one cube sells for from now on. A tractor load is priced
- * the same way, by its capacity in cubes — there is no separate rate for it.
+ * Admin only: what a full tipper load sells for from now on. It is the only
+ * price there is — one cube is a third of it, and a tractor load is one cube
+ * — so this is where the dividing happens, once, for both apps.
  */
 export function PricesModal({ prices, onClose }: { prices: SalesPrices | null; onClose: () => void }) {
   const { profile } = useSession();
   const toast = useToast();
-  const [cube, setCube] = useState(prices ? String(prices.cubePrice) : '');
+  const [tipper, setTipper] = useState(prices ? String(prices.tipperPrice) : '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const tipperPrice = Number(tipper);
+  const cubePrice = tipperPrice > 0 ? cubePriceFor(tipperPrice) : null;
+
   async function submit(event: FormEvent) {
     event.preventDefault();
-    const cubePrice = Number(cube);
-    if (!(cubePrice > 0)) return setError('මිල ශුන්‍යයට වඩා වැඩි විය යුතුය.');
+    if (!(tipperPrice > 0)) return setError('මිල ශුන්‍යයට වඩා වැඩි විය යුතුය.');
 
     setBusy(true);
     setError(null);
     try {
-      await saveSalesPrices({ cubePrice }, profile);
+      await saveSalesPrices({ tipperPrice, cubePrice: cubePriceFor(tipperPrice) }, profile);
       toast.success('මිල යාවත්කාලීන කළා. නව බිල්පත් මෙම මිලට සෑදේ.');
       onClose();
     } catch (failure) {
@@ -40,7 +44,7 @@ export function PricesModal({ prices, onClose }: { prices: SalesPrices | null; o
       open
       size="sm"
       title="විකුණුම් මිල"
-      subtitle="දැනටමත් සෑදූ බිල්පත් ඒවා සෑදූ මිලටම පවතී."
+      subtitle={`ටිපර් ලෝඩ් එකක් = කියුබ් ${CUBES_PER_TIPPER}. දැනටමත් සෑදූ බිල්පත් ඒවා සෑදූ මිලටම පවතී.`}
       onClose={onClose}
       footer={
         <>
@@ -54,9 +58,18 @@ export function PricesModal({ prices, onClose }: { prices: SalesPrices | null; o
       }
     >
       <form id="prices-form" onSubmit={submit} className="space-y-4">
-        <Field label="කියුබ් එකක මිල (රු.)">
-          <Input type="number" inputMode="decimal" min="0" step="1" autoFocus required value={cube} onChange={(event) => setCube(event.target.value)} />
+        <Field label="ටිපර් ලෝඩ් එකක මිල (රු.)" hint={`කියුබ් ${CUBES_PER_TIPPER}ක් — පිරුණු ටිපර් ලෝඩ් එකක්.`}>
+          <Input type="number" inputMode="decimal" min="0" step="1" autoFocus required value={tipper} onChange={(event) => setTipper(event.target.value)} />
         </Field>
+        <div className="rounded-card bg-well px-4 py-3 ring-1 ring-hairline">
+          <p className="text-xs font-semibold text-white/60">මෙයින් හැදෙන මිල</p>
+          <p className="mt-1 text-sm font-bold">
+            කියුබ් එකක් <span className="text-amber-hi tabular-nums">{cubePrice != null ? `රු. ${money(cubePrice)}` : '—'}</span>
+          </p>
+          <p className="text-sm font-bold">
+            ට්‍රැක්ටර් ලෝඩ් එකක් <span className="text-amber-hi tabular-nums">{cubePrice != null ? `රු. ${money(cubePrice)}` : '—'}</span>
+          </p>
+        </div>
         {error && <ErrorNote>{error}</ErrorNote>}
       </form>
     </Modal>
