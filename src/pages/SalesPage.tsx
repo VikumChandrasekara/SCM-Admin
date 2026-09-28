@@ -92,8 +92,10 @@ export function SalesPage() {
             <span className="rounded-full bg-well px-3 py-1.5 text-sm font-bold ring-1 ring-hairline">
               ටිපර් ලෝඩ් එකක් <span className="text-amber-hi tabular-nums">{rupees(prices.data.tipperPrice)}</span>
             </span>
+            {/* One load is one cube, so the tractor's figure is the cube
+                price — the one every sale is actually written at. */}
             <span className="rounded-full bg-well px-3 py-1.5 text-sm font-bold ring-1 ring-hairline">
-              කියුබ් එකක් <span className="text-amber-hi tabular-nums">{rupees(prices.data.cubePrice)}</span>
+              ට්‍රැක්ටර් ලෝඩ් එකක් <span className="text-amber-hi tabular-nums">{rupees(prices.data.cubePrice)}</span>
             </span>
             {permissions.setSalePrices && (
               <Button variant="ghost" size="sm" onClick={() => setEditingPrices(true)}>
