@@ -29,6 +29,11 @@ export function SaleModal({ onClose, onCreated }: { onClose: () => void; onCreat
   const count = Number(amount);
   const unitPrice = prices.data ? unitPriceOf(prices.data, type) : null;
   const total = unitPrice != null && Number.isFinite(count) && count > 0 ? count * unitPrice : null;
+  const loadPrice = prices.data
+    ? type === 'tipper'
+      ? `ටිපර් ලෝඩ් එකක් (කියුබ් ${CUBES_PER_TIPPER}) රු. ${money(prices.data.tipperPrice)}`
+      : `ට්‍රැක්ටර් ලෝඩ් එකක් රු. ${money(prices.data.tractorPrice)}`
+    : null;
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -131,9 +136,7 @@ export function SaleModal({ onClose, onCreated }: { onClose: () => void; onCreat
           <span className="text-sm font-bold">
             {total != null && unitPrice != null
               ? `${quantity(count, SALE_TYPE[type].unit)} × ${money(unitPrice)}`
-              : unitPrice != null
-                ? `${SALE_TYPE[type].unit} එකක් රු. ${money(unitPrice)}`
-                : 'මිල පූරණය වෙමින්...'}
+              : (loadPrice ?? 'මිල පූරණය වෙමින්...')}
           </span>
           <span className="text-xl font-extrabold tabular-nums">{total != null ? rupees(total) : '—'}</span>
         </div>
