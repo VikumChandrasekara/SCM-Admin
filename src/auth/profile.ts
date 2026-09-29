@@ -16,7 +16,12 @@ export function watchProfile(
 ): () => void {
   return onSnapshot(
     doc(db, 'operators', uid),
-    (snapshot) => next(snapshot.exists() ? personFrom(snapshot.id, snapshot.data()) : null),
+    { includeMetadataChanges: true },
+    (snapshot) => {
+      if (snapshot.exists()) next(personFrom(snapshot.id, snapshot.data()));
+      // A miss read from the local cache (stale, or not yet online) is not proof the record is gone.
+      else if (!snapshot.metadata.fromCache) next(null);
+    },
     fail,
   );
 }

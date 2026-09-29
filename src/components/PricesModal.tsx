@@ -64,7 +64,7 @@ export function PricesModal({ prices, onClose }: { prices: SalesPrices; onClose:
           label="ටිපර් ලෝඩ් එකක මිල (රු.)"
           hint={
             cubePrice != null
-              ? `කියුබ් ${CUBES_PER_TIPPER}ක් — කියුබ් එකක් රු. ${money(cubePrice)}.`
+              ? `කියුබ් ${CUBES_PER_TIPPER}ක් — ටිපර් ලෝඩ් එකක් රු. ${money(cubePrice)}.`
               : `කියුබ් ${CUBES_PER_TIPPER}ක් — පිරුණු ටිපර් ලෝඩ් එකක්.`
           }
         >
