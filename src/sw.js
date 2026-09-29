@@ -10,7 +10,12 @@
 //
 // Firebase traffic is left alone: Firestore keeps its own offline copy.
 
-const VERSION = new URL(self.location.href).searchParams.get('v') || 'dev';
+// The build this file was made for, written in by vite.config.ts. It is the
+// worker's own content changing that tells a browser there is a newer one to
+// install — so the build has to be in the file, not in the address it was
+// registered under: a phone still running an older deploy can only ever ask
+// for the address that deploy knew, and would never be offered anything else.
+const VERSION = '__BUILD_ID__';
 const CACHE = `scm-admin-${VERSION}`;
 const PAGE = '/index.html';
 const SLOW_NETWORK_MS = 3500;

@@ -1,14 +1,34 @@
+import { readFile } from 'node:fs/promises';
+
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
+
+/**
+ * Puts the service worker beside the built panel with the build written into
+ * it, which names the cache it keeps: each deploy starts a fresh one and the
+ * files of the last are cleared away. It is kept out of `public/` because
+ * what lands there is copied across untouched.
+ */
+function serviceWorker(): Plugin {
+  const build = Date.now().toString(36);
+  return {
+    name: 'scm-service-worker',
+    apply: 'build',
+    async generateBundle() {
+      const source = await readFile(new URL('src/sw.js', import.meta.url), 'utf8');
+      if (!source.includes('__BUILD_ID__')) {
+        // Without it every deploy would share one cache name and go on
+        // serving the files of the one before it.
+        throw new Error('src/sw.js has no __BUILD_ID__ for the build to be written into.');
+      }
+      this.emitFile({ type: 'asset', fileName: 'sw.js', source: source.replace('__BUILD_ID__', build) });
+    },
+  };
+}
 
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
-  define: {
-    // Names the service worker's cache, so each deploy starts a fresh one and
-    // the files of the last one are cleared away.
-    __BUILD_ID__: JSON.stringify(Date.now().toString(36)),
-  },
+  plugins: [react(), tailwindcss(), serviceWorker()],
   build: {
     rolldownOptions: {
       output: {
