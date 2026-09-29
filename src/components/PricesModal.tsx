@@ -9,28 +9,30 @@ import { useToast } from './Toasts';
 import { Button, ErrorNote, Field, Input, Modal } from './ui';
 
 /**
- * Admin only: what a full tipper load sells for from now on. It is the only
- * price there is — one cube is a third of it, and a tractor load is one cube
- * — so this is where the dividing happens, once, for both apps.
+ * Staff: what a full tipper load and a tractor load sell for from now on. A
+ * cube is a third of the tipper's figure, and this is where the dividing
+ * happens, for both apps.
  */
-export function PricesModal({ prices, onClose }: { prices: SalesPrices | null; onClose: () => void }) {
+export function PricesModal({ prices, onClose }: { prices: SalesPrices; onClose: () => void }) {
   const { profile } = useSession();
   const toast = useToast();
-  const [tipper, setTipper] = useState(prices ? String(prices.tipperPrice) : '');
+  const [tipper, setTipper] = useState(String(prices.tipperPrice));
+  const [tractor, setTractor] = useState(String(prices.tractorPrice));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const tipperPrice = Number(tipper);
+  const tractorPrice = Number(tractor);
   const cubePrice = tipperPrice > 0 ? cubePriceFor(tipperPrice) : null;
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (!(tipperPrice > 0)) return setError('මිල ශුන්‍යයට වඩා වැඩි විය යුතුය.');
+    if (!(tipperPrice > 0) || !(tractorPrice > 0)) return setError('මිල ශුන්‍යයට වඩා වැඩි විය යුතුය.');
 
     setBusy(true);
     setError(null);
     try {
-      await saveSalesPrices({ tipperPrice, cubePrice: cubePriceFor(tipperPrice) }, profile);
+      await saveSalesPrices({ tipperPrice, cubePrice: cubePriceFor(tipperPrice), tractorPrice }, profile);
       toast.success('මිල යාවත්කාලීන කළා. නව බිල්පත් මෙම මිලට සෑදේ.');
       onClose();
     } catch (failure) {
@@ -44,7 +46,7 @@ export function PricesModal({ prices, onClose }: { prices: SalesPrices | null; o
       open
       size="sm"
       title="විකුණුම් මිල"
-      subtitle={`ටිපර් ලෝඩ් එකක් = කියුබ් ${CUBES_PER_TIPPER}. දැනටමත් සෑදූ බිල්පත් ඒවා සෑදූ මිලටම පවතී.`}
+      subtitle="දැනටමත් සෑදූ බිල්පත් ඒවා සෑදූ මිලටම පවතී."
       onClose={onClose}
       footer={
         <>
@@ -58,18 +60,19 @@ export function PricesModal({ prices, onClose }: { prices: SalesPrices | null; o
       }
     >
       <form id="prices-form" onSubmit={submit} className="space-y-4">
-        <Field label="ටිපර් ලෝඩ් එකක මිල (රු.)" hint={`කියුබ් ${CUBES_PER_TIPPER}ක් — පිරුණු ටිපර් ලෝඩ් එකක්.`}>
+        <Field
+          label="ටිපර් ලෝඩ් එකක මිල (රු.)"
+          hint={
+            cubePrice != null
+              ? `කියුබ් ${CUBES_PER_TIPPER}ක් — කියුබ් එකක් රු. ${money(cubePrice)}.`
+              : `කියුබ් ${CUBES_PER_TIPPER}ක් — පිරුණු ටිපර් ලෝඩ් එකක්.`
+          }
+        >
           <Input type="number" inputMode="decimal" min="0" step="1" autoFocus required value={tipper} onChange={(event) => setTipper(event.target.value)} />
         </Field>
-        <div className="rounded-card bg-well px-4 py-3 ring-1 ring-hairline">
-          <p className="text-xs font-semibold text-white/60">මෙයින් හැදෙන මිල</p>
-          <p className="mt-1 text-sm font-bold">
-            කියුබ් එකක් <span className="text-amber-hi tabular-nums">{cubePrice != null ? `රු. ${money(cubePrice)}` : '—'}</span>
-          </p>
-          <p className="text-sm font-bold">
-            ට්‍රැක්ටර් ලෝඩ් එකක් <span className="text-amber-hi tabular-nums">{cubePrice != null ? `රු. ${money(cubePrice)}` : '—'}</span>
-          </p>
-        </div>
+        <Field label="ට්‍රැක්ටර් ලෝඩ් එකක මිල (රු.)">
+          <Input type="number" inputMode="decimal" min="0" step="1" required value={tractor} onChange={(event) => setTractor(event.target.value)} />
+        </Field>
         {error && <ErrorNote>{error}</ErrorNote>}
       </form>
     </Modal>

@@ -765,8 +765,8 @@ export function billFrom(id: string, data: DocumentData): Bill {
 
 /**
  * What the yard sells, by the vehicle it leaves in: a tipper lorry, measured
- * in the cubes it carried, or a tractor, one trailer load at a time. Both are
- * priced from one cube — see {@link SalesPrices}.
+ * and priced in the cubes it carried, or a tractor, measured and priced one
+ * trailer load at a time — see {@link SalesPrices}.
  */
 export type SaleType = 'tipper' | 'tractor';
 
@@ -803,35 +803,50 @@ export const SALE_CODE_ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
 export const CUBES_PER_TIPPER = 3;
 
 /**
- * The one figure the admin sets — what a full tipper load sells for — and the
- * cube price worked out from it. Every sale is priced per cube from
- * {@link cubePrice}, and firestore.rules checks the sum against it.
+ * What staff set — a full tipper load's price and a tractor load's — and the
+ * cube price worked out from the first. A tipper sale is priced per cube from
+ * {@link cubePrice}, a tractor sale per load from {@link tractorPrice}, and
+ * firestore.rules checks the sum against the same figure.
  */
 export interface SalesPrices {
   /** Rupees for a full tipper load — {@link CUBES_PER_TIPPER} cubes. */
   tipperPrice: number;
   /** Rupees for one cube: {@link tipperPrice} over {@link CUBES_PER_TIPPER}. */
   cubePrice: number;
+  /** Rupees for one tractor load. */
+  tractorPrice: number;
 }
 
-/** One cube's price for `tipperPrice` — what the admin's figure comes to. */
+/**
+ * What sales are priced at until staff set otherwise. firestore.rules falls
+ * back to the same figures.
+ */
+export const DEFAULT_SALES_PRICES: SalesPrices = { tipperPrice: 19500, cubePrice: 6500, tractorPrice: 6500 };
+
+/** One cube's price for `tipperPrice` — what a tipper load's figure comes to. */
 export function cubePriceFor(tipperPrice: number): number {
   return tipperPrice / CUBES_PER_TIPPER;
 }
 
+/** What one of `type`'s units sells for — a cube for a tipper, a load for a tractor. */
+export function unitPriceOf(prices: SalesPrices, type: SaleType): number {
+  return type === 'tipper' ? prices.cubePrice : prices.tractorPrice;
+}
+
 /**
- * Null until the admin has set the price, which also means null for a price
- * set before tipper loads were counted in cubes: that older figure was a
- * whole load's, and reading it as one cube's would price every sale at three
- * times what it should be. Better the panel says the price is unset — it will
- * not write a bill without one — than quietly overcharge until someone
- * notices.
+ * The defaults until staff have set the prices — and for a document from
+ * before tipper loads were counted in cubes, whose figures meant something
+ * else and would misprice every sale.
  */
-export function pricesFrom(data: DocumentData | undefined): SalesPrices | null {
-  const tipperPrice = numOrNull(data?.tipperPrice);
-  const cubePrice = numOrNull(data?.cubePrice);
-  if (tipperPrice == null || cubePrice == null || tipperPrice <= 0 || cubePrice <= 0) return null;
-  return { tipperPrice, cubePrice };
+export function pricesFrom(data: DocumentData | undefined): SalesPrices {
+  const positive = (value: unknown) => {
+    const number = numOrNull(value);
+    return number != null && number > 0 ? number : null;
+  };
+  const tipperPrice = positive(data?.tipperPrice);
+  const cubePrice = positive(data?.cubePrice);
+  if (tipperPrice == null || cubePrice == null) return DEFAULT_SALES_PRICES;
+  return { tipperPrice, cubePrice, tractorPrice: positive(data?.tractorPrice) ?? DEFAULT_SALES_PRICES.tractorPrice };
 }
 
 export interface Sale {

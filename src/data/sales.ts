@@ -19,6 +19,7 @@ import {
   pricesFrom,
   saleFrom,
   saleStatus,
+  unitPriceOf,
   type Person,
   type Sale,
   type SaleType,
@@ -30,8 +31,8 @@ import { useLiveDoc, useLiveQuery } from './live';
 const pricesRef = () => doc(db, 'settings', 'sales');
 
 /**
- * What a full tipper load sells for and what one cube comes to; null until
- * the admin sets them.
+ * What a full tipper load, one cube and one tractor load sell for — the
+ * defaults until staff set them.
  */
 export function useSalesPrices() {
   return useLiveDoc(pricesRef(), (snapshot) => pricesFrom(snapshot.data()));
@@ -99,7 +100,6 @@ export async function createSale(input: SaleInput, by: Person): Promise<string> 
 
   await runTransaction(db, async (tx) => {
     const prices = pricesFrom((await tx.get(pricesRef())).data());
-    if (!prices) throw new Error('ටිපර් ලෝඩ් එකක මිල තවම සකසා නැත. පරිපාලක අමතන්න.');
 
     const existing = await tx.get(ref);
     if (existing.exists()) {
@@ -112,7 +112,7 @@ export async function createSale(input: SaleInput, by: Person): Promise<string> 
     const number = (typeof last === 'number' ? last : 0) + 1;
     const month = date.slice(0, 7);
 
-    const unitPrice = prices.cubePrice;
+    const unitPrice = unitPriceOf(prices, input.type);
     tx.set(counterRef, { last: number, lastCode: code });
     // Points the bill's printed invoice number back at its real code, so
     // typing that number in to verify it does one direct read.

@@ -19,7 +19,7 @@ export interface Permissions {
   setRates: boolean;
   /** Write sales — supervisors too. */
   addSales: boolean;
-  /** What a cube and a tractor load sell for. */
+  /** What a tipper load and a tractor load sell for — supervisors too. */
   setSalePrices: boolean;
   /** Income, expenses and profit. */
   viewFinance: boolean;
@@ -36,7 +36,7 @@ export function permissionsFor(profile: Person): Permissions {
     canEditBill: (bill) => isAdmin || bill.createdBy === profile.id,
     setRates: isAdmin,
     addSales: true,
-    setSalePrices: isAdmin,
+    setSalePrices: true,
     viewFinance: isAdmin,
   };
 }

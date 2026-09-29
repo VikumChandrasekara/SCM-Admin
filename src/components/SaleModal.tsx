@@ -4,13 +4,13 @@ import { useSession } from '../auth/AuthContext';
 import { createSale, useSalesPrices } from '../data/sales';
 import { errorMessage } from '../lib/errors';
 import { money, quantity, rupees } from '../lib/format';
-import { CUBES_PER_TIPPER, SALE_TYPE, SALE_TYPES, TIPPER_SIZES, type SaleType } from '../lib/model';
+import { CUBES_PER_TIPPER, SALE_TYPE, SALE_TYPES, TIPPER_SIZES, unitPriceOf, type SaleType } from '../lib/model';
 import { useToast } from './Toasts';
 import { Button, ErrorNote, Field, Input, Modal, Segmented, Textarea } from './ui';
 
 /**
- * A new sale. The price is the one the admin set — this only chooses what
- * and how much, and shows the sum before it is written.
+ * A new sale. The price is the one staff set — this only chooses what and
+ * how much, and shows the sum before it is written.
  */
 export function SaleModal({ onClose, onCreated }: { onClose: () => void; onCreated: (code: string) => void }) {
   const { profile } = useSession();
@@ -27,12 +27,11 @@ export function SaleModal({ onClose, onCreated }: { onClose: () => void; onCreat
   const [error, setError] = useState<string | null>(null);
 
   const count = Number(amount);
-  const unitPrice = prices.data ? prices.data.cubePrice : null;
+  const unitPrice = prices.data ? unitPriceOf(prices.data, type) : null;
   const total = unitPrice != null && Number.isFinite(count) && count > 0 ? count * unitPrice : null;
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (!prices.data) return setError('ටිපර් ලෝඩ් එකක මිල තවම සකසා නැත.');
     if (!Number.isFinite(count) || count <= 0) return setError('ප්‍රමාණය ශුන්‍යයට වඩා වැඩි විය යුතුය.');
     if (!customerName.trim()) return setError('පාරිභෝගිකයාගේ නම ඇතුළත් කරන්න.');
     if (!vehicleNo.trim()) return setError('වාහන අංකය ඇතුළත් කරන්න.');
@@ -82,10 +81,10 @@ export function SaleModal({ onClose, onCreated }: { onClose: () => void; onCreat
             }}
             options={SALE_TYPES.map((value) => ({
               value,
-              // A tipper's figure is a whole load's — what the admin set; a
-              // tractor's is one load, which is one cube.
+              // A tipper's figure is a whole load's, though it is sold by the
+              // cube; a tractor's is one load.
               label: prices.data
-                ? `${SALE_TYPE[value].label} · ${money(value === 'tipper' ? prices.data.tipperPrice : prices.data.cubePrice)}`
+                ? `${SALE_TYPE[value].label} · ${money(value === 'tipper' ? prices.data.tipperPrice : prices.data.tractorPrice)}`
                 : SALE_TYPE[value].label,
             }))}
           />
@@ -134,7 +133,7 @@ export function SaleModal({ onClose, onCreated }: { onClose: () => void; onCreat
               ? `${quantity(count, SALE_TYPE[type].unit)} × ${money(unitPrice)}`
               : unitPrice != null
                 ? `${SALE_TYPE[type].unit} එකක් රු. ${money(unitPrice)}`
-                : 'මිල සකසා නැත'}
+                : 'මිල පූරණය වෙමින්...'}
           </span>
           <span className="text-xl font-extrabold tabular-nums">{total != null ? rupees(total) : '—'}</span>
         </div>

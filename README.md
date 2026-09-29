@@ -14,7 +14,7 @@ React 19 · TypeScript · Vite · Tailwind CSS 4 · Firebase JS SDK 12
 | පාලක පුවරුව | Every crew member's day side by side (පරික්ෂාව, service hours, පිරවීම in litres and rupees), plus one person's month: loads against the bonus ladder and the four money figures | Same |
 | ගබඩාව | Add, edit and delete items. Restock, draw down and recount. Low and out-of-stock alerts. The log of every change | Same |
 | බිල්පත් | Add, edit and delete any bill | Add bills, and edit or delete their own |
-| විකුණුම් | Sales bills for cubes and tractor loads, each with a QR code, and the prices they are sold at | Sales bills; the prices are read-only |
+| විකුණුම් | Sales bills for tipper and tractor loads, each with a QR code, and the prices they are sold at | Same |
 | තහවුරු කිරීම | Verify a sale by scanning its QR with the computer's camera, or by typing its number | Same |
 | මූල්‍ය | A month's income, expenses and profit, with every entry behind them | Not shown |
 | වෙඩි බඩු | Each compressor crew's sheet for a day, the month's totals, and the explosives left in the store | Same |
@@ -76,12 +76,16 @@ open also raises a desktop notification.
 
 ### Sales
 
-A sale is a bill for material sold by the cube or by the tractor load.
-Supervisors and the admin write them, in the panel or in the app. The admin
-sets the price of a cube and of a tractor load under **විකුණුම්**, and every
-sale is priced from there. `firestore.rules` checks that a sale's unit price
-is the set one and its amount is quantity × price, so no bill can be written
-at any other price.
+A sale is a bill for a tipper load, sold by the cube, or for tractor loads.
+Supervisors and the admin write them, in the panel or in the app. They also
+set the prices, under **විකුණුම්** here or on the app's විකුණුම් බිල්පත්
+screen: what a full tipper load (3 cubes) sells for and what a tractor load
+sells for. A cube is a third of the tipper load's price. Until anyone sets
+them, the prices are Rs. 19,500 a tipper load (Rs. 6,500 a cube) and
+Rs. 6,500 a tractor load. `firestore.rules` checks that a sale's unit price
+is the set one (or the default) and its amount is quantity × price, so no
+bill can be written at any other price. Bills already written keep the price
+they were written at.
 
 Every bill has an 8-character code, such as `K7Q2-M9XA`, with no 0/O or 1/I
 to misread, and a QR code carrying it. The code is the sale's document ID.

@@ -492,10 +492,10 @@ describe('queued writes sent twice', () => {
 });
 
 describe('sales', () => {
-  async function setPrices() {
+  async function setPrices(prices: object = { tipperPrice: 19500, cubePrice: 6500, tractorPrice: 6500 }) {
     await env.withSecurityRulesDisabled(async (context) => {
       const db = context.firestore() as unknown as Firestore;
-      await setDoc(doc(db, 'settings', 'sales'), { tipperPrice: 19500, cubePrice: 6500 });
+      await setDoc(doc(db, 'settings', 'sales'), prices);
     });
   }
 
@@ -549,27 +549,77 @@ describe('sales', () => {
     verifiedAt: serverTimestamp(),
   });
 
-  it('only the admin sets the prices, and never to nothing', async () => {
-    await assertSucceeds(setDoc(doc(as('admin1'), 'settings', 'sales'), { tipperPrice: 21000, cubePrice: 7000 }));
-    await assertFails(setDoc(doc(as('sup1'), 'settings', 'sales'), { tipperPrice: 3, cubePrice: 1 }));
-    await assertFails(setDoc(doc(as('admin1'), 'settings', 'sales'), { tipperPrice: 21000, cubePrice: 0 }));
-    // The cube price is not optional: every sale is priced from it.
-    await assertFails(setDoc(doc(as('admin1'), 'settings', 'sales'), { tipperPrice: 21000 }));
+  it('staff set the prices, and never to nothing', async () => {
+    const prices = { tipperPrice: 21000, cubePrice: 7000, tractorPrice: 5000 };
+    await assertSucceeds(setDoc(doc(as('admin1'), 'settings', 'sales'), prices));
+    await assertSucceeds(setDoc(doc(as('sup1'), 'settings', 'sales'), prices));
+    await assertFails(setDoc(doc(as('op1'), 'settings', 'sales'), prices));
+    await assertFails(setDoc(doc(as('admin1'), 'settings', 'sales'), { ...prices, cubePrice: 0 }));
+    await assertFails(setDoc(doc(as('admin1'), 'settings', 'sales'), { ...prices, tractorPrice: 0 }));
+    // All three go together: a tipper sale is priced from the cube, a
+    // tractor sale from its own.
+    await assertFails(setDoc(doc(as('admin1'), 'settings', 'sales'), { tipperPrice: 21000, cubePrice: 7000 }));
+    await assertFails(setDoc(doc(as('admin1'), 'settings', 'sales'), { tipperPrice: 21000, tractorPrice: 5000 }));
     await assertSucceeds(getDoc(doc(as('op1'), 'settings', 'sales')));
   });
 
-  it('staff add a sale priced from the settings; crews cannot', async () => {
-    await setPrices();
+  it('with no prices set, sales are written at the defaults', async () => {
+    // 6,500 a cube — a third of 19,500 — and 6,500 a tractor load.
     await assertSucceeds(addSale(as('sup1'), 'CUBE2345', sale('sup1', 'CUBE2345')));
-    // A tractor's quantity is whole loads, and one load is one cube.
+    await assertSucceeds(
+      addSale(
+        as('sup1'),
+        'TRAC2345',
+        sale('sup1', 'TRAC2345', { type: 'tractor', quantity: 2, unitPrice: 6500, amount: 13000, number: 2 }),
+      ),
+    );
+    await assertFails(
+      addSale(
+        as('sup1'),
+        'TRAC2346',
+        sale('sup1', 'TRAC2346', { type: 'tractor', quantity: 2, unitPrice: 5000, amount: 10000, number: 3 }),
+      ),
+    );
+  });
+
+  it('a settings document from before tipper loads were counted in cubes reads as the defaults', async () => {
+    await setPrices({ cubePrice: 8500, tractorPrice: 4500 });
+    await assertSucceeds(addSale(as('sup1'), 'CUBE2345', sale('sup1', 'CUBE2345')));
+    await assertFails(
+      addSale(
+        as('sup1'),
+        'TRAC2345',
+        sale('sup1', 'TRAC2345', { type: 'tractor', quantity: 2, unitPrice: 4500, amount: 9000, number: 2 }),
+      ),
+    );
+  });
+
+  it('staff add a sale priced from the settings; crews cannot', async () => {
+    await setPrices({ tipperPrice: 21000, cubePrice: 7000, tractorPrice: 5000 });
+    // A tipper by the cube: three at 7,000.
+    await assertSucceeds(
+      addSale(as('sup1'), 'CUBE2345', sale('sup1', 'CUBE2345', { unitPrice: 7000, amount: 21000 })),
+    );
+    // A tractor by the load, at its own price.
     await assertSucceeds(
       addSale(
         as('admin1'),
         'TRAC2345',
-        sale('admin1', 'TRAC2345', { type: 'tractor', quantity: 2, unitPrice: 6500, amount: 13000, number: 2 }),
+        sale('admin1', 'TRAC2345', { type: 'tractor', quantity: 2, unitPrice: 5000, amount: 10000, number: 2 }),
       ),
     );
-    await assertFails(addSale(as('op1'), 'CREW2345', sale('op1', 'CREW2345', { number: 3 })));
+    // Not the cube's price, nor the defaults'.
+    await assertFails(
+      addSale(
+        as('sup1'),
+        'TRAC2346',
+        sale('sup1', 'TRAC2346', { type: 'tractor', quantity: 2, unitPrice: 7000, amount: 14000, number: 3 }),
+      ),
+    );
+    await assertFails(addSale(as('sup1'), 'DFLT2345', sale('sup1', 'DFLT2345', { number: 3 })));
+    await assertFails(
+      addSale(as('op1'), 'CREW2345', sale('op1', 'CREW2345', { unitPrice: 7000, amount: 21000, number: 3 })),
+    );
   });
 
   it('a 2.5-cube tipper is priced the same way, whole and fractional numbers mixing', async () => {

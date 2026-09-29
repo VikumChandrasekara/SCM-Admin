@@ -328,11 +328,13 @@ for (const [day, category, amount, who, note] of bills) {
 // A full tipper load is three cubes; the panel divides, and stores both.
 const tipperPrice = 19500;
 const cubePrice = tipperPrice / 3;
+const tractorPrice = 6500;
 // The cube capacities a tipper comes in — the yard's own fleet.
 const tipperSizes = [1, 2, 2.5, 3, 4, 5];
 await db.doc('settings/sales').set({
   tipperPrice,
   cubePrice,
+  tractorPrice,
   updatedAt: Timestamp.fromDate(daysAgo(30)),
   updatedBy: uids.pivithuru,
 });
@@ -355,7 +357,7 @@ async function addSale({ createdAt, status, verifiedAt = null, verifier = null }
   const type = next() > 0.4 ? 'tipper' : 'tractor';
   // A tipper's quantity is the cubes it took; a tractor's is whole loads.
   const quantity = type === 'tipper' ? tipperSizes[Math.floor(next() * tipperSizes.length)] : between(1, 3);
-  const unitPrice = cubePrice;
+  const unitPrice = type === 'tipper' ? cubePrice : tractorPrice;
   const [customerName, customerPhone, vehicleNo] = customers[saleCount % customers.length];
   const by = saleCount % 3 === 0 ? 'pivithuru' : 'nimal';
   const code = newCode();

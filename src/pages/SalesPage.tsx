@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, Plus, ShoppingCart, Tag, TriangleAlert } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, ShoppingCart, Tag } from 'lucide-react';
 import { useState } from 'react';
 
 import { useSession } from '../auth/AuthContext';
@@ -77,33 +77,21 @@ export function SalesPage() {
         }
       />
 
-      {prices.data === null ? (
-        <Panel tone="deep" className="mb-6 flex flex-wrap items-center gap-3 p-4">
-          <TriangleAlert className="size-5 text-signal" />
-          <p className="flex-1 text-sm font-bold text-signal">
-            ටිපර් ලෝඩ් එකක මිල තවම සකසා නැත — බිල්පත් සෑදීමට පෙර සකසන්න.
-          </p>
-          {permissions.setSalePrices && <Button onClick={() => setEditingPrices(true)}>මිල සකසන්න</Button>}
-        </Panel>
-      ) : (
-        prices.data && (
-          <div className="mb-6 flex flex-wrap items-center gap-2">
-            <Tag className="size-4 text-white/60" />
-            <span className="rounded-full bg-well px-3 py-1.5 text-sm font-bold ring-1 ring-hairline">
-              ටිපර් ලෝඩ් එකක් <span className="text-amber-hi tabular-nums">{rupees(prices.data.tipperPrice)}</span>
-            </span>
-            {/* One load is one cube, so the tractor's figure is the cube
-                price — the one every sale is actually written at. */}
-            <span className="rounded-full bg-well px-3 py-1.5 text-sm font-bold ring-1 ring-hairline">
-              ට්‍රැක්ටර් ලෝඩ් එකක් <span className="text-amber-hi tabular-nums">{rupees(prices.data.cubePrice)}</span>
-            </span>
-            {permissions.setSalePrices && (
-              <Button variant="ghost" size="sm" onClick={() => setEditingPrices(true)}>
-                මිල වෙනස් කරන්න
-              </Button>
-            )}
-          </div>
-        )
+      {prices.data && (
+        <div className="mb-6 flex flex-wrap items-center gap-2">
+          <Tag className="size-4 text-white/60" />
+          <span className="rounded-full bg-well px-3 py-1.5 text-sm font-bold ring-1 ring-hairline">
+            ටිපර් ලෝඩ් එකක් <span className="text-amber-hi tabular-nums">{rupees(prices.data.tipperPrice)}</span>
+          </span>
+          <span className="rounded-full bg-well px-3 py-1.5 text-sm font-bold ring-1 ring-hairline">
+            ට්‍රැක්ටර් ලෝඩ් එකක් <span className="text-amber-hi tabular-nums">{rupees(prices.data.tractorPrice)}</span>
+          </span>
+          {permissions.setSalePrices && (
+            <Button variant="ghost" size="sm" onClick={() => setEditingPrices(true)}>
+              මිල වෙනස් කරන්න
+            </Button>
+          )}
+        </div>
       )}
 
       <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -209,7 +197,7 @@ export function SalesPage() {
           }}
         />
       )}
-      {editingPrices && <PricesModal prices={prices.data ?? null} onClose={() => setEditingPrices(false)} />}
+      {editingPrices && prices.data && <PricesModal prices={prices.data} onClose={() => setEditingPrices(false)} />}
       {showing && <SaleReceiptModal code={showing} onClose={() => setShowing(null)} />}
     </>
   );
