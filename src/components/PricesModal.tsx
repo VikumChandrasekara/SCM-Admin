@@ -64,8 +64,8 @@ export function PricesModal({ prices, onClose }: { prices: SalesPrices; onClose:
           label="ටිපර් ලෝඩ් එකක මිල (රු.)"
           hint={
             cubePrice != null
-              ? `කියුබ් ${CUBES_PER_TIPPER}ක් — ටිපර් ලෝඩ් එකක් රු. ${money(cubePrice)}.`
-              : `කියුබ් ${CUBES_PER_TIPPER}ක් — පිරුණු ටිපර් ලෝඩ් එකක්.`
+              ? `ටිපර් ලෝඩ් එකක් = කියුබ් ${CUBES_PER_TIPPER} · කියුබ් එකක් රු. ${money(cubePrice)}`
+              : `ටිපර් ලෝඩ් එකක් = කියුබ් ${CUBES_PER_TIPPER}`
           }
         >
           <Input type="number" inputMode="decimal" min="0" step="1" autoFocus required value={tipper} onChange={(event) => setTipper(event.target.value)} />
