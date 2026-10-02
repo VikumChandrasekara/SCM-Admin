@@ -25,6 +25,7 @@ import {
   type SaleType,
   type SalesPrices,
 } from '../lib/model';
+import { auditEntry } from './audit';
 import { commit } from './commit';
 import { useLiveDoc, useLiveQuery } from './live';
 
@@ -41,6 +42,17 @@ export function useSalesPrices() {
 export async function saveSalesPrices(prices: SalesPrices, by: Person): Promise<void> {
   const batch = writeBatch(db);
   batch.set(pricesRef(), { ...prices, updatedAt: serverTimestamp(), updatedBy: by.id });
+  batch.set(
+    doc(collection(db, 'auditLog')),
+    auditEntry(
+      'sales.prices',
+      'settings',
+      'sales',
+      'විකුණුම් මිල',
+      `ටිපර් ලෝඩ් රු.${prices.tipperPrice} (කියුබ් රු.${prices.cubePrice}) · ට්‍රැක්ටර් ලෝඩ් රු.${prices.tractorPrice}`,
+      by,
+    ),
+  );
   await commit(batch);
 }
 

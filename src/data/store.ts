@@ -20,6 +20,7 @@ import {
   type StockLink,
   type StoreItem,
 } from '../lib/model';
+import { auditEntry } from './audit';
 import { commit } from './commit';
 import { useLiveQuery } from './live';
 
@@ -91,7 +92,23 @@ export async function createItem(
     doc(collection(db, 'storeMovements')),
     movement('create', { id: ref.id, name, unit, unitPrice: input.unitPrice }, input.quantity, '', by),
   );
+  batch.set(
+    doc(collection(db, 'auditLog')),
+    auditEntry('store.create', 'store', ref.id, name, `ආරම්භක ප්‍රමාණය ${input.quantity} ${unit}`, by),
+  );
   await commit(batch);
+}
+
+/** What changed between the stored item and the fields about to be saved. */
+function itemDiff(before: StoreItem, input: ItemInput): string {
+  const lines: string[] = [];
+  const name = input.name.trim();
+  if (name && name !== before.name) lines.push(`නම: ${before.name} → ${name}`);
+  const unit = input.unit.trim();
+  if (unit !== before.unit) lines.push(`ඒකකය: ${before.unit || '—'} → ${unit || '—'}`);
+  if (input.minQuantity !== before.minQuantity) lines.push(`අවම ප්‍රමාණය: ${before.minQuantity} → ${input.minQuantity}`);
+  if (input.unitPrice !== before.unitPrice) lines.push(`ඒකක මිල: රු.${before.unitPrice} → රු.${input.unitPrice}`);
+  return lines.length > 0 ? lines.join(' · ') : 'වෙනසක් නැත';
 }
 
 /** Admin only: everything but the count and the link. */
@@ -106,6 +123,10 @@ export async function updateItem(item: StoreItem, input: ItemInput, by: Person):
     updatedAt: serverTimestamp(),
     updatedBy: by.id,
   });
+  batch.set(
+    doc(collection(db, 'auditLog')),
+    auditEntry('store.update', 'store', item.id, item.name, itemDiff(item, input), by),
+  );
   await commit(batch);
 }
 
@@ -148,5 +169,9 @@ export async function deleteItem(item: StoreItem, by: Person): Promise<void> {
   const batch = writeBatch(db);
   batch.delete(doc(db, 'store', item.id));
   batch.set(doc(collection(db, 'storeMovements')), movement('delete', item, -item.quantity, '', by));
+  batch.set(
+    doc(collection(db, 'auditLog')),
+    auditEntry('store.delete', 'store', item.id, item.name, `ඉතිරිව තිබූ ප්‍රමාණය ${item.quantity} ${item.unit}`, by),
+  );
   await commit(batch);
 }

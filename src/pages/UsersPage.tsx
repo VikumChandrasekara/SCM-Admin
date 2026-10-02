@@ -212,10 +212,15 @@ function UserModal({ person, onClose }: { person: Person | null; onClose: () => 
             meterHours: number(meter),
           },
           machines,
+          profile,
         );
         toast.success(`${name.trim()} යාවත්කාලීන කළා.`);
       } else {
-        await createAccount({ ...fields, username, password: secret, meterHours: number(meter) }, machines);
+        await createAccount(
+          { ...fields, username, password: secret, meterHours: number(meter) },
+          machines,
+          profile,
+        );
         toast.success(`${name.trim()} සඳහා ගිණුම සෑදුවා — පරිශීලක නාමය: ${username.trim().toLowerCase()}`);
       }
       onClose();
@@ -336,6 +341,7 @@ function UserModal({ person, onClose }: { person: Person | null; onClose: () => 
 }
 
 function PasswordModal({ person, onClose }: { person: Person; onClose: () => void }) {
+  const { profile } = useSession();
   const toast = useToast();
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
@@ -350,7 +356,7 @@ function PasswordModal({ person, onClose }: { person: Person; onClose: () => voi
     setBusy(true);
     setError(null);
     try {
-      await changePassword(person.username, current, next);
+      await changePassword(person, current, next, profile);
       toast.success(`${nameOf(person)} ගේ මුරපදය වෙනස් කළා.`);
       onClose();
     } catch (failure) {
@@ -394,6 +400,7 @@ function PasswordModal({ person, onClose }: { person: Person; onClose: () => voi
 }
 
 function RemoveModal({ person, onClose }: { person: Person; onClose: () => void }) {
+  const { profile } = useSession();
   const toast = useToast();
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
@@ -403,7 +410,7 @@ function RemoveModal({ person, onClose }: { person: Person; onClose: () => void 
     setBusy(true);
     setError(null);
     try {
-      await removeAccount(person, password || null);
+      await removeAccount(person, password || null, profile);
       toast.success(
         password ? `${nameOf(person)} ගේ ගිණුම සම්පූර්ණයෙන් මැකුවා.` : `${nameOf(person)} ගේ ප්‍රවේශය ඉවත් කළා.`,
       );

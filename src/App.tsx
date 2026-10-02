@@ -7,6 +7,7 @@ import { PageBoundary } from './components/PageBoundary';
 import { ToastProvider } from './components/Toasts';
 import { Loading } from './components/ui';
 import {
+  AuditLogPage,
   BillsPage,
   DashboardPage,
   ExplosivesPage,
@@ -62,6 +63,14 @@ export function App() {
                   element={
                     <AdminOnly>
                       <UsersPage />
+                    </AdminOnly>
+                  }
+                />
+                <Route
+                  path="audit"
+                  element={
+                    <AdminOnly>
+                      <AuditLogPage />
                     </AdminOnly>
                   }
                 />

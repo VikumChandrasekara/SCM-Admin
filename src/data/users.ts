@@ -5,11 +5,21 @@ import {
   signOut,
   updatePassword,
 } from 'firebase/auth';
-import { deleteDoc, doc, serverTimestamp, writeBatch, type WriteBatch } from 'firebase/firestore';
+import { collection, doc, serverTimestamp, writeBatch, type WriteBatch } from 'firebase/firestore';
 
 import { db } from '../db';
 import { emailFor, provisioningAuth } from '../firebase';
-import { ROLES, SERVICE, type Machine, type Person, type RoleId, type WageBasis } from '../lib/model';
+import {
+  ROLES,
+  SERVICE,
+  WAGE_BASIS_LABEL,
+  nameOf,
+  type Machine,
+  type Person,
+  type RoleId,
+  type WageBasis,
+} from '../lib/model';
+import { auditEntry } from './audit';
 import { commit } from './commit';
 
 /**
@@ -63,9 +73,31 @@ function recordFields(fields: UserFields) {
   };
 }
 
+/** What changed between the stored account and the fields about to be saved. */
+function accountDiff(before: Person, fields: UserFields & { advanceAmount: number }): string {
+  const lines: string[] = [];
+  const name = fields.name.trim();
+  if (name && name !== before.name) lines.push(`නම: ${before.name || '—'} → ${name}`);
+  if (fields.role !== before.role) lines.push(`කාණ්ඩය: ${ROLES[before.role].label} → ${ROLES[fields.role].label}`);
+  const crew = ROLES[fields.role].isCrew;
+  const machineId = crew ? fields.machineId.trim() : '';
+  if (machineId !== before.machineId) lines.push(`යන්ත්‍රය: ${before.machineId || '—'} → ${machineId || '—'}`);
+  const dailyWage = crew ? fields.dailyWage : 0;
+  if (dailyWage !== before.dailyWage || fields.wageBasis !== before.wageBasis) {
+    lines.push(
+      `පඩිය: රු.${before.dailyWage} (${WAGE_BASIS_LABEL[before.wageBasis].per}) → රු.${dailyWage} (${WAGE_BASIS_LABEL[fields.wageBasis].per})`,
+    );
+  }
+  if (fields.advanceAmount !== before.advanceAmount) {
+    lines.push(`ඇඩ්වාන්ස්: රු.${before.advanceAmount} → රු.${fields.advanceAmount}`);
+  }
+  return lines.length > 0 ? lines.join(' · ') : 'වෙනසක් නැත';
+}
+
 export async function createAccount(
   fields: UserFields & { username: string; password: string; meterHours: number },
   machines: Map<string, Machine>,
+  by: Person,
 ): Promise<void> {
   const secondary = provisioningAuth();
   const credential = await createUserWithEmailAndPassword(
@@ -83,6 +115,17 @@ export async function createAccount(
       createdAt: serverTimestamp(),
     });
     addMachineIfNew(batch, fields, machines, fields.meterHours);
+    batch.set(
+      doc(collection(db, 'auditLog')),
+      auditEntry(
+        'account.create',
+        'operator',
+        credential.user.uid,
+        fields.name.trim(),
+        `${ROLES[fields.role].label} · පරිශීලක නාමය ${fields.username.trim().toLowerCase()}`,
+        by,
+      ),
+    );
     await batch.commit();
   } catch (error) {
     // A login without a record could never be used, and its username could
@@ -102,6 +145,7 @@ export async function updateAccount(
     meterHours: number;
   },
   machines: Map<string, Machine>,
+  by: Person,
 ): Promise<void> {
   const batch = writeBatch(db);
   batch.update(doc(db, 'operators', person.id), {
@@ -109,18 +153,29 @@ export async function updateAccount(
     advanceAmount: fields.advanceAmount,
   });
   addMachineIfNew(batch, fields, machines, fields.meterHours);
+  batch.set(
+    doc(collection(db, 'auditLog')),
+    auditEntry('account.update', 'operator', person.id, nameOf(person), accountDiff(person, fields), by),
+  );
   await commit(batch);
 }
 
 export async function changePassword(
-  username: string,
+  person: Person,
   currentPassword: string,
   newPassword: string,
+  by: Person,
 ): Promise<void> {
   const secondary = provisioningAuth();
-  const credential = await signInWithEmailAndPassword(secondary, emailFor(username), currentPassword);
+  const credential = await signInWithEmailAndPassword(secondary, emailFor(person.username), currentPassword);
   try {
     await updatePassword(credential.user, newPassword);
+    const batch = writeBatch(db);
+    batch.set(
+      doc(collection(db, 'auditLog')),
+      auditEntry('account.password', 'operator', person.id, nameOf(person), 'මුරපදය වෙනස් කළා', by),
+    );
+    await batch.commit();
   } finally {
     await signOut(secondary).catch(() => {});
   }
@@ -130,9 +185,19 @@ export async function changePassword(
  * Removes the record, which ends the account's access at once. With the
  * current password the login is deleted too, freeing the username.
  */
-export async function removeAccount(person: Person, currentPassword: string | null): Promise<void> {
+export async function removeAccount(
+  person: Person,
+  currentPassword: string | null,
+  by: Person,
+): Promise<void> {
   if (!currentPassword) {
-    await deleteDoc(doc(db, 'operators', person.id));
+    const batch = writeBatch(db);
+    batch.delete(doc(db, 'operators', person.id));
+    batch.set(
+      doc(collection(db, 'auditLog')),
+      auditEntry('account.remove', 'operator', person.id, nameOf(person), 'ප්‍රවේශය ඉවත් කළා', by),
+    );
+    await batch.commit();
     return;
   }
 
@@ -144,7 +209,13 @@ export async function removeAccount(person: Person, currentPassword: string | nu
     currentPassword,
   );
   try {
-    await deleteDoc(doc(db, 'operators', person.id));
+    const batch = writeBatch(db);
+    batch.delete(doc(db, 'operators', person.id));
+    batch.set(
+      doc(collection(db, 'auditLog')),
+      auditEntry('account.remove', 'operator', person.id, nameOf(person), 'ගිණුම සම්පූර්ණයෙන් මැකුවා', by),
+    );
+    await batch.commit();
     await deleteUser(credential.user);
   } finally {
     await signOut(secondary).catch(() => {});

@@ -715,6 +715,81 @@ export function sourceLabel(source: string | null): string {
   return slot ? `පිරවීම ${slot[1]}` : source;
 }
 
+// ---- audit log ----------------------------------------------------------------
+
+/**
+ * Every admin-panel action that changes an account, a store item's setup, a
+ * bill or a setting, kept for good — what [storeMovements] is for a count.
+ * Routine stock movements and sales stay in their own trails ([Movement],
+ * the `sales` doc itself) rather than being duplicated here.
+ */
+export type AuditAction =
+  | 'account.create'
+  | 'account.update'
+  | 'account.remove'
+  | 'account.password'
+  | 'store.create'
+  | 'store.update'
+  | 'store.delete'
+  | 'bill.create'
+  | 'bill.update'
+  | 'bill.delete'
+  | 'sales.prices'
+  | 'service.reset'
+  | 'figures.set'
+  | 'tally.set';
+
+export const AUDIT_LABEL: Record<AuditAction, string> = {
+  'account.create': 'ගිණුම සෑදුවා',
+  'account.update': 'ගිණුම යාවත්කාලීන කළා',
+  'account.remove': 'ගිණුම ඉවත් කළා',
+  'account.password': 'මුරපදය වෙනස් කළා',
+  'store.create': 'ගබඩා අයිතමය සෑදුවා',
+  'store.update': 'ගබඩා අයිතමය යාවත්කාලීන කළා',
+  'store.delete': 'ගබඩා අයිතමය ඉවත් කළා',
+  'bill.create': 'බිල්පතක් සෑදුවා',
+  'bill.update': 'බිල්පතක් සංස්කරණය කළා',
+  'bill.delete': 'බිල්පතක් ඉවත් කළා',
+  'sales.prices': 'විකුණුම් මිල වෙනස් කළා',
+  'service.reset': 'සේවා කාලය යළි පිහිටෙව්වා',
+  'figures.set': 'වැටුප/ඇඩ්වාන්ස් වෙනස් කළා',
+  'tally.set': 'ලෝඩ්/අඩි නිවැරදි කළා',
+};
+
+/** What group of the panel [action] belongs to — the audit page's filter. */
+export function auditGroup(action: AuditAction): string {
+  return action.split('.')[0];
+}
+
+export interface AuditEntry {
+  id: string;
+  action: AuditAction;
+  entityType: 'operator' | 'store' | 'bill' | 'machine' | 'settings';
+  entityId: string;
+  /** The person's name, the item's name, "විකුණුම් මිල", the machine id, ... */
+  entityLabel: string;
+  /** A human-readable line, before → after where that matters. */
+  summary: string;
+  createdBy: string;
+  createdByName: string;
+  createdAt: Date | null;
+}
+
+export function auditEntryFrom(id: string, data: DocumentData): AuditEntry {
+  const action = data.action as AuditAction;
+  return {
+    id,
+    action: action in AUDIT_LABEL ? action : 'account.update',
+    entityType: str(data.entityType) as AuditEntry['entityType'],
+    entityId: str(data.entityId),
+    entityLabel: str(data.entityLabel),
+    summary: str(data.summary),
+    createdBy: str(data.createdBy),
+    createdByName: str(data.createdByName),
+    createdAt: toDate(data.createdAt),
+  };
+}
+
 // ---- bills ------------------------------------------------------------------
 
 export type BillCategory = 'advance' | 'food' | 'water' | 'other';

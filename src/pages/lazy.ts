@@ -16,6 +16,7 @@ const load = {
   sales: () => import('./SalesPage'),
   verify: () => import('./VerifyPage'),
   finance: () => import('./FinancePage'),
+  auditLog: () => import('./AuditLogPage'),
   login: () => import('./LoginPage'),
 };
 
@@ -30,6 +31,7 @@ export const UsersPage = lazy(() => load.users().then((module) => ({ default: mo
 export const SalesPage = lazy(() => load.sales().then((module) => ({ default: module.SalesPage })));
 export const VerifyPage = lazy(() => load.verify().then((module) => ({ default: module.VerifyPage })));
 export const FinancePage = lazy(() => load.finance().then((module) => ({ default: module.FinancePage })));
+export const AuditLogPage = lazy(() => load.auditLog().then((module) => ({ default: module.AuditLogPage })));
 export const LoginPage = lazy(() => load.login().then((module) => ({ default: module.LoginPage })));
 
 const byPath: Record<string, () => Promise<unknown>> = {
@@ -45,6 +47,7 @@ const byPath: Record<string, () => Promise<unknown>> = {
   '/sales': load.sales,
   '/verify': load.verify,
   '/finance': load.finance,
+  '/audit': load.auditLog,
 };
 
 /** Starts downloading a page's code before it is opened. */

@@ -108,7 +108,11 @@ export function CrewInfoModal({ person, date, onClose }: { person: Person; date:
       toast.error('අගයන් ඍණ නොවන සංඛ්‍යා විය යුතුය.');
       return;
     }
-    void run('info', () => saveFigures(live.id, { advanceAmount, dailyWage: rate, wageBasis }), 'තොරතුරු සුරැකුණා.');
+    void run(
+      'info',
+      () => saveFigures(live, { advanceAmount, dailyWage: rate, wageBasis }, profile),
+      'තොරතුරු සුරැකුණා.',
+    );
   }
 
   function saveDayTally() {
@@ -116,7 +120,7 @@ export function CrewInfoModal({ person, date, onClose }: { person: Person; date:
     if (tally == null || !Number.isFinite(value) || value < 0) return;
     void run(
       'tally',
-      () => saveTally(live.machineId, date, field, whole ? Math.round(value) : value),
+      () => saveTally(live.machineId, date, field, whole ? Math.round(value) : value, live, profile),
       `${whole ? 'ලෝඩ්' : 'අඩි'} ගණන සුරැකුණා.`,
     ).then((saved) => saved && setTally(null));
   }

@@ -12,7 +12,8 @@ import {
 
 import { db } from '../db';
 import { monthBounds } from '../lib/format';
-import { billFrom, nameOf, type Bill, type BillCategory, type Person } from '../lib/model';
+import { BILL, billFrom, nameOf, type Bill, type BillCategory, type Person } from '../lib/model';
+import { auditEntry } from './audit';
 import { useLiveQuery } from './live';
 
 /** Every bill dated inside `yyyy-MM`, newest first. */
@@ -67,6 +68,24 @@ function moveAdvances(
   }
 }
 
+/** What changed between the stored bill and the fields about to be saved. */
+function billDiff(before: Bill, input: BillInput): string {
+  const lines: string[] = [];
+  if (input.category !== before.category) lines.push(`වර්ගය: ${BILL[before.category].label} → ${BILL[input.category].label}`);
+  if (input.amount !== before.amount) lines.push(`මුදල: රු.${before.amount} → රු.${input.amount}`);
+  const note = input.note.trim();
+  if (note !== before.note) lines.push(`සටහන: ${before.note || '—'} → ${note || '—'}`);
+  const personId = input.person?.id ?? null;
+  if (personId !== before.operatorId) {
+    lines.push(`කණ්ඩායම් සාමාජිකයා: ${before.operatorName ?? '—'} → ${input.person ? nameOf(input.person) : '—'}`);
+  }
+  return lines.length > 0 ? lines.join(' · ') : 'වෙනසක් නැත';
+}
+
+function billLabel(category: BillCategory, amount: number): string {
+  return `${BILL[category].label} · රු.${amount}`;
+}
+
 // Bills are written in transactions, not batches. A batch waits in this
 // computer's queue and is sent again after a reload — and on a weak line one
 // the server had already taken would then move the advance figure twice. A
@@ -99,7 +118,12 @@ export async function saveBill(
       tx.update(ref, fields);
       // Measured from the server's copy, not the one on screen: an attempt
       // that follows one which went through moves the advance by nothing.
-      moveAdvances(tx, billFrom(stored.id, stored.data()), input, peopleById);
+      const before = billFrom(stored.id, stored.data());
+      moveAdvances(tx, before, input, peopleById);
+      tx.set(
+        doc(collection(db, 'auditLog')),
+        auditEntry('bill.update', 'bill', ref.id, billLabel(before.category, before.amount), billDiff(before, input), by),
+      );
     } else {
       if (stored.exists()) return; // an earlier attempt saved it already
       tx.set(ref, {
@@ -109,16 +133,39 @@ export async function saveBill(
         createdAt: serverTimestamp(),
       });
       moveAdvances(tx, null, input, peopleById);
+      tx.set(
+        doc(collection(db, 'auditLog')),
+        auditEntry(
+          'bill.create',
+          'bill',
+          ref.id,
+          billLabel(input.category, input.amount),
+          input.person ? nameOf(input.person) : 'වියදම',
+          by,
+        ),
+      );
     }
   });
 }
 
-export async function deleteBill(bill: Bill, peopleById: Map<string, Person>): Promise<void> {
+export async function deleteBill(bill: Bill, peopleById: Map<string, Person>, by: Person): Promise<void> {
   const ref = doc(db, 'bills', bill.id);
   await runTransaction(db, async (tx) => {
     const stored = await tx.get(ref);
     if (!stored.exists()) return; // already gone, and its advance with it
     tx.delete(ref);
-    moveAdvances(tx, billFrom(stored.id, stored.data()), null, peopleById);
+    const before = billFrom(stored.id, stored.data());
+    moveAdvances(tx, before, null, peopleById);
+    tx.set(
+      doc(collection(db, 'auditLog')),
+      auditEntry(
+        'bill.delete',
+        'bill',
+        ref.id,
+        billLabel(before.category, before.amount),
+        before.operatorName ?? 'වියදම',
+        by,
+      ),
+    );
   });
 }

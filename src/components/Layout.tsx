@@ -2,6 +2,7 @@ import {
   Bell,
   BellRing,
   Bomb,
+  ClipboardList,
   History,
   Landmark,
   LayoutDashboard,
@@ -53,6 +54,7 @@ const NAV: NavEntry[] = [
   { to: '/history', label: 'ඉතිහාසය', icon: History },
   { to: '/finance', label: 'මූල්‍ය', icon: Landmark, adminOnly: true },
   { to: '/users', label: 'පරිශීලකයින්', icon: Users, adminOnly: true },
+  { to: '/audit', label: 'විගණන සටහන', icon: ClipboardList, adminOnly: true },
 ];
 
 export function Layout() {

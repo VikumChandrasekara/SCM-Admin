@@ -14,6 +14,7 @@ import {
 import { db } from '../db';
 import {
   SERVICE,
+  WAGE_BASIS_LABEL,
   dayFrom,
   nameOf,
   type Day,
@@ -23,6 +24,7 @@ import {
   type StoreItem,
   type WageBasis,
 } from '../lib/model';
+import { auditEntry } from './audit';
 import { commit } from './commit';
 
 export function dayRef(machineId: string, date: string) {
@@ -60,9 +62,12 @@ export async function saveTally(
   date: string,
   field: 'loads' | 'feet',
   value: number,
+  person: Person,
+  by: Person,
 ): Promise<void> {
   const ref = dayRef(machineId, date);
   const month = date.slice(0, 7);
+  const label = field === 'loads' ? 'ලෝඩ්' : 'අඩි';
 
   await runTransaction(db, async (tx) => {
     const current = (await tx.get(ref)).data()?.[field];
@@ -70,6 +75,17 @@ export async function saveTally(
     tx.set(ref, { date, [field]: value }, { merge: true });
     if (value !== previous) {
       tx.set(monthRef(machineId, month), { month, [field]: increment(value - previous) }, { merge: true });
+      tx.set(
+        doc(collection(db, 'auditLog')),
+        auditEntry(
+          'tally.set',
+          'operator',
+          person.id,
+          nameOf(person),
+          `${label} ${date}: ${previous} → ${value}`,
+          by,
+        ),
+      );
     }
   });
 }
@@ -109,6 +125,18 @@ export async function resetService(
     });
   }
 
+  batch.set(
+    doc(collection(db, 'auditLog')),
+    auditEntry(
+      'service.reset',
+      'machine',
+      machine.id,
+      machine.id,
+      `${SERVICE[task].short} — ${nameOf(person)}${part ? ` · ගබඩාවෙන් ${part.name} 1ක් අඩු කළා` : ''}`,
+      by,
+    ),
+  );
+
   await commit(batch);
 }
 
@@ -118,14 +146,32 @@ export async function resetService(
  * from the month's records (see payFor) wherever they are shown.
  */
 export async function saveFigures(
-  personId: string,
+  person: Person,
   figures: {
     advanceAmount: number;
     dailyWage: number;
     wageBasis: WageBasis;
   },
+  by: Person,
 ): Promise<void> {
   const batch = writeBatch(db);
-  batch.update(doc(db, 'operators', personId), figures);
+  batch.update(doc(db, 'operators', person.id), figures);
+
+  const lines: string[] = [];
+  if (figures.advanceAmount !== person.advanceAmount) {
+    lines.push(`ඇඩ්වාන්ස්: රු.${person.advanceAmount} → රු.${figures.advanceAmount}`);
+  }
+  if (figures.dailyWage !== person.dailyWage || figures.wageBasis !== person.wageBasis) {
+    lines.push(
+      `පඩිය: රු.${person.dailyWage} (${WAGE_BASIS_LABEL[person.wageBasis].per}) → රු.${figures.dailyWage} (${WAGE_BASIS_LABEL[figures.wageBasis].per})`,
+    );
+  }
+  if (lines.length > 0) {
+    batch.set(
+      doc(collection(db, 'auditLog')),
+      auditEntry('figures.set', 'operator', person.id, nameOf(person), lines.join(' · '), by),
+    );
+  }
+
   await commit(batch);
 }

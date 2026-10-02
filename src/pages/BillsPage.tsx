@@ -58,7 +58,7 @@ export function BillsPage() {
   async function confirmDelete(bill: Bill) {
     setDeleteBusy(true);
     try {
-      await deleteBill(bill, peopleById);
+      await deleteBill(bill, peopleById, profile);
       toast.success('බිල්පත ඉවත් කළා.');
       setDeleting(null);
     } catch (failure) {
