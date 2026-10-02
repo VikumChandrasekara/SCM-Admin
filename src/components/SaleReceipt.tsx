@@ -151,7 +151,10 @@ export function SaleSheet({ sale }: { sale: Sale }) {
                 {sale.note && <span className="block text-[10.5px] font-normal text-black/60">{sale.note}</span>}
               </td>
               <td className={cx(cell, 'py-2 tabular-nums')}>{quantity(sale.quantity, SALE_TYPE[sale.type].unit)}</td>
-              <td className={cx(cell, 'py-2 tabular-nums')}>{money(sale.unitPrice)}</td>
+              <td className={cx(cell, 'py-2 tabular-nums')}>
+                <div>{money(sale.unitPrice)}</div>
+                <div className="text-[9.5px] font-normal text-black/50">/ {SALE_TYPE[sale.type].unit}</div>
+              </td>
               <td className={cx(cell, 'py-2 font-bold tabular-nums')}>{money(sale.amount)}</td>
             </tr>
           </tbody>
