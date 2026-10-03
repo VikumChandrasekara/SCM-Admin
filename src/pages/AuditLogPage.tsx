@@ -26,7 +26,7 @@ const GROUP_LABEL: Record<Exclude<Group, 'all'>, string> = {
   account: 'ගිණුම්',
   store: 'ගබඩාව',
   bill: 'බිල්පත්',
-  sales: 'විකුණුම් මිල',
+  sales: 'විකුණුම්',
   service: 'සේවා',
   figures: 'වැටුප/ඇඩ්වාන්ස්',
   tally: 'ලෝඩ්/අඩි',
@@ -42,7 +42,7 @@ const actionTone: Record<string, 'grape' | 'info' | 'amber' | 'ok' | 'muted'> = 
   tally: 'muted',
 };
 
-/** විගණන සටහන — every account, store, bill and price change, who made it and when. */
+/** විගණන සටහන — every account, store, bill, sale and price change, who made it and when. */
 export function AuditLogPage() {
   const [count, setCount] = useState(100);
   const [group, setGroup] = useState<Group>('all');
@@ -53,7 +53,7 @@ export function AuditLogPage() {
     <>
       <PageHeader
         title="විගණන සටහන"
-        subtitle="ගිණුම්, ගබඩා අයිතම, බිල්පත් සහ මිල වෙනස් කළ හැම අවස්ථාවක්ම — කළේ කවුද, කවදාද."
+        subtitle="ගිණුම්, ගබඩා අයිතම, බිල්පත්, විකුණුම් සහ මිල වෙනස් කළ හැම අවස්ථාවක්ම — කළේ කවුද, කවදාද."
       />
 
       <Panel tone="deep" className="mb-6 flex flex-wrap items-end gap-4 p-4">

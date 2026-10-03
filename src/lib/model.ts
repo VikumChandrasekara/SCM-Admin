@@ -719,9 +719,11 @@ export function sourceLabel(source: string | null): string {
 
 /**
  * Every admin-panel action that changes an account, a store item's setup, a
- * bill or a setting, kept for good — what [storeMovements] is for a count.
- * Routine stock movements and sales stay in their own trails ([Movement],
- * the `sales` doc itself) rather than being duplicated here.
+ * bill or a setting, or writes a sale, kept for good — what [storeMovements]
+ * is for a count. Routine stock movements stay in their own trail
+ * ([Movement]). A sale's verification and lapse are left to the `sales` doc
+ * itself: anyone signed in may verify a bill, and the rules let only staff
+ * write here.
  */
 export type AuditAction =
   | 'account.create'
@@ -734,6 +736,7 @@ export type AuditAction =
   | 'bill.create'
   | 'bill.update'
   | 'bill.delete'
+  | 'sales.create'
   | 'sales.prices'
   | 'service.reset'
   | 'figures.set'
@@ -750,6 +753,7 @@ export const AUDIT_LABEL: Record<AuditAction, string> = {
   'bill.create': 'බිල්පතක් සෑදුවා',
   'bill.update': 'බිල්පතක් සංස්කරණය කළා',
   'bill.delete': 'බිල්පතක් ඉවත් කළා',
+  'sales.create': 'විකුණුම් බිල්පතක් සෑදුවා',
   'sales.prices': 'විකුණුම් මිල වෙනස් කළා',
   'service.reset': 'සේවා කාලය යළි පිහිටෙව්වා',
   'figures.set': 'වැටුප/ඇඩ්වාන්ස් වෙනස් කළා',
@@ -764,7 +768,7 @@ export function auditGroup(action: AuditAction): string {
 export interface AuditEntry {
   id: string;
   action: AuditAction;
-  entityType: 'operator' | 'store' | 'bill' | 'machine' | 'settings';
+  entityType: 'operator' | 'store' | 'bill' | 'sale' | 'machine' | 'settings';
   entityId: string;
   /** The person's name, the item's name, "විකුණුම් මිල", the machine id, ... */
   entityLabel: string;

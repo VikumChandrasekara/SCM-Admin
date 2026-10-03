@@ -15,7 +15,9 @@ import { db } from '../db';
 import { dateTime, monthBounds, monthKey, todayKey } from '../lib/format';
 import {
   SALE_CODE_ALPHABET,
+  SALE_TYPE,
   nameOf,
+  padSaleNumber,
   pricesFrom,
   saleFrom,
   saleStatus,
@@ -125,6 +127,9 @@ export async function createSale(input: SaleInput, by: Person): Promise<string> 
     const month = date.slice(0, 7);
 
     const unitPrice = unitPriceOf(prices, input.type);
+    const amount = input.quantity * unitPrice;
+    const customerName = input.customerName.trim();
+    const vehicleNo = input.vehicleNo.trim().toUpperCase();
     tx.set(counterRef, { last: number, lastCode: code });
     // Points the bill's printed invoice number back at its real code, so
     // typing that number in to verify it does one direct read.
@@ -135,10 +140,10 @@ export async function createSale(input: SaleInput, by: Person): Promise<string> 
       type: input.type,
       quantity: input.quantity,
       unitPrice,
-      amount: input.quantity * unitPrice,
-      customerName: input.customerName.trim(),
+      amount,
+      customerName,
       customerPhone: input.customerPhone.trim(),
-      vehicleNo: input.vehicleNo.trim().toUpperCase(),
+      vehicleNo,
       note: input.note.trim(),
       date,
       status: 'pending',
@@ -146,6 +151,17 @@ export async function createSale(input: SaleInput, by: Person): Promise<string> 
       createdByName: nameOf(by),
       createdAt: serverTimestamp(),
     });
+    tx.set(
+      doc(collection(db, 'auditLog')),
+      auditEntry(
+        'sales.create',
+        'sale',
+        code,
+        `බිල්පත ${padSaleNumber(number)}`,
+        `${SALE_TYPE[input.type].label} · ${input.quantity} ${SALE_TYPE[input.type].unit} × රු.${unitPrice} = රු.${amount} · ${customerName} · ${vehicleNo}`,
+        by,
+      ),
+    );
   });
 
   return code;
