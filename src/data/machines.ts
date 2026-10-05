@@ -1,14 +1,17 @@
 import {
   collection,
   doc,
+  getDoc,
   getDocs,
   increment,
+  limit,
   orderBy,
   query,
   runTransaction,
   serverTimestamp,
   where,
   writeBatch,
+  type DocumentData,
 } from 'firebase/firestore';
 
 import { db } from '../db';
@@ -88,6 +91,96 @@ export async function saveTally(
       );
     }
   });
+}
+
+function onReadingOf(data: DocumentData | undefined): number | null {
+  const reading = data?.fillings?.['1']?.onHours;
+  return typeof reading === 'number' ? reading : null;
+}
+
+/** The OFF of a day is the next morning's ON, once that has been recorded. */
+function offReadingOf(data: DocumentData | undefined): number | null {
+  const closing = data?.closingHours;
+  return typeof closing === 'number' ? closing : onReadingOf(data);
+}
+
+/** Mirrors FillingRules.validateLeaveWorkDay in the operator app. */
+function leaveWorkDayProblem(
+  on: number,
+  off: number,
+  floor: number | null,
+  ceiling: number | null,
+): string | null {
+  if (on < 0) return 'ON මීටරය ඍණ විය නොහැක';
+  if (off <= on) return 'OFF මීටරය ON ට වඩා වැඩි විය යුතුයි';
+  if (floor !== null && on < floor) return `ON මීටරය පෙර දවසේ අගයට (${floor}) වඩා අඩු විය නොහැක`;
+  if (ceiling !== null && off > ceiling) return `OFF මීටරය ඊළඟ දවසේ ON අගයට (${ceiling}) වඩා වැඩි විය නොහැක`;
+  return null;
+}
+
+/**
+ * Records a past day that was worked but never entered, with its ON and OFF
+ * readings, which takes it out of the leave count. The OFF is stored as the
+ * day's closing reading, the same as the operator app does once the next
+ * morning's ON arrives, so the day cannot be closed a second time.
+ *
+ * The month gains OFF − ON. The hour meter is moved only when [date] is the
+ * newest day, so an older date cannot wind it back.
+ */
+export async function saveLeaveWorkDay(
+  person: Person,
+  date: string,
+  onHours: number,
+  offHours: number,
+  by: Person,
+): Promise<void> {
+  const machineId = person.machineId;
+  const days = collection(db, 'machines', machineId, 'days');
+  const ref = dayRef(machineId, date);
+
+  const [current, earlier, later] = await Promise.all([
+    getDoc(ref),
+    getDocs(query(days, where('date', '<', date), orderBy('date', 'desc'), limit(1))),
+    getDocs(query(days, where('date', '>', date), orderBy('date', 'asc'), limit(1))),
+  ]);
+
+  if (onReadingOf(current.data()) !== null) throw new Error('මේ දිනය දැනටමත් වැඩ කළ දිනයක්');
+
+  const problem = leaveWorkDayProblem(
+    onHours,
+    offHours,
+    earlier.empty ? null : offReadingOf(earlier.docs[0].data()),
+    later.empty ? null : onReadingOf(later.docs[0].data()),
+  );
+  if (problem) throw new Error(problem);
+
+  const month = date.slice(0, 7);
+  const batch = writeBatch(db);
+  batch.set(
+    ref,
+    {
+      date,
+      closingHours: offHours,
+      fillings: {
+        '1': { onHours, amounts: {}, lockedAt: new Date().toISOString(), syncedAt: serverTimestamp() },
+      },
+    },
+    { merge: true },
+  );
+  batch.set(monthRef(machineId, month), { month, hours: increment(offHours - onHours) }, { merge: true });
+  if (later.empty) batch.set(doc(db, 'machines', machineId), { totalHours: offHours }, { merge: true });
+  batch.set(
+    doc(collection(db, 'auditLog')),
+    auditEntry(
+      'leave.workday',
+      'operator',
+      person.id,
+      nameOf(person),
+      `${date}: ON ${onHours} → OFF ${offHours}`,
+      by,
+    ),
+  );
+  await commit(batch);
 }
 
 /**

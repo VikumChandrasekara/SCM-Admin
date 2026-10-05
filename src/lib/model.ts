@@ -747,6 +747,7 @@ export type AuditAction =
   | 'sales.create'
   | 'sales.prices'
   | 'service.reset'
+  | 'leave.workday'
   | 'figures.set'
   | 'tally.set';
 
@@ -764,6 +765,7 @@ export const AUDIT_LABEL: Record<AuditAction, string> = {
   'sales.create': 'විකුණුම් බිල්පතක් සෑදුවා',
   'sales.prices': 'විකුණුම් මිල වෙනස් කළා',
   'service.reset': 'සේවා කාලය යළි පිහිටෙව්වා',
+  'leave.workday': 'නිවාඩු දිනයක් වැඩ කළ දිනයක් ලෙස සුරැකුණා',
   'figures.set': 'වැටුප/ඇඩ්වාන්ස් වෙනස් කළා',
   'tally.set': 'ලෝඩ්/අඩි නිවැරදි කළා',
 };

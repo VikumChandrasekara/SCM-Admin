@@ -57,3 +57,18 @@ export function daysElapsed(month: string, today: string): number {
 export function leaveDaysFor(month: string, today: string, workedDays: number): number {
   return Math.min(Math.max(daysElapsed(month, today) - workedDays, 0), daysInMonth(month));
 }
+
+/**
+ * The dates [leaveDaysFor] counts: each day so far in [month] with no ON
+ * reading among [workedDates] (YYYY-MM-DD). Newest first. Mirrors
+ * TargetProgress.leaveDates in the operator app.
+ */
+export function leaveDatesFor(month: string, today: string, workedDates: readonly string[]): string[] {
+  const worked = new Set(workedDates);
+  const dates: string[] = [];
+  for (let day = daysElapsed(month, today); day >= 1; day--) {
+    const date = `${month}-${String(day).padStart(2, '0')}`;
+    if (!worked.has(date)) dates.push(date);
+  }
+  return dates;
+}
