@@ -178,6 +178,12 @@ describe('accounts', () => {
     await assertFails(updateDoc(record, { receivableAmount: 100000 }));
   });
 
+  it('a supervisor cannot set the wage of a staff record, their own included', async () => {
+    await assertFails(updateDoc(doc(as('sup1'), 'operators', 'sup1'), { dailyWage: 90000, wageBasis: 'month' }));
+    await assertFails(updateDoc(doc(as('sup1'), 'operators', 'admin1'), { dailyWage: 1 }));
+    await assertSucceeds(updateDoc(doc(as('admin1'), 'operators', 'sup1'), { dailyWage: 90000, wageBasis: 'month' }));
+  });
+
   it('the admin edits a record written before roles existed', async () => {
     await assertSucceeds(updateDoc(doc(as('admin1'), 'operators', 'legacy'), { dailyWage: 3500 }));
   });

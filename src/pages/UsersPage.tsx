@@ -31,6 +31,7 @@ import {
   ROLE_IDS,
   WAGE_BASES,
   WAGE_BASIS_LABEL,
+  hasWageRate,
   nameOf,
   type Person,
   type RoleId,
@@ -177,9 +178,18 @@ function UserModal({ person, onClose }: { person: Person | null; onClose: () => 
   const [error, setError] = useState<string | null>(null);
 
   const crew = ROLES[role].isCrew;
+  const supervisor = role === 'supervisor';
+  const paysWage = hasWageRate(role);
   const machine = machineId.trim();
   const newMachine = crew && machine !== '' && !machines.has(machine);
   const self = person?.id === profile.id;
+
+  // A supervisor's salary is always monthly, so the basis is fixed rather than picked.
+  function changeRole(next: RoleId) {
+    setRole(next);
+    if (next === 'supervisor') setWageBasis('month');
+    else if (wageBasis === 'month') setWageBasis('day');
+  }
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -200,7 +210,7 @@ function UserModal({ person, onClose }: { person: Person | null; onClose: () => 
       role,
       machineId: machine,
       dailyWage: number(wage),
-      wageBasis,
+      wageBasis: supervisor ? 'month' : wageBasis,
     };
     try {
       if (person) {
@@ -254,7 +264,7 @@ function UserModal({ person, onClose }: { person: Person | null; onClose: () => 
             <Input autoFocus required value={name} onChange={(event) => setName(event.target.value)} />
           </Field>
           <Field label="භූමිකාව">
-            <Select value={role} onChange={(event) => setRole(event.target.value as RoleId)} disabled={self}>
+            <Select value={role} onChange={(event) => changeRole(event.target.value as RoleId)} disabled={self}>
               {ROLE_IDS.map((id) => (
                 <option key={id} value={id}>
                   {ROLES[id].label} ({ROLES[id].english})
@@ -309,6 +319,14 @@ function UserModal({ person, onClose }: { person: Person | null; onClose: () => 
           </div>
         )}
 
+        {paysWage && supervisor && (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="මාසික පඩිය (රු.)" hint="මාසික නිශ්චිත මුදල. ලැබිය යුතු මුදල ගණනය වන්නේ මෙයින් සහ ඇඩ්වාන්ස් වලිනි.">
+              <Input type="number" min="0" step="any" value={wage} onChange={(event) => setWage(event.target.value)} />
+            </Field>
+          </div>
+        )}
+
         {crew && (
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="පඩිය ගණනය කරන්නේ" hint="වැඩ කළ දින, යන්ත්‍රය ධාවනය වූ පැය, හෝ ලෝඩ් ගණනින්.">
@@ -326,7 +344,7 @@ function UserModal({ person, onClose }: { person: Person | null; onClose: () => 
           </div>
         )}
 
-        {person && crew && (
+        {person && paysWage && (
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="ඇඩ්වාන්ස් (රු.)" hint="ඇඩ්වාන්ස් බිල්පත් එකතු කරන විට මෙය ස්වයංක්‍රීයව වැඩි වේ.">
               <Input type="number" min="0" step="any" value={advance} onChange={(event) => setAdvance(event.target.value)} />

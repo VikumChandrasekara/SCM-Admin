@@ -261,6 +261,11 @@ export function isStaffRole(role: RoleId): boolean {
   return role === 'supervisor' || role === 'admin';
 }
 
+/** Crew are paid per unit; a supervisor is paid a fixed monthly salary. Admins are not paid through the panel. */
+export function hasWageRate(role: RoleId): boolean {
+  return ROLES[role].isCrew || role === 'supervisor';
+}
+
 // ---- people -----------------------------------------------------------------
 
 export interface Person {
@@ -286,8 +291,10 @@ export interface Person {
  * day, a compressor driller per foot drilled or per load, and either can be
  * put on an hourly rate instead. Mirrors WageBasis in the operator app.
  */
-export type WageBasis = 'day' | 'hour' | 'foot' | 'load';
+/** `month` is a fixed monthly salary, set for supervisors only. */
+export type WageBasis = 'day' | 'hour' | 'foot' | 'load' | 'month';
 
+/** The bases offered for a crew member. A supervisor is always on `month`. */
 export const WAGE_BASES: readonly WageBasis[] = ['day', 'hour', 'foot', 'load'];
 
 export const WAGE_BASIS_LABEL: Record<WageBasis, { per: string; unit: string }> = {
@@ -295,11 +302,12 @@ export const WAGE_BASIS_LABEL: Record<WageBasis, { per: string; unit: string }> 
   hour: { per: 'පැයකට', unit: 'පැය' },
   foot: { per: 'අඩියකට', unit: 'අඩි' },
   load: { per: 'ලෝඩ් එකකට', unit: 'ලෝඩ්' },
+  month: { per: 'මාසෙකට', unit: 'මාසය' },
 };
 
 /** Records written before the basis existed are paid per day, as they were. */
 export function wageBasisById(value: unknown): WageBasis {
-  return value === 'hour' || value === 'foot' || value === 'load' ? value : 'day';
+  return value === 'hour' || value === 'foot' || value === 'load' || value === 'month' ? value : 'day';
 }
 
 /** A compressor crew member paid per load rather than per foot drilled. */

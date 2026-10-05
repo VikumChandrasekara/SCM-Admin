@@ -42,6 +42,8 @@ function wageUnitsOf(basis: Person['wageBasis'], month: MonthTally, workedDays: 
       return month.loads;
     case 'day':
       return workedDays;
+    case 'month':
+      return 1;
   }
 }
 

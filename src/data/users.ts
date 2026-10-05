@@ -13,6 +13,7 @@ import {
   ROLES,
   SERVICE,
   WAGE_BASIS_LABEL,
+  hasWageRate,
   nameOf,
   type Machine,
   type Person,
@@ -63,13 +64,13 @@ function addMachineIfNew(
 }
 
 function recordFields(fields: UserFields) {
-  const crew = ROLES[fields.role].isCrew;
+  const paid = hasWageRate(fields.role);
   return {
     name: fields.name.trim(),
     role: fields.role,
-    machineId: crew ? fields.machineId.trim() : '',
-    dailyWage: crew ? fields.dailyWage : 0,
-    wageBasis: crew ? fields.wageBasis : 'day',
+    machineId: ROLES[fields.role].isCrew ? fields.machineId.trim() : '',
+    dailyWage: paid ? fields.dailyWage : 0,
+    wageBasis: paid ? fields.wageBasis : 'day',
   };
 }
 
@@ -79,10 +80,9 @@ function accountDiff(before: Person, fields: UserFields & { advanceAmount: numbe
   const name = fields.name.trim();
   if (name && name !== before.name) lines.push(`නම: ${before.name || '—'} → ${name}`);
   if (fields.role !== before.role) lines.push(`කාණ්ඩය: ${ROLES[before.role].label} → ${ROLES[fields.role].label}`);
-  const crew = ROLES[fields.role].isCrew;
-  const machineId = crew ? fields.machineId.trim() : '';
+  const machineId = ROLES[fields.role].isCrew ? fields.machineId.trim() : '';
   if (machineId !== before.machineId) lines.push(`යන්ත්‍රය: ${before.machineId || '—'} → ${machineId || '—'}`);
-  const dailyWage = crew ? fields.dailyWage : 0;
+  const dailyWage = hasWageRate(fields.role) ? fields.dailyWage : 0;
   if (dailyWage !== before.dailyWage || fields.wageBasis !== before.wageBasis) {
     lines.push(
       `පඩිය: රු.${before.dailyWage} (${WAGE_BASIS_LABEL[before.wageBasis].per}) → රු.${dailyWage} (${WAGE_BASIS_LABEL[fields.wageBasis].per})`,
