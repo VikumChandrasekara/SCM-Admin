@@ -310,3 +310,47 @@ export function financeFor({
     ledger,
   };
 }
+
+export interface CrewSummary {
+  /** Gross pay per machine, biggest first. */
+  byMachine: { key: string; label: string; value: number }[];
+  bonusTotal: number;
+  advanceTotal: number;
+  foodTotal: number;
+  /** What is still owed to the crew once advances and food are taken off. */
+  netTotal: number;
+  workedDays: number;
+  /** Gross pay per worked day, or null when nobody worked. */
+  perWorkedDay: number | null;
+  highest: SalaryRow | null;
+  lowest: SalaryRow | null;
+  /** Anyone whose advances and food come to more than their pay. */
+  negative: SalaryRow[];
+}
+
+export function crewSummaryFor(salaries: readonly SalaryRow[]): CrewSummary {
+  const machines = new Map<string, { key: string; label: string; value: number }>();
+  for (const row of salaries) {
+    const key = row.person.machineId || '';
+    const entry = machines.get(key) ?? { key, label: key || 'යන්ත්‍රයක් නැත', value: 0 };
+    entry.value += row.pay.gross;
+    machines.set(key, entry);
+  }
+
+  const workedDays = sum(salaries.map((row) => row.pay.workedDays));
+  const gross = sum(salaries.map((row) => row.pay.gross));
+  const byGross = [...salaries].sort((a, b) => b.pay.gross - a.pay.gross);
+
+  return {
+    byMachine: [...machines.values()].sort((a, b) => b.value - a.value),
+    bonusTotal: sum(salaries.map((row) => row.pay.bonusPay)),
+    advanceTotal: sum(salaries.map((row) => row.advances)),
+    foodTotal: sum(salaries.map((row) => row.food)),
+    netTotal: sum(salaries.map((row) => row.pay.net)),
+    workedDays,
+    perWorkedDay: workedDays > 0 ? gross / workedDays : null,
+    highest: byGross[0] ?? null,
+    lowest: byGross[byGross.length - 1] ?? null,
+    negative: salaries.filter((row) => row.pay.net < 0),
+  };
+}

@@ -8,9 +8,10 @@ import { useCrewMonths, useMonthMovements } from '../data/finance';
 import { useLiveData } from '../data/LiveData';
 import { useMonthSales, useNow, useSalesPrices } from '../data/sales';
 import { errorMessage } from '../lib/errors';
-import { financeFor, type Finance, type LedgerKind, type StockRow } from '../lib/finance';
+import { crewSummaryFor, financeFor, type Finance, type LedgerKind, type StockRow } from '../lib/finance';
 import { addMonths, money, monthKey, monthLabel, quantity, rupees } from '../lib/format';
 import { BILL, BILL_CATEGORIES, ROLES, SALE_TYPE, SALE_TYPES, nameOf } from '../lib/model';
+import { payFor } from '../lib/pay';
 import { useToday } from '../lib/useToday';
 
 /**
@@ -29,7 +30,16 @@ export function FinancePage() {
   const bills = useMonthBills(month);
   const movements = useMonthMovements(month);
   const crewMonths = useCrewMonths(crew, month, version);
+  const previousCrew = useCrewMonths(crew, addMonths(month, -1), version);
   const prices = useSalesPrices();
+
+  // Last month's gross, from the same days and loads — no bills, as gross never takes them off.
+  const previousGross = previousCrew.data
+    ? previousCrew.data.reduce(
+        (total, { person, days, tally }) => total + payFor(person, days, tally, [], null, today).gross,
+        0,
+      )
+    : null;
 
   const finance = useMemo(
     () =>
@@ -81,13 +91,16 @@ export function FinancePage() {
       ) : !finance ? (
         <Loading />
       ) : (
-        <FinanceReport finance={finance} />
+        <FinanceReport finance={finance} previousGross={previousGross} />
       )}
     </>
   );
 }
 
-function FinanceReport({ finance }: { finance: Finance }) {
+function FinanceReport({ finance, previousGross }: { finance: Finance; previousGross: number | null }) {
+  const crew = crewSummaryFor(finance.salaries);
+  const change = previousGross ? finance.salaryTotal - previousGross : null;
+
   const expenseLines: { label: string; value: number; detail: string }[] = [
     { label: 'කණ්ඩායම් වැටුප්', value: finance.salaryTotal, detail: 'දවසේ පඩිය, බෝනස් සහ අඩි — ඇඩ්වාන්ස් සහ කෑම ඇතුළුව' },
     { label: 'ගබඩා මිලදී ගැනීම්', value: finance.purchaseTotal, detail: 'නව අයිතම සහ තොග එකතු කිරීම්' },
@@ -199,6 +212,61 @@ function FinanceReport({ finance }: { finance: Finance }) {
       <section className="mb-8">
         <SectionLabel>කණ්ඩායම් වැටුප්</SectionLabel>
         <Panel className="p-4 sm:p-5">
+          {finance.salaries.length > 0 && (
+            <>
+              <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+                <CrewStat label="බෝනස් එකතුව" value={rupees(crew.bonusTotal)} />
+                <CrewStat label="ඇඩ්වාන්ස් එකතුව" value={rupees(crew.advanceTotal)} />
+                <CrewStat label="කෑම එකතුව" value={rupees(crew.foodTotal)} />
+                <CrewStat label="ගෙවිය යුතු ශේෂය එකතුව" value={rupees(crew.netTotal)} />
+                <CrewStat label="වැඩ කළ දින" value={quantity(crew.workedDays)} />
+                <CrewStat label="වැඩ කළ දිනයකට" value={crew.perWorkedDay != null ? rupees(crew.perWorkedDay) : '—'} />
+                <CrewStat
+                  label="ඉහළම ඉපයුම"
+                  value={crew.highest ? rupees(crew.highest.pay.gross) : '—'}
+                  detail={crew.highest ? nameOf(crew.highest.person) : undefined}
+                />
+                <CrewStat
+                  label="අඩුම ඉපයුම"
+                  value={crew.lowest ? rupees(crew.lowest.pay.gross) : '—'}
+                  detail={crew.lowest ? nameOf(crew.lowest.person) : undefined}
+                />
+                <CrewStat
+                  label="පසුගිය මාසයට වඩා"
+                  value={change == null ? '—' : `${change >= 0 ? '+' : '−'}${rupees(Math.abs(change))}`}
+                  detail={change == null || !previousGross ? undefined : `${Math.round((change / previousGross) * 100)}%`}
+                />
+              </div>
+
+              <div className="mb-5">
+                <p className="mb-3 text-sm font-bold">යන්ත්‍රය අනුව වැටුප්</p>
+                <ul className="space-y-3">
+                  {crew.byMachine.map((machine) => {
+                    const share = finance.salaryTotal > 0 ? (machine.value / finance.salaryTotal) * 100 : 0;
+                    return (
+                      <li key={machine.key}>
+                        <div className="flex items-baseline gap-2">
+                          <span className="flex-1 text-sm font-bold">{machine.label}</span>
+                          <span className="text-xs text-white/55">{`${Math.round(share)}%`}</span>
+                          <span className="w-28 text-right font-extrabold tabular-nums">{money(machine.value)}</span>
+                        </div>
+                        <div className="mt-1 h-2 overflow-hidden rounded-full bg-well">
+                          <div className="h-full rounded-full bg-amber-hi" style={{ width: `${share}%` }} />
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+
+              {crew.negative.length > 0 && (
+                <p className="mb-5 rounded-xl bg-alarm/30 px-4 py-3 text-sm font-semibold">
+                  ඇඩ්වාන්ස් සහ කෑම පඩියට වඩා වැඩි: {crew.negative.map((row) => nameOf(row.person)).join(', ')}
+                </p>
+              )}
+            </>
+          )}
+
           {finance.salaries.length === 0 ? (
             <p className="py-4 text-center text-sm text-white/60">කණ්ඩායම් සාමාජිකයින් නැත.</p>
           ) : (
@@ -382,6 +450,16 @@ function StockTable({
       </TableFrame>
       {estimated && <p className="mt-2 text-[11px] text-white/55">≈ — මිල සටහන් නොකළ පැරණි සටහන්, අයිතමයේ වත්මන් මිලට ගණනය කළා.</p>}
     </>
+  );
+}
+
+function CrewStat({ label, value, detail }: { label: string; value: string; detail?: string }) {
+  return (
+    <div className="rounded-control bg-well px-3 py-2.5 ring-1 ring-hairline">
+      <p className="text-[11px] text-white/55">{label}</p>
+      <p className="mt-0.5 text-sm font-extrabold tabular-nums">{value}</p>
+      {detail && <p className="truncate text-[11px] text-white/55">{detail}</p>}
+    </div>
   );
 }
 
