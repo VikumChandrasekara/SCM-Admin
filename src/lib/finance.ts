@@ -8,6 +8,8 @@ import {
   machineLoadsOf,
   saleNumber,
   nameOf,
+  awaitsPrepaidLoad,
+  isSaleIncome,
   saleStatus,
   type Bill,
   type BillCategory,
@@ -83,6 +85,8 @@ export interface Finance {
    * a credit sale is already counted there when it is verified.
    */
   creditPayments: { count: number; amount: number };
+  /** Prepaid bills whose load has not gone yet — already part of [income]. */
+  prepaidOpen: SalesTotal;
 
   salaries: SalaryRow[];
   salaryTotal: number;
@@ -171,18 +175,24 @@ export function financeFor({
   const incomeByType: Record<SaleType, SalesTotal> = { tipper: noSales(), tractor: noSales() };
   const pending = noSales();
   const cancelled = noSales();
+  const prepaidOpen = noSales();
   let machineLoads = 0;
   let machineTotal = 0;
   for (const sale of sales) {
     const status = saleStatus(sale, now);
-    if (status === 'verified') {
+    // A prepaid bill is income from the day it was paid, in that month —
+    // its machine charge with it, so a closed month's figures never move
+    // when the load goes later.
+    if (isSaleIncome(sale, now)) {
       addSale(incomeByType[sale.type], sale);
+      if (awaitsPrepaidLoad(sale, now)) addSale(prepaidOpen, sale);
       ledger.push({
         date: sale.date,
         kind: 'sale',
-        description: `${SALE_TYPE[sale.type].label} ${quantity(sale.quantity, SALE_TYPE[sale.type].unit)} · ${
-          sale.customerName || 'පාරිභෝගිකයා'
-        } · බිල් ${saleNumber(sale)}`,
+        description: `${sale.prepaid ? 'කලින් ගෙවූ · ' : ''}${SALE_TYPE[sale.type].label} ${quantity(
+          sale.quantity,
+          SALE_TYPE[sale.type].unit,
+        )} · ${sale.customerName || 'පාරිභෝගිකයා'} · බිල් ${saleNumber(sale)}`,
         income: sale.amount,
         expense: 0,
       });
@@ -318,6 +328,7 @@ export function financeFor({
     pending,
     cancelled,
     creditPayments,
+    prepaidOpen,
     salaries,
     salaryTotal,
     siteBills,

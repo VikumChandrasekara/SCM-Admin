@@ -165,6 +165,15 @@ function FinanceReport({ finance, previousGross }: { finance: Finance; previousG
                   ))}
                   <tr className="border-b border-hairline/60 text-white/60">
                     <td className={td}>
+                      කලින් ගෙවූ — ලෝඩ් තවම නොගිය
+                      <span className="block text-[11px] text-white/45">ඉහත ආදායමේ දැනටමත් ඇතුළත්</span>
+                    </td>
+                    <td className={cx(td, 'text-right tabular-nums')}>{finance.prepaidOpen.count}</td>
+                    <td className={td} />
+                    <td className={cx(td, 'text-right tabular-nums')}>{money(finance.prepaidOpen.amount)}</td>
+                  </tr>
+                  <tr className="border-b border-hairline/60 text-white/60">
+                    <td className={td}>
                       ණය ගෙවීම් ලැබුණු
                       <span className="block text-[11px] text-white/45">ණය විකුණුම් දැනටමත් ආදායමේ ඇතුළත්</span>
                     </td>

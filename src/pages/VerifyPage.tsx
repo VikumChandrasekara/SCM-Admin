@@ -157,7 +157,7 @@ function SaleCheck({ sale, now, busy, onVerify }: { sale: Sale; now: number; bus
           <p className="text-2xl font-extrabold">බිල් අංකය {saleNumber(sale)}</p>
           <p className="font-mono text-sm font-bold tracking-[0.15em] text-white/60">{formatSaleCode(sale.code)}</p>
         </div>
-        <SaleStatusBadge status={status} />
+        <SaleStatusBadge status={status} prepaid={sale.prepaid} />
       </div>
 
       <div className="mb-4 rounded-card px-4 py-3 text-ink shadow-control chip-amber">
@@ -196,8 +196,12 @@ function SaleCheck({ sale, now, busy, onVerify }: { sale: Sale; now: number; bus
         ) : (
           <>
             <p className="mb-3 text-xs text-white/60">
-              {expiry ? `${dateTime(expiry)} ට පෙර තහවුරු කළ යුතුය.` : 'පැය 24ක් ඇතුළත තහවුරු කළ යුතුය.'} ප්‍රමාණය සහ
-              වාහනය පරීක්ෂා කර තහවුරු කරන්න.
+              {sale.prepaid
+                ? 'කලින් ගෙවූ බිල්පතකි — ලෝඩ් එක දැන් ගෙන යන්නේ නම් පමණක් තහවුරු කරන්න.'
+                : expiry
+                  ? `${dateTime(expiry)} ට පෙර තහවුරු කළ යුතුය.`
+                  : 'පැය 24ක් ඇතුළත තහවුරු කළ යුතුය.'}{' '}
+              ප්‍රමාණය සහ වාහනය පරීක්ෂා කර තහවුරු කරන්න.
             </p>
             <Button size="lg" variant="success" busy={busy} className="w-full" icon={<CircleCheck className="size-5" />} onClick={onVerify}>
               තහවුරු කරන්න

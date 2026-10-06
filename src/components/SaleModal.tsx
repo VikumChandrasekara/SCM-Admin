@@ -29,6 +29,7 @@ export function SaleModal({ onClose, onCreated }: { onClose: () => void; onCreat
   const toast = useToast();
 
   const [type, setType] = useState<SaleType>('tipper');
+  const [prepaid, setPrepaid] = useState(false);
   const [amount, setAmount] = useState('');
   const [material, setMaterial] = useState<SaleMaterial | ''>('');
   const [payment, setPayment] = useState<PaymentType>('cash');
@@ -52,17 +53,32 @@ export function SaleModal({ onClose, onCreated }: { onClose: () => void; onCreat
     event.preventDefault();
     if (!Number.isFinite(count) || count <= 0) return setError('ප්‍රමාණය ශුන්‍යයට වඩා වැඩි විය යුතුය.');
     if (!customerName.trim()) return setError('පාරිභෝගිකයාගේ නම ඇතුළත් කරන්න.');
-    if (!vehicleNo.trim()) return setError('වාහන අංකය ඇතුළත් කරන්න.');
+    // A prepaid load's vehicle may not be known until it comes.
+    if (!prepaid && !vehicleNo.trim()) return setError('වාහන අංකය ඇතුළත් කරන්න.');
     if (!material) return setError('ද්‍රව්‍යය තෝරන්න.');
 
     setBusy(true);
     setError(null);
     try {
       const code = await createSale(
-        { type, quantity: count, customerName, material, paymentType: payment, customerPhone, vehicleNo, note },
+        {
+          type,
+          quantity: count,
+          customerName,
+          material,
+          paymentType: prepaid ? 'cash' : payment,
+          prepaid,
+          customerPhone,
+          vehicleNo,
+          note,
+        },
         profile,
       );
-      toast.success('බිල්පත සෑදුවා. QR එක ස්කෑන් කර තහවුරු කළ පසු ආදායමක් ලෙස ගණන් වේ.');
+      toast.success(
+        prepaid
+          ? 'කලින් ගෙවූ බිල්පත සෑදුවා — දැන් සිට ආදායමක් ලෙස ගණන් වේ. ලෝඩ් එක ගෙන යන දින QR එක ස්කෑන් කරන්න.'
+          : 'බිල්පත සෑදුවා. QR එක ස්කෑන් කර තහවුරු කළ පසු ආදායමක් ලෙස ගණන් වේ.',
+      );
       onCreated(code);
     } catch (failure) {
       setError(errorMessage(failure));
@@ -74,7 +90,11 @@ export function SaleModal({ onClose, onCreated }: { onClose: () => void; onCreat
     <Modal
       open
       title="නව විකුණුම් බිල්පතක්"
-      subtitle="පැය 24ක් ඇතුළත QR එක ස්කෑන් කර තහවුරු නොකළොත් බිල්පත අවලංගු වේ."
+      subtitle={
+        prepaid
+          ? 'කලින් ගෙවූ බිල්පත අවලංගු නොවේ — ලෝඩ් එක ගෙන යන දින QR එක ස්කෑන් කරන්න.'
+          : 'පැය 24ක් ඇතුළත QR එක ස්කෑන් කර තහවුරු නොකළොත් බිල්පත අවලංගු වේ.'
+      }
       onClose={onClose}
       footer={
         <>
@@ -90,6 +110,23 @@ export function SaleModal({ onClose, onCreated }: { onClose: () => void; onCreat
       <form id="sale-form" onSubmit={submit} className="space-y-4">
         {/* Not a <label>: one would name its first button after the whole
             group, so a screen reader would read both choices as one. */}
+        <div>
+          <span className="mb-1.5 block text-[13px] font-semibold text-white/75">ලෝඩ් එක</span>
+          <Segmented
+            value={prepaid ? 'later' : 'now'}
+            onChange={(value) => setPrepaid(value === 'later')}
+            options={[
+              { value: 'now', label: 'දැන් ගෙන යයි' },
+              { value: 'later', label: 'කලින් ගෙවයි · පසුව ගෙන යයි' },
+            ]}
+          />
+          {prepaid && (
+            <span className="mt-1 block text-xs text-white/55">
+              මුදල අද ලැබේ — අද සිට ආදායමට එකතු වේ. ලෝඩ් එක ගෙන යන දින QR එක ස්කෑන් කරන්න.
+            </span>
+          )}
+        </div>
+
         <div>
           <span className="mb-1.5 block text-[13px] font-semibold text-white/75">වර්ගය</span>
           <Segmented
@@ -166,8 +203,12 @@ export function SaleModal({ onClose, onCreated }: { onClose: () => void; onCreat
               ))}
             </Select>
           </Field>
-          <Field label="ගෙවීම">
-            <Select value={payment} onChange={(event) => setPayment(event.target.value as PaymentType)}>
+          <Field label="ගෙවීම" hint={prepaid ? 'කලින් ගෙවීම මුදලින් පමණි.' : undefined}>
+            <Select
+              value={prepaid ? 'cash' : payment}
+              disabled={prepaid}
+              onChange={(event) => setPayment(event.target.value as PaymentType)}
+            >
               {(Object.keys(PAYMENT_TYPE_LABEL) as PaymentType[]).map((id) => (
                 <option key={id} value={id}>
                   {PAYMENT_TYPE_LABEL[id]}
@@ -193,8 +234,13 @@ export function SaleModal({ onClose, onCreated }: { onClose: () => void; onCreat
           </Field>
         </div>
 
-        <Field label="වාහන අංකය">
-          <Input required value={vehicleNo} onChange={(event) => setVehicleNo(event.target.value)} placeholder="උදා: WP LK-1234" />
+        <Field label="වාහන අංකය" hint={prepaid ? 'දන්නේ නම් පමණක්.' : undefined}>
+          <Input
+            required={!prepaid}
+            value={vehicleNo}
+            onChange={(event) => setVehicleNo(event.target.value)}
+            placeholder="උදා: WP LK-1234"
+          />
         </Field>
 
         <Field label="සටහන">

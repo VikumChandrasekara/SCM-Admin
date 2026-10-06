@@ -96,6 +96,8 @@ export interface SaleInput {
   customerName: string;
   material: SaleMaterial;
   paymentType: PaymentType;
+  /** Paid now for a load taken later — always cash. */
+  prepaid: boolean;
   customerPhone: string;
   vehicleNo: string;
   note: string;
@@ -149,7 +151,9 @@ export async function createSale(input: SaleInput, by: Person): Promise<string> 
       customerName,
       customerKey: customerKeyOf(customerName),
       material: input.material,
-      paymentType: input.paymentType,
+      // A prepaid bill is paid there and then, so never on credit.
+      paymentType: input.prepaid ? 'cash' : input.paymentType,
+      prepaid: input.prepaid,
       machineCharge: prices.machineCharge,
       customerPhone: input.customerPhone.trim(),
       vehicleNo,
@@ -167,7 +171,7 @@ export async function createSale(input: SaleInput, by: Person): Promise<string> 
         'sale',
         code,
         `බිල්පත ${padSaleNumber(number)}`,
-        `${SALE_TYPE[input.type].label} · ${input.quantity} ${SALE_TYPE[input.type].unit} × රු.${unitPrice} = රු.${amount} · ${customerName} · ${vehicleNo}`,
+        `${input.prepaid ? 'කලින් ගෙවූ · ' : ''}${SALE_TYPE[input.type].label} · ${input.quantity} ${SALE_TYPE[input.type].unit} × රු.${unitPrice} = රු.${amount} · ${customerName}${vehicleNo ? ` · ${vehicleNo}` : ''}`,
         by,
       ),
     );

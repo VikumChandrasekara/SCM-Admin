@@ -23,9 +23,19 @@ import {
 } from '../components/ui';
 import { useMonthSales, useNow, useSalesPrices } from '../data/sales';
 import { addMonths, dateTime, money, monthKey, monthLabel, quantity, rupees } from '../lib/format';
-import { SALE_STATUS, SALE_TYPE, formatSaleCode, saleNumber, saleStatus, type Sale, type SaleStatus } from '../lib/model';
+import {
+  SALE_STATUS,
+  SALE_TYPE,
+  awaitsPrepaidLoad,
+  formatSaleCode,
+  isSaleIncome,
+  saleNumber,
+  saleStatus,
+  type Sale,
+  type SaleStatus,
+} from '../lib/model';
 
-type Filter = 'all' | SaleStatus;
+type Filter = 'all' | SaleStatus | 'prepaid';
 
 export function SalesPage() {
   const { profile } = useSession();
@@ -43,21 +53,28 @@ export function SalesPage() {
   const sales = useMonthSales(month);
   const all = sales.data ?? [];
   const statusOf = (sale: Sale) => saleStatus(sale, now);
-  const shown = filter === 'all' ? all : all.filter((sale) => statusOf(sale) === filter);
+  // A prepaid bill waiting for its load is income, not "to be verified".
+  const matches = (sale: Sale, value: Filter) =>
+    value === 'all'
+      ? true
+      : value === 'prepaid'
+        ? sale.prepaid
+        : value === 'pending'
+          ? statusOf(sale) === 'pending' && !sale.prepaid
+          : statusOf(sale) === value;
+  const shown = all.filter((sale) => matches(sale, filter));
 
-  const totalOf = (status: SaleStatus) => {
-    const list = all.filter((sale) => statusOf(sale) === status);
-    return { count: list.length, amount: list.reduce((sum, sale) => sum + sale.amount, 0) };
-  };
-  const verified = totalOf('verified');
-  const pending = totalOf('pending');
-  const cancelled = totalOf('cancelled');
+  const totalOf = (list: Sale[]) => ({ count: list.length, amount: list.reduce((sum, sale) => sum + sale.amount, 0) });
+  const income = totalOf(all.filter((sale) => isSaleIncome(sale, now)));
+  const prepaidOpen = all.filter((sale) => awaitsPrepaidLoad(sale, now)).length;
+  const pending = totalOf(all.filter((sale) => matches(sale, 'pending')));
+  const cancelled = totalOf(all.filter((sale) => matches(sale, 'cancelled')));
 
   return (
     <>
       <PageHeader
         title="විකුණුම්"
-        subtitle="ටිපර් සහ ට්‍රැක්ටර් ලෝඩ් බිල්පත්. QR එක ස්කෑන් කර තහවුරු කළ පසු පමණක් ආදායමක් ලෙස ගණන් වේ; පැය 24ක් ඇතුළත තහවුරු නොකළ බිල්පත් අවලංගු වේ."
+        subtitle="ටිපර් සහ ට්‍රැක්ටර් ලෝඩ් බිල්පත්. QR එක ස්කෑන් කර තහවුරු කළ පසු පමණක් ආදායමක් ලෙස ගණන් වේ; පැය 24ක් ඇතුළත තහවුරු නොකළ බිල්පත් අවලංගු වේ. කලින් ගෙවූ බිල්පත් ගෙවූ දින සිටම ආදායමයි, අවලංගු නොවේ."
         actions={
           <>
             <div className="flex items-center gap-1 rounded-card bg-well p-1">
@@ -99,7 +116,12 @@ export function SalesPage() {
       )}
 
       <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Tile label="ආදායම (තහවුරුයි)" value={rupees(verified.amount)} detail={`බිල්පත් ${verified.count}`} tone="ok" />
+        <Tile
+          label="ආදායම"
+          value={rupees(income.amount)}
+          detail={`බිල්පත් ${income.count}${prepaidOpen > 0 ? ` · කලින් ගෙවූ, ලෝඩ් ඉතිරි ${prepaidOpen}` : ''}`}
+          tone="ok"
+        />
         <Tile label="තහවුරු වීමට ඇති" value={rupees(pending.amount)} detail={`බිල්පත් ${pending.count}`} tone="low" />
         <Tile label="අවලංගු වූ" value={rupees(cancelled.amount)} detail={`බිල්පත් ${cancelled.count}`} tone="out" />
         <Tile label="සෑදූ සියලු බිල්පත්" value={String(all.length)} detail={monthLabel(month)} />
@@ -117,6 +139,7 @@ export function SalesPage() {
               { value: 'verified', label: SALE_STATUS.verified },
               { value: 'pending', label: SALE_STATUS.pending },
               { value: 'cancelled', label: SALE_STATUS.cancelled },
+              { value: 'prepaid', label: 'කලින් ගෙවූ' },
             ]}
           />
           <span className="ml-auto text-sm text-white/70">
@@ -174,7 +197,7 @@ export function SalesPage() {
                       </span>
                     </td>
                     <td className={td}>
-                      <SaleStatusBadge status={statusOf(sale)} />
+                      <SaleStatusBadge status={statusOf(sale)} prepaid={sale.prepaid} />
                     </td>
                     <td className={cx(td, 'text-xs whitespace-nowrap text-white/75')}>
                       {sale.verifiedAt ? (

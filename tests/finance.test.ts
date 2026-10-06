@@ -9,6 +9,7 @@ const sale = (code: string, overrides: Partial<Sale>): Sale => ({
   code,
   material: 'sakka',
   paymentType: 'cash',
+  prepaid: false,
   customerKey: 'silva',
   machineCharge: 4000,
   number: 1,
@@ -68,5 +69,31 @@ describe('machine charge in finance', () => {
     const report = finance([sale('ZERO2345', { machineCharge: 0 })]);
     expect(report.machineTotal).toBe(0);
     expect(report.ledger.some((entry) => entry.kind === 'machine')).toBe(false);
+  });
+});
+
+describe('prepaid loads in finance', () => {
+  const unverified = { status: 'pending' as const, verifiedBy: null, verifiedAt: null };
+
+  it('is income from the day it was paid, though its load has not gone and its day has run out', () => {
+    const report = finance([
+      // Paid four days ago, load still to come.
+      sale('PREP2345', { ...unverified, prepaid: true }),
+      // The same, not prepaid: lapsed after 24 hours.
+      sale('LAPS2345', unverified),
+    ]);
+
+    expect(report.income).toBe(19500);
+    expect(report.prepaidOpen).toEqual({ count: 1, quantity: 3, amount: 19500 });
+    expect(report.cancelled.count).toBe(1);
+    expect(report.pending.count).toBe(0);
+    // Its machine charge goes with the income, in the month it was paid.
+    expect(report.machineTotal).toBe(4000);
+  });
+
+  it('is counted once when its load goes', () => {
+    const report = finance([sale('PREP2345', { prepaid: true })]);
+    expect(report.income).toBe(19500);
+    expect(report.prepaidOpen.count).toBe(0);
   });
 });

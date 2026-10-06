@@ -1036,6 +1036,11 @@ export interface Sale {
   /** Null on a sale from before the material was recorded. */
   material: SaleMaterial | null;
   paymentType: PaymentType;
+  /**
+   * Paid now for a load the customer takes later. Income from the day it is
+   * paid; it never lapses, and its QR is scanned whenever the load goes.
+   */
+  prepaid: boolean;
   customerKey: string;
   /** Rupees per load to the machine when the sale was written; null on a sale from before it was kept. */
   machineCharge: number | null;
@@ -1072,6 +1077,7 @@ export function saleFrom(id: string, data: DocumentData): Sale {
     code: id,
     material: SALE_MATERIAL_IDS.find((item) => item === data.material) ?? null,
     paymentType: data.paymentType === 'credit' ? 'credit' : 'cash',
+    prepaid: data.prepaid === true,
     customerKey: str(data.customerKey),
     machineCharge: numOrNull(data.machineCharge),
     number: numOrNull(data.number),
@@ -1105,13 +1111,27 @@ export function saleExpiry(sale: Sale): Date | null {
 /**
  * What the sale is now. An unverified one past its day is cancelled whether
  * or not anyone has written that down yet — firestore.rules already refuses
- * to verify it.
+ * to verify it. A prepaid one never lapses: it waits for its load.
  */
 export function saleStatus(sale: Sale, now = Date.now()): SaleStatus {
   if (sale.status !== 'pending') return sale.status;
+  if (sale.prepaid) return 'pending';
   const expiry = saleExpiry(sale);
   return expiry && expiry.getTime() <= now ? 'cancelled' : 'pending';
 }
+
+/** Whether the sale is income: verified, or prepaid and not cancelled. */
+export function isSaleIncome(sale: Sale, now = Date.now()): boolean {
+  const status = saleStatus(sale, now);
+  return status === 'verified' || (sale.prepaid && status === 'pending');
+}
+
+/** Prepaid, its load not yet gone. */
+export function awaitsPrepaidLoad(sale: Sale, now = Date.now()): boolean {
+  return sale.prepaid && saleStatus(sale, now) === 'pending';
+}
+
+export const PREPAID_LABEL = 'කලින් ගෙවූ · ලෝඩ් ඉතිරි';
 
 /** `K7Q2-M9XA` — how a code is printed and read out. */
 export function formatSaleCode(code: string): string {

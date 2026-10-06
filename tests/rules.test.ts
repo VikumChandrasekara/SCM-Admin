@@ -542,11 +542,11 @@ describe('sales', () => {
   }
 
   /** A sale written straight into the database, [hoursAgo] old. */
-  async function seedSale(code: string, hoursAgo: number, status = 'pending') {
+  async function seedSale(code: string, hoursAgo: number, status = 'pending', overrides: object = {}) {
     await env.withSecurityRulesDisabled(async (context) => {
       const db = context.firestore() as unknown as Firestore;
       await setDoc(doc(db, 'sales', code), {
-        ...sale('sup1', code, { status }),
+        ...sale('sup1', code, { status, ...overrides }),
         createdAt: Timestamp.fromMillis(Date.now() - hoursAgo * 3_600_000),
       });
     });
@@ -742,6 +742,23 @@ describe('sales', () => {
     await assertFails(
       updateDoc(doc(as('sup1'), 'sales', 'SOON2345'), { status: 'cancelled', cancelledAt: serverTimestamp() }),
     );
+  });
+
+  it('a prepaid bill is paid in cash, never lapses, and is verified whenever its load goes', async () => {
+    const db = as('sup1');
+    // Paid there and then, so never on credit.
+    await assertFails(addSale(db, 'PCRD2345', sale('sup1', 'PCRD2345', { prepaid: true, paymentType: 'credit' })));
+    await assertFails(addSale(db, 'PBAD2345', sale('sup1', 'PBAD2345', { prepaid: 'yes' })));
+    await assertSucceeds(addSale(db, 'PREP2345', sale('sup1', 'PREP2345', { prepaid: true })));
+
+    // A week on, the load goes: it can still be verified — once — but never
+    // cancelled for running past its day.
+    await seedSale('WEEK2345', 7 * 24, 'pending', { prepaid: true });
+    await assertFails(
+      updateDoc(doc(as('sup1'), 'sales', 'WEEK2345'), { status: 'cancelled', cancelledAt: serverTimestamp() }),
+    );
+    await assertSucceeds(updateDoc(doc(as('op1'), 'sales', 'WEEK2345'), verify('op1')));
+    await assertFails(updateDoc(doc(as('comp1'), 'sales', 'WEEK2345'), verify('comp1')));
   });
 
   it('no sale is ever deleted', async () => {

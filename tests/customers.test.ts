@@ -7,6 +7,7 @@ const sale = (name: string, amount: number, overrides: Partial<Sale> = {}): Sale
   code: `C${name}${amount}`,
   material: 'sakka',
   paymentType: 'credit',
+  prepaid: false,
   customerKey: name.trim().toLowerCase(),
   machineCharge: 4000,
   number: 1,

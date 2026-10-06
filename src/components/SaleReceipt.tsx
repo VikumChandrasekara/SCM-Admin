@@ -7,6 +7,7 @@ import { COMPANY, DEVELOPED_BY } from '../lib/company';
 import { dateTime, money, quantity, rupees } from '../lib/format';
 import {
   PAYMENT_TYPE_LABEL,
+  PREPAID_LABEL,
   SALE_MATERIAL,
   SALE_STATUS,
   SALE_TYPE,
@@ -25,7 +26,9 @@ const statusTone: Record<SaleStatus, 'ok' | 'low' | 'out'> = {
   cancelled: 'out',
 };
 
-export function SaleStatusBadge({ status }: { status: SaleStatus }) {
+/** Where a sale stands; a prepaid one still waiting for its load says so. */
+export function SaleStatusBadge({ status, prepaid = false }: { status: SaleStatus; prepaid?: boolean }) {
+  if (prepaid && status === 'pending') return <Badge tone="ok">{PREPAID_LABEL}</Badge>;
   return <Badge tone={statusTone[status]}>{SALE_STATUS[status]}</Badge>;
 }
 
@@ -137,6 +140,7 @@ export function SaleSheet({ sale }: { sale: Sale }) {
           {sale.vehicleNo && <Row label="වාහනය" value={sale.vehicleNo} />}
           {sale.material && <Row label="ද්‍රව්‍යය" value={SALE_MATERIAL[sale.material]} />}
           <Row label="ගෙවීම" value={PAYMENT_TYPE_LABEL[sale.paymentType]} />
+          {sale.prepaid && <Row label="ලෝඩ් එක" value="කලින් ගෙවූ — පසුව ගෙන යයි" />}
         </dl>
 
         <table className="mt-3 w-full border-collapse text-[12px]">
