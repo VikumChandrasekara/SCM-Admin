@@ -12,6 +12,7 @@ import {
   type Bill,
   type BillCategory,
   type Movement,
+  type Payment,
   type Person,
   type Sale,
   type SaleType,
@@ -62,7 +63,7 @@ export interface StockRow {
   estimated: boolean;
 }
 
-export type LedgerKind = 'sale' | 'machine' | 'bill' | 'purchase' | 'salary';
+export type LedgerKind = 'sale' | 'payment' | 'machine' | 'bill' | 'purchase' | 'salary';
 
 export interface LedgerEntry {
   date: string;
@@ -77,6 +78,11 @@ export interface Finance {
   incomeByType: Record<SaleType, SalesTotal>;
   pending: SalesTotal;
   cancelled: SalesTotal;
+  /**
+   * Cash received against credit accounts this month. Not part of [income]:
+   * a credit sale is already counted there when it is verified.
+   */
+  creditPayments: { count: number; amount: number };
 
   salaries: SalaryRow[];
   salaryTotal: number;
@@ -139,6 +145,7 @@ export function financeFor({
   bills,
   movements,
   crewMonths,
+  payments = [],
   store,
   machineCharge,
   now,
@@ -149,6 +156,8 @@ export function financeFor({
   bills: readonly Bill[];
   movements: readonly Movement[];
   crewMonths: readonly CrewMonth[];
+  /** Every payment against a credit account — only this month's are counted. */
+  payments?: readonly Payment[];
   store: readonly StoreItem[];
   /** Today's per-load figure — only for sales written before each sale kept its own. */
   machineCharge: number;
@@ -198,6 +207,20 @@ export function financeFor({
     }
   }
   const income = incomeByType.tipper.amount + incomeByType.tractor.amount;
+
+  const creditPayments = { count: 0, amount: 0 };
+  for (const payment of payments) {
+    if (!payment.date.startsWith(month)) continue;
+    creditPayments.count += 1;
+    creditPayments.amount += payment.amount;
+    ledger.push({
+      date: payment.date,
+      kind: 'payment',
+      description: `ණය ගෙවීම · ${payment.customerName || 'පාරිභෝගිකයා'}${payment.note ? ` · ${payment.note}` : ''}`,
+      income: payment.amount,
+      expense: 0,
+    });
+  }
 
   // ---- crew pay ----
   const salaries: SalaryRow[] = crewMonths.map(({ person, days, tally }) => {
@@ -286,7 +309,7 @@ export function financeFor({
   const usageItems = [...usageByItem.values()].sort(byValue);
 
   const expenses = salaryTotal + siteBillTotal + purchaseTotal + machineTotal;
-  const order: Record<LedgerKind, number> = { sale: 0, machine: 1, bill: 2, purchase: 3, salary: 4 };
+  const order: Record<LedgerKind, number> = { sale: 0, payment: 1, machine: 2, bill: 3, purchase: 4, salary: 5 };
   ledger.sort((a, b) => a.date.localeCompare(b.date) || order[a.kind] - order[b.kind]);
 
   return {
@@ -294,6 +317,7 @@ export function financeFor({
     incomeByType,
     pending,
     cancelled,
+    creditPayments,
     salaries,
     salaryTotal,
     siteBills,

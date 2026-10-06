@@ -49,7 +49,7 @@ export function useSaleQr(code: string): string | null {
 // Only the bill is printed, a till-roll wide — it prints the same on a
 // receipt printer and at the top of an A4 sheet. The letterhead's rule and
 // the tinted table head are kept: browsers drop backgrounds unless told.
-const PRINT_CSS = `
+export const PRINT_CSS = `
 @media print {
   @page { margin: 4mm; }
   html, body { background: #fff !important; }

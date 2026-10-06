@@ -6,6 +6,8 @@ import { addPayment, useCreditSales, usePayments } from '../data/payments';
 import { errorMessage } from '../lib/errors';
 import { rupees } from '../lib/format';
 import { customerAccounts, type CustomerAccount } from '../lib/customers';
+import { nameOf } from '../lib/model';
+import { PaymentReceiptModal, type PaymentSlip } from './PaymentReceipt';
 import { useToast } from './Toasts';
 import { Button, Field, Input, Panel, SectionLabel, cx } from './ui';
 
@@ -15,6 +17,7 @@ export function CreditAccounts() {
   const sales = useCreditSales();
   const payments = usePayments();
   const [paying, setPaying] = useState<CustomerAccount | null>(null);
+  const [receipt, setReceipt] = useState<PaymentSlip | null>(null);
 
   const accounts = useMemo(
     () => customerAccounts(sales.data ?? [], payments.data ?? [], now),
@@ -48,12 +51,30 @@ export function CreditAccounts() {
           </li>
         ))}
       </ul>
-      {paying && <PaymentForm account={paying} onClose={() => setPaying(null)} />}
+      {paying && (
+        <PaymentForm
+          account={paying}
+          onClose={() => setPaying(null)}
+          onSaved={(slip) => {
+            setPaying(null);
+            setReceipt(slip);
+          }}
+        />
+      )}
+      {receipt && <PaymentReceiptModal slip={receipt} onClose={() => setReceipt(null)} />}
     </Panel>
   );
 }
 
-function PaymentForm({ account, onClose }: { account: CustomerAccount; onClose: () => void }) {
+function PaymentForm({
+  account,
+  onClose,
+  onSaved,
+}: {
+  account: CustomerAccount;
+  onClose: () => void;
+  onSaved: (slip: PaymentSlip) => void;
+}) {
   const { profile } = useSession();
   const toast = useToast();
   const [amount, setAmount] = useState('');
@@ -70,9 +91,17 @@ function PaymentForm({ account, onClose }: { account: CustomerAccount; onClose: 
     }
     setBusy(true);
     try {
-      await addPayment(account.customerName, value, date, note, profile);
+      const id = await addPayment(account.customerName, value, date, note, profile);
       toast.success(`${account.customerName} — ගෙවීම සුරැකුණා.`);
-      onClose();
+      onSaved({
+        id,
+        customerName: account.customerName,
+        amount: value,
+        date,
+        note: note.trim(),
+        createdByName: nameOf(profile),
+        balance: Math.max(0, account.outstanding - value),
+      });
     } catch (failure) {
       toast.error(errorMessage(failure));
       setBusy(false);

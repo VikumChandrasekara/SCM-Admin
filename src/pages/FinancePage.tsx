@@ -6,6 +6,7 @@ import { IconButton, Loading, PageHeader, Panel, SectionLabel, TableFrame, cx, t
 import { useMonthBills } from '../data/bills';
 import { useCrewMonths, useMonthMovements } from '../data/finance';
 import { useLiveData } from '../data/LiveData';
+import { usePayments } from '../data/payments';
 import { useMonthSales, useNow, useSalesPrices } from '../data/sales';
 import { errorMessage } from '../lib/errors';
 import { crewSummaryFor, financeFor, type Finance, type LedgerKind, type StockRow } from '../lib/finance';
@@ -32,6 +33,7 @@ export function FinancePage() {
   const crewMonths = useCrewMonths(crew, month, version);
   const previousCrew = useCrewMonths(crew, addMonths(month, -1), version);
   const prices = useSalesPrices();
+  const payments = usePayments();
 
   // Last month's gross, from the same days and loads — no bills, as gross never takes them off.
   const previousGross = previousCrew.data
@@ -43,23 +45,24 @@ export function FinancePage() {
 
   const finance = useMemo(
     () =>
-      sales.data && bills.data && movements.data && crewMonths.data && prices.data
+      sales.data && bills.data && movements.data && crewMonths.data && prices.data && payments.data
         ? financeFor({
             month,
             sales: sales.data,
             bills: bills.data,
             movements: movements.data,
             crewMonths: crewMonths.data,
+            payments: payments.data,
             store,
             machineCharge: prices.data.machineCharge,
             now,
             today,
           })
         : null,
-    [month, sales.data, bills.data, movements.data, crewMonths.data, prices.data, store, now, today],
+    [month, sales.data, bills.data, movements.data, crewMonths.data, prices.data, payments.data, store, now, today],
   );
 
-  const failure = sales.error ?? bills.error ?? movements.error ?? prices.error;
+  const failure = sales.error ?? bills.error ?? movements.error ?? prices.error ?? payments.error;
 
   return (
     <>
@@ -160,6 +163,15 @@ function FinanceReport({ finance, previousGross }: { finance: Finance; previousG
                       <td className={cx(td, 'text-right font-extrabold tabular-nums')}>{money(finance.incomeByType[type].amount)}</td>
                     </tr>
                   ))}
+                  <tr className="border-b border-hairline/60 text-white/60">
+                    <td className={td}>
+                      ණය ගෙවීම් ලැබුණු
+                      <span className="block text-[11px] text-white/45">ණය විකුණුම් දැනටමත් ආදායමේ ඇතුළත්</span>
+                    </td>
+                    <td className={cx(td, 'text-right tabular-nums')}>{finance.creditPayments.count}</td>
+                    <td className={td} />
+                    <td className={cx(td, 'text-right tabular-nums')}>{money(finance.creditPayments.amount)}</td>
+                  </tr>
                   <tr className="border-b border-hairline/60 text-white/60">
                     <td className={td}>තහවුරු වීමට ඇති (ගණන් නොගනී)</td>
                     <td className={cx(td, 'text-right tabular-nums')}>{finance.pending.count}</td>
@@ -398,6 +410,7 @@ function FinanceReport({ finance, previousGross }: { finance: Finance; previousG
 
 const KIND_LABEL: Record<LedgerKind, string> = {
   sale: 'විකුණුම',
+  payment: 'ණය ගෙවීම',
   machine: 'යන්ත්‍රයට',
   bill: 'බිල්පත',
   purchase: 'ගබඩා මිලදී ගැනීම',

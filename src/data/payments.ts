@@ -6,17 +6,18 @@ import { auditEntry } from './audit';
 import { commit } from './commit';
 import { useLiveQuery } from './live';
 
-/** Records a payment against a customer's credit account. Written once. */
+/** Records a payment against a customer's credit account. Written once. Returns its id. */
 export async function addPayment(
   customerName: string,
   amount: number,
   date: string,
   note: string,
   by: Person,
-): Promise<void> {
+): Promise<string> {
   const name = customerName.trim();
   const batch = writeBatch(db);
-  batch.set(doc(collection(db, 'payments')), {
+  const payment = doc(collection(db, 'payments'));
+  batch.set(payment, {
     customerKey: customerKeyOf(name),
     customerName: name,
     amount,
@@ -31,6 +32,7 @@ export async function addPayment(
     auditEntry('payment.add', 'sale', customerKeyOf(name), name, `රු.${amount} · ${date}`, by),
   );
   await commit(batch);
+  return payment.id;
 }
 
 /** Every sale taken on credit, whatever its month. Staff only — see firestore.rules. */
