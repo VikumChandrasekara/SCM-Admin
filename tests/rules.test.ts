@@ -514,6 +514,8 @@ describe('sales', () => {
     amount: 19500,
     customerName: 'Silva',
     customerKey: 'silva',
+    material: 'sakka',
+    paymentType: 'cash',
     customerPhone: '',
     vehicleNo: '',
     note: '',
