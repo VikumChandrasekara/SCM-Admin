@@ -513,6 +513,7 @@ describe('sales', () => {
     unitPrice: 6500,
     amount: 19500,
     customerName: 'Silva',
+    customerKey: 'silva',
     customerPhone: '',
     vehicleNo: '',
     note: '',
