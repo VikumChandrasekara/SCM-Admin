@@ -113,23 +113,21 @@ export function SaleModal({ onClose, onCreated }: { onClose: () => void; onCreat
           // A div rather than a Field, for the same reason as the type
           // picker: a <label> around a group of buttons names the first one
           // after the whole group.
-          <Field
-            label={`ප්‍රමාණය (${SALE_TYPE.tipper.unit})`}
-            hint={
-              unitPrice == null
-                ? undefined
-                : `කියුබ් එකක් රු. ${money(unitPrice)} · ටිපර් ලෝඩ් එකක් = කියුබ් ${CUBES_PER_TIPPER}`
-            }
-          >
-            <Select value={amount} onChange={(event) => setAmount(event.target.value)} required>
-              <option value="">— තෝරන්න —</option>
-              {TIPPER_SIZES.map((size) => (
-                <option key={size} value={String(size)}>
-                  {quantity(size)}
-                </option>
-              ))}
-            </Select>
-          </Field>
+          <div>
+            <span className="mb-1.5 block text-[12.5px] font-semibold text-white/70">
+              ප්‍රමාණය ({SALE_TYPE.tipper.unit})
+            </span>
+            <Segmented
+              value={amount}
+              onChange={setAmount}
+              options={TIPPER_SIZES.map((size) => ({ value: String(size), label: quantity(size) }))}
+            />
+            {unitPrice != null && (
+              <span className="mt-1 block text-xs text-white/55">
+                කියුබ් එකක් රු. {money(unitPrice)} · ටිපර් ලෝඩ් එකක් = කියුබ් {CUBES_PER_TIPPER}
+              </span>
+            )}
+          </div>
         ) : (
           <Field
             label={`ප්‍රමාණය (${SALE_TYPE.tractor.unit})`}
