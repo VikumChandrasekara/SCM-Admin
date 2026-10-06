@@ -915,13 +915,36 @@ export interface SalesPrices {
   cubePrice: number;
   /** Rupees for one tractor load. */
   tractorPrice: number;
+  /** Rupees that go to the machine for each load sold — see {@link machineLoadsOf}. */
+  machineCharge: number;
 }
+
+/** What goes to the machine per load until staff set otherwise. firestore.rules falls back to the same figure. */
+export const DEFAULT_MACHINE_CHARGE = 4000;
 
 /**
  * What sales are priced at until staff set otherwise. firestore.rules falls
  * back to the same figures.
  */
-export const DEFAULT_SALES_PRICES: SalesPrices = { tipperPrice: 19500, cubePrice: 6500, tractorPrice: 6500 };
+export const DEFAULT_SALES_PRICES: SalesPrices = {
+  tipperPrice: 19500,
+  cubePrice: 6500,
+  tractorPrice: 6500,
+  machineCharge: DEFAULT_MACHINE_CHARGE,
+};
+
+/** Loads a sale counts for the machine: a tipper bill is one trip whatever it carried; a tractor bill is its load count. */
+export function machineLoadsOf(sale: Pick<Sale, 'type' | 'quantity'>): number {
+  return sale.type === 'tipper' ? 1 : sale.quantity;
+}
+
+/**
+ * What a sale sends to the machine, at the figure it was written at — or
+ * [currentRate] for a sale written before the figure was kept on it.
+ */
+export function machineChargeOf(sale: Sale, currentRate: number): number {
+  return machineLoadsOf(sale) * (sale.machineCharge ?? currentRate);
+}
 
 /** One cube's price for `tipperPrice` — what a tipper load's figure comes to. */
 export function cubePriceFor(tipperPrice: number): number {
@@ -943,10 +966,17 @@ export function pricesFrom(data: DocumentData | undefined): SalesPrices {
     const number = numOrNull(value);
     return number != null && number > 0 ? number : null;
   };
+  const charge = numOrNull(data?.machineCharge);
+  const machineCharge = charge != null && charge >= 0 ? charge : DEFAULT_MACHINE_CHARGE;
   const tipperPrice = positive(data?.tipperPrice);
   const cubePrice = positive(data?.cubePrice);
-  if (tipperPrice == null || cubePrice == null) return DEFAULT_SALES_PRICES;
-  return { tipperPrice, cubePrice, tractorPrice: positive(data?.tractorPrice) ?? DEFAULT_SALES_PRICES.tractorPrice };
+  if (tipperPrice == null || cubePrice == null) return { ...DEFAULT_SALES_PRICES, machineCharge };
+  return {
+    tipperPrice,
+    cubePrice,
+    tractorPrice: positive(data?.tractorPrice) ?? DEFAULT_SALES_PRICES.tractorPrice,
+    machineCharge,
+  };
 }
 
 /** The material a load was made of — a label only, the price is the same. */
@@ -1007,6 +1037,8 @@ export interface Sale {
   material: SaleMaterial | null;
   paymentType: PaymentType;
   customerKey: string;
+  /** Rupees per load to the machine when the sale was written; null on a sale from before it was kept. */
+  machineCharge: number | null;
   /**
    * The bill's number within its month, from 1 — `001` on the bill. Null on
    * a sale written before bills were numbered.
@@ -1041,6 +1073,7 @@ export function saleFrom(id: string, data: DocumentData): Sale {
     material: SALE_MATERIAL_IDS.find((item) => item === data.material) ?? null,
     paymentType: data.paymentType === 'credit' ? 'credit' : 'cash',
     customerKey: str(data.customerKey),
+    machineCharge: numOrNull(data.machineCharge),
     number: numOrNull(data.number),
     // A sale written before tipper loads were counted in cubes carries
     // 'cube'; it was a tipper load as well, so it reads as one.

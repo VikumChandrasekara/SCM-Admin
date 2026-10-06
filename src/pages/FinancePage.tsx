@@ -6,7 +6,7 @@ import { IconButton, Loading, PageHeader, Panel, SectionLabel, TableFrame, cx, t
 import { useMonthBills } from '../data/bills';
 import { useCrewMonths, useMonthMovements } from '../data/finance';
 import { useLiveData } from '../data/LiveData';
-import { useMonthSales, useNow } from '../data/sales';
+import { useMonthSales, useNow, useSalesPrices } from '../data/sales';
 import { errorMessage } from '../lib/errors';
 import { financeFor, type Finance, type LedgerKind, type StockRow } from '../lib/finance';
 import { addMonths, money, monthKey, monthLabel, quantity, rupees } from '../lib/format';
@@ -29,10 +29,11 @@ export function FinancePage() {
   const bills = useMonthBills(month);
   const movements = useMonthMovements(month);
   const crewMonths = useCrewMonths(crew, month, version);
+  const prices = useSalesPrices();
 
   const finance = useMemo(
     () =>
-      sales.data && bills.data && movements.data && crewMonths.data
+      sales.data && bills.data && movements.data && crewMonths.data && prices.data
         ? financeFor({
             month,
             sales: sales.data,
@@ -40,14 +41,15 @@ export function FinancePage() {
             movements: movements.data,
             crewMonths: crewMonths.data,
             store,
+            machineCharge: prices.data.machineCharge,
             now,
             today,
           })
         : null,
-    [month, sales.data, bills.data, movements.data, crewMonths.data, store, now, today],
+    [month, sales.data, bills.data, movements.data, crewMonths.data, prices.data, store, now, today],
   );
 
-  const failure = sales.error ?? bills.error ?? movements.error;
+  const failure = sales.error ?? bills.error ?? movements.error ?? prices.error;
 
   return (
     <>
@@ -89,6 +91,11 @@ function FinanceReport({ finance }: { finance: Finance }) {
   const expenseLines: { label: string; value: number; detail: string }[] = [
     { label: 'කණ්ඩායම් වැටුප්', value: finance.salaryTotal, detail: 'දවසේ පඩිය, බෝනස් සහ අඩි — ඇඩ්වාන්ස් සහ කෑම ඇතුළුව' },
     { label: 'ගබඩා මිලදී ගැනීම්', value: finance.purchaseTotal, detail: 'නව අයිතම සහ තොග එකතු කිරීම්' },
+    {
+      label: 'යන්ත්‍රයට කපන ගණන',
+      value: finance.machineTotal,
+      detail: `තහවුරු කළ විකුණුම් ලෝඩ් ${quantity(finance.machineLoads)}`,
+    },
     ...BILL_CATEGORIES.filter((category) => finance.siteBills[category] > 0).map((category) => ({
       label: `${BILL[category].label} බිල්පත්`,
       value: finance.siteBills[category],
@@ -323,6 +330,7 @@ function FinanceReport({ finance }: { finance: Finance }) {
 
 const KIND_LABEL: Record<LedgerKind, string> = {
   sale: 'විකුණුම',
+  machine: 'යන්ත්‍රයට',
   bill: 'බිල්පත',
   purchase: 'ගබඩා මිලදී ගැනීම',
   salary: 'වැටුප් ශේෂය',

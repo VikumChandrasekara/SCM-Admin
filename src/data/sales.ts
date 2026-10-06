@@ -54,7 +54,7 @@ export async function saveSalesPrices(prices: SalesPrices, by: Person): Promise<
       'settings',
       'sales',
       'විකුණුම් මිල',
-      `ටිපර් ලෝඩ් රු.${prices.tipperPrice} (කියුබ් රු.${prices.cubePrice}) · ට්‍රැක්ටර් ලෝඩ් රු.${prices.tractorPrice}`,
+      `ටිපර් ලෝඩ් රු.${prices.tipperPrice} (කියුබ් රු.${prices.cubePrice}) · ට්‍රැක්ටර් ලෝඩ් රු.${prices.tractorPrice} · යන්ත්‍රයට ලෝඩ් එකකට රු.${prices.machineCharge}`,
       by,
     ),
   );
@@ -150,6 +150,7 @@ export async function createSale(input: SaleInput, by: Person): Promise<string> 
       customerKey: customerKeyOf(customerName),
       material: input.material,
       paymentType: input.paymentType,
+      machineCharge: prices.machineCharge,
       customerPhone: input.customerPhone.trim(),
       vehicleNo,
       note: input.note.trim(),

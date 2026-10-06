@@ -516,6 +516,7 @@ describe('sales', () => {
     customerKey: 'silva',
     material: 'sakka',
     paymentType: 'cash',
+    machineCharge: 4000,
     customerPhone: '',
     vehicleNo: '',
     note: '',
@@ -570,6 +571,21 @@ describe('sales', () => {
     await assertFails(setDoc(doc(as('admin1'), 'settings', 'sales'), { tipperPrice: 21000, cubePrice: 7000 }));
     await assertFails(setDoc(doc(as('admin1'), 'settings', 'sales'), { tipperPrice: 21000, tractorPrice: 5000 }));
     await assertSucceeds(getDoc(doc(as('op1'), 'settings', 'sales')));
+  });
+
+  it("a sale carries the machine's per-load figure as set — 4,000 until then", async () => {
+    await assertFails(addSale(as('sup1'), 'MCHN2345', sale('sup1', 'MCHN2345', { machineCharge: 0 })));
+    await assertSucceeds(addSale(as('sup1'), 'MCHN2345', sale('sup1', 'MCHN2345')));
+
+    const prices = { tipperPrice: 19500, cubePrice: 6500, tractorPrice: 6500 };
+    await assertFails(setDoc(doc(as('sup1'), 'settings', 'sales'), { ...prices, machineCharge: -1 }));
+    await assertSucceeds(setDoc(doc(as('sup1'), 'settings', 'sales'), { ...prices, machineCharge: 3500 }));
+    await assertFails(
+      addSale(as('sup1'), 'MCHN2346', sale('sup1', 'MCHN2346', { number: 2 })),
+    );
+    await assertSucceeds(
+      addSale(as('sup1'), 'MCHN2346', sale('sup1', 'MCHN2346', { number: 2, machineCharge: 3500 })),
+    );
   });
 
   it('with no prices set, sales are written at the defaults', async () => {

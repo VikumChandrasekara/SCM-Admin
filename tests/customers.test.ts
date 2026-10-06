@@ -8,6 +8,7 @@ const sale = (name: string, amount: number, overrides: Partial<Sale> = {}): Sale
   material: 'sakka',
   paymentType: 'credit',
   customerKey: name.trim().toLowerCase(),
+  machineCharge: 4000,
   number: 1,
   type: 'tipper',
   quantity: 1,
