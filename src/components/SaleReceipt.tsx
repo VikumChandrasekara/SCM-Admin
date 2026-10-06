@@ -6,6 +6,8 @@ import { useSale } from '../data/sales';
 import { COMPANY, DEVELOPED_BY } from '../lib/company';
 import { dateTime, money, quantity, rupees } from '../lib/format';
 import {
+  PAYMENT_TYPE_LABEL,
+  SALE_MATERIAL,
   SALE_STATUS,
   SALE_TYPE,
   formatSaleCode,
@@ -133,6 +135,8 @@ export function SaleSheet({ sale }: { sale: Sale }) {
           <Row label="පාරිභෝගිකයා" value={sale.customerName || '—'} />
           {sale.customerPhone && <Row label="දුරකථනය" value={sale.customerPhone} />}
           {sale.vehicleNo && <Row label="වාහනය" value={sale.vehicleNo} />}
+          {sale.material && <Row label="ද්‍රව්‍යය" value={SALE_MATERIAL[sale.material]} />}
+          <Row label="ගෙවීම" value={PAYMENT_TYPE_LABEL[sale.paymentType]} />
         </dl>
 
         <table className="mt-3 w-full border-collapse text-[12px]">

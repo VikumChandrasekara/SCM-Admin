@@ -1,4 +1,4 @@
-import { BILL, ROLES, dayOnHours, workedHours, type Bill, type Day, type MonthTally, type Person } from './model';
+import { BILL, ROLES, dayWorked, workedHours, type Bill, type Day, type MonthTally, type Person } from './model';
 import { bonusEarned, leaveDaysFor } from './target';
 
 /**
@@ -57,7 +57,7 @@ export function payFor(
 ): PayFigures {
   const role = ROLES[person.role];
 
-  const workedDays = monthDays.filter((entry) => dayOnHours(entry) != null).length;
+  const workedDays = monthDays.filter(dayWorked).length;
   const leaveDays = leaveDaysFor(month.month, today, workedDays);
   const wageUnits = wageUnitsOf(person.wageBasis, month, workedDays);
   const wagePay = wageUnits * person.dailyWage;
@@ -82,7 +82,7 @@ export function payFor(
         ? (day?.feet ?? 0)
         : person.wageBasis === 'load'
           ? (day?.loads ?? 0)
-          : day != null && dayOnHours(day) != null
+          : day != null && dayWorked(day)
             ? 1
             : 0;
   const dayEarnings = dayWageUnits * person.dailyWage;

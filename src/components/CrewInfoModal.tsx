@@ -8,7 +8,7 @@ import { permissionsFor } from '../auth/permissions';
 import { useMonthBills } from '../data/bills';
 import { useLiveDoc, useLiveQuery } from '../data/live';
 import { useLiveData } from '../data/LiveData';
-import { dayRef, monthRef, resetService, saveFigures, saveLeaveWorkDay, saveTally } from '../data/machines';
+import { dayRef, markLeaveWorked, monthRef, resetService, saveFigures, saveTally } from '../data/machines';
 import { db } from '../db';
 import { errorMessage } from '../lib/errors';
 import { hours, monthBounds, quantity, rupees, signedHours } from '../lib/format';
@@ -18,7 +18,7 @@ import {
   WAGE_BASES,
   WAGE_BASIS_LABEL,
   dayFrom,
-  dayOnHours,
+  dayWorked,
   monthFrom,
   nameOf,
   serviceStatus,
@@ -78,15 +78,11 @@ export function CrewInfoModal({ person, date, onClose }: { person: Person; date:
   const [tally, setTally] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<ServiceTask | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const [leaveDay, setLeaveDay] = useState<string | null>(null);
-  const [leaveOn, setLeaveOn] = useState('');
-  const [leaveOff, setLeaveOff] = useState('');
-
   const leaveDates = monthDays.data
     ? leaveDatesFor(
         month,
         today,
-        monthDays.data.filter((entry) => dayOnHours(entry) != null).map((entry) => entry.date),
+        monthDays.data.filter(dayWorked).map((entry) => entry.date),
       )
     : [];
 
@@ -138,23 +134,13 @@ export function CrewInfoModal({ person, date, onClose }: { person: Person; date:
     ).then((saved) => saved && setTally(null));
   }
 
-  function saveLeave() {
-    const on = Number(leaveOn);
-    const off = Number(leaveOff);
-    if (leaveDay == null || leaveOn.trim() === '' || leaveOff.trim() === '') {
-      toast.error('ON සහ OFF මීටර අගයන් ඇතුළත් කරන්න.');
-      return;
-    }
+  function markLeave(leaveDate: string) {
+    if (!window.confirm(`${leaveDate} වැඩ කළ දිනයක් ලෙස සටහන් කරන්නද? නිවාඩු ගණන අඩු වේ.`)) return;
     void run(
-      'leave',
-      () => saveLeaveWorkDay(live, leaveDay, on, off, profile),
-      `${leaveDay} වැඩ කළ දිනයක් ලෙස සුරැකුණා.`,
-    ).then((saved) => {
-      if (!saved) return;
-      setLeaveDay(null);
-      setLeaveOn('');
-      setLeaveOff('');
-    });
+      `leave:${leaveDate}`,
+      () => markLeaveWorked(live, leaveDate, profile),
+      `${leaveDate} වැඩ කළ දිනයක් ලෙස සටහන් කළා.`,
+    );
   }
 
   function confirmService(task: ServiceTask) {
@@ -235,47 +221,13 @@ export function CrewInfoModal({ person, date, onClose }: { person: Person; date:
                 <Button
                   size="sm"
                   variant="secondary"
-                  onClick={() => {
-                    setLeaveDay(leaveDate);
-                    setLeaveOn('');
-                    setLeaveOff('');
-                  }}
+                  busy={busy === `leave:${leaveDate}`}
+                  onClick={() => markLeave(leaveDate)}
                 >
                   වැඩ කළා
                 </Button>
               </div>
             ))}
-            {leaveDay && (
-              <div className="space-y-2 border-t border-hairline pt-3">
-                <p className="font-semibold">{leaveDay} — ON සහ OFF මීටර</p>
-                <div className="grid grid-cols-2 gap-2">
-                  <Input
-                    type="number"
-                    min="0"
-                    step="any"
-                    placeholder="ON"
-                    value={leaveOn}
-                    onChange={(event) => setLeaveOn(event.target.value)}
-                  />
-                  <Input
-                    type="number"
-                    min="0"
-                    step="any"
-                    placeholder="OFF"
-                    value={leaveOff}
-                    onChange={(event) => setLeaveOff(event.target.value)}
-                  />
-                </div>
-                <div className="flex gap-2">
-                  <Button size="sm" busy={busy === 'leave'} onClick={saveLeave}>
-                    සුරකින්න
-                  </Button>
-                  <Button size="sm" variant="secondary" onClick={() => setLeaveDay(null)}>
-                    අවලංගු
-                  </Button>
-                </div>
-              </div>
-            )}
           </div>
         </div>
 

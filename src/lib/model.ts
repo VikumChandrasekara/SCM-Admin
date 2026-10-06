@@ -436,6 +436,8 @@ export interface Day {
   feet: number;
   /** The OFF meter, carried back from the next morning's ON. */
   closingHours: number | null;
+  /** Worked, but marked by hand rather than entered — it has no meter reading. */
+  workedManually: boolean;
   blasting: Blasting;
 }
 
@@ -448,6 +450,7 @@ export function emptyDay(date: string): Day {
     loads: 0,
     feet: 0,
     closingHours: null,
+    workedManually: false,
     blasting: { amounts: {}, sizes: {}, lockedAt: null },
   };
 }
@@ -487,6 +490,7 @@ export function dayFrom(date: string, data: DocumentData | undefined): Day {
     loads: num(data.loads),
     feet: num(data.feet),
     closingHours: numOrNull(data.closingHours),
+    workedManually: data.workedManually === true,
     blasting: {
       amounts: amountsFrom(rawBlasting?.amounts, BLAST_ITEMS),
       sizes: sizesFrom(rawBlasting?.sizes),
@@ -509,6 +513,11 @@ export function dayOnHours(day: Day): number | null {
 }
 
 /** Normally the closing hours; older records kept an OFF inside a slot. */
+/** Counts toward the month's worked days — started on, or marked worked by hand. */
+export function dayWorked(day: Day): boolean {
+  return dayOnHours(day) != null || day.workedManually;
+}
+
 export function dayOffHours(day: Day): number | null {
   if (day.closingHours != null) return day.closingHours;
   for (let slot = SLOTS_PER_DAY; slot >= 1; slot--) {
@@ -748,6 +757,7 @@ export type AuditAction =
   | 'sales.prices'
   | 'service.reset'
   | 'leave.workday'
+  | 'payment.add'
   | 'figures.set'
   | 'tally.set';
 
@@ -766,6 +776,7 @@ export const AUDIT_LABEL: Record<AuditAction, string> = {
   'sales.prices': 'විකුණුම් මිල වෙනස් කළා',
   'service.reset': 'සේවා කාලය යළි පිහිටෙව්වා',
   'leave.workday': 'නිවාඩු දිනයක් වැඩ කළ දිනයක් ලෙස සුරැකුණා',
+  'payment.add': 'ණය ගෙවීමක් එකතු කළා',
   'figures.set': 'වැටුප/ඇඩ්වාන්ස් වෙනස් කළා',
   'tally.set': 'ලෝඩ්/අඩි නිවැරදි කළා',
 };
@@ -938,9 +949,64 @@ export function pricesFrom(data: DocumentData | undefined): SalesPrices {
   return { tipperPrice, cubePrice, tractorPrice: positive(data?.tractorPrice) ?? DEFAULT_SALES_PRICES.tractorPrice };
 }
 
+/** The material a load was made of — a label only, the price is the same. */
+export type SaleMaterial = 'sakka' | 'six_nine' | 'boldas' | 'kory_dust';
+
+export const SALE_MATERIAL: Record<SaleMaterial, string> = {
+  sakka: 'සක්කර',
+  six_nine: '6/9',
+  boldas: 'බෝල්දාස්',
+  kory_dust: 'කෝරි ඩස්ට්',
+};
+
+const SALE_MATERIAL_IDS = Object.keys(SALE_MATERIAL) as SaleMaterial[];
+
+/** Paid when the load leaves, or owed until a payment comes in. */
+export type PaymentType = 'cash' | 'credit';
+
+export const PAYMENT_TYPE_LABEL: Record<PaymentType, string> = {
+  cash: 'මුදල්',
+  credit: 'නයට',
+};
+
+/** Trimmed and lowercased, so the same customer typed two ways groups together. */
+export function customerKeyOf(name: string): string {
+  return name.trim().toLowerCase();
+}
+
+/** A payment against a customer's credit account — written once, never changed. */
+export interface Payment {
+  id: string;
+  customerKey: string;
+  customerName: string;
+  amount: number;
+  /** `yyyy-MM-dd` */
+  date: string;
+  note: string;
+  createdByName: string;
+  createdAt: Date | null;
+}
+
+export function paymentFrom(id: string, data: DocumentData): Payment {
+  return {
+    id,
+    customerKey: str(data.customerKey),
+    customerName: str(data.customerName),
+    amount: num(data.amount),
+    date: str(data.date),
+    note: str(data.note),
+    createdByName: str(data.createdByName),
+    createdAt: toDate(data.createdAt),
+  };
+}
+
 export interface Sale {
   /** Printed on the bill and carried in its QR; also the document id. */
   code: string;
+  /** Null on a sale from before the material was recorded. */
+  material: SaleMaterial | null;
+  paymentType: PaymentType;
+  customerKey: string;
   /**
    * The bill's number within its month, from 1 — `001` on the bill. Null on
    * a sale written before bills were numbered.
@@ -972,6 +1038,9 @@ export function saleFrom(id: string, data: DocumentData): Sale {
     data.status === 'verified' || data.status === 'cancelled' ? data.status : 'pending';
   return {
     code: id,
+    material: SALE_MATERIAL_IDS.find((item) => item === data.material) ?? null,
+    paymentType: data.paymentType === 'credit' ? 'credit' : 'cash',
+    customerKey: str(data.customerKey),
     number: numOrNull(data.number),
     // A sale written before tipper loads were counted in cubes carries
     // 'cube'; it was a tipper load as well, so it reads as one.

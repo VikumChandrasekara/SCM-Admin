@@ -4,9 +4,20 @@ import { useSession } from '../auth/AuthContext';
 import { createSale, useSalesPrices } from '../data/sales';
 import { errorMessage } from '../lib/errors';
 import { money, quantity, rupees } from '../lib/format';
-import { CUBES_PER_TIPPER, SALE_TYPE, SALE_TYPES, TIPPER_SIZES, unitPriceOf, type SaleType } from '../lib/model';
+import {
+  CUBES_PER_TIPPER,
+  PAYMENT_TYPE_LABEL,
+  SALE_MATERIAL,
+  SALE_TYPE,
+  SALE_TYPES,
+  TIPPER_SIZES,
+  unitPriceOf,
+  type PaymentType,
+  type SaleMaterial,
+  type SaleType,
+} from '../lib/model';
 import { useToast } from './Toasts';
-import { Button, ErrorNote, Field, Input, Modal, Segmented, Textarea } from './ui';
+import { Button, ErrorNote, Field, Input, Modal, Segmented, Select, Textarea } from './ui';
 
 /**
  * A new sale. The price is the one staff set — this only chooses what and
@@ -19,6 +30,8 @@ export function SaleModal({ onClose, onCreated }: { onClose: () => void; onCreat
 
   const [type, setType] = useState<SaleType>('tipper');
   const [amount, setAmount] = useState('');
+  const [material, setMaterial] = useState<SaleMaterial | ''>('');
+  const [payment, setPayment] = useState<PaymentType>('cash');
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [vehicleNo, setVehicleNo] = useState('');
@@ -40,12 +53,13 @@ export function SaleModal({ onClose, onCreated }: { onClose: () => void; onCreat
     if (!Number.isFinite(count) || count <= 0) return setError('ප්‍රමාණය ශුන්‍යයට වඩා වැඩි විය යුතුය.');
     if (!customerName.trim()) return setError('පාරිභෝගිකයාගේ නම ඇතුළත් කරන්න.');
     if (!vehicleNo.trim()) return setError('වාහන අංකය ඇතුළත් කරන්න.');
+    if (!material) return setError('ද්‍රව්‍යය තෝරන්න.');
 
     setBusy(true);
     setError(null);
     try {
       const code = await createSale(
-        { type, quantity: count, customerName, customerPhone, vehicleNo, note },
+        { type, quantity: count, customerName, material, paymentType: payment, customerPhone, vehicleNo, note },
         profile,
       );
       toast.success('බිල්පත සෑදුවා. QR එක ස්කෑන් කර තහවුරු කළ පසු ආදායමක් ලෙස ගණන් වේ.');
@@ -139,6 +153,28 @@ export function SaleModal({ onClose, onCreated }: { onClose: () => void; onCreat
               : (loadPrice ?? 'මිල පූරණය වෙමින්...')}
           </span>
           <span className="text-xl font-extrabold tabular-nums">{total != null ? rupees(total) : '—'}</span>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="ද්‍රව්‍යය">
+            <Select value={material} onChange={(event) => setMaterial(event.target.value as SaleMaterial | '')}>
+              <option value="">— තෝරන්න —</option>
+              {(Object.keys(SALE_MATERIAL) as SaleMaterial[]).map((id) => (
+                <option key={id} value={id}>
+                  {SALE_MATERIAL[id]}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="ගෙවීම">
+            <Select value={payment} onChange={(event) => setPayment(event.target.value as PaymentType)}>
+              {(Object.keys(PAYMENT_TYPE_LABEL) as PaymentType[]).map((id) => (
+                <option key={id} value={id}>
+                  {PAYMENT_TYPE_LABEL[id]}
+                </option>
+              ))}
+            </Select>
+          </Field>
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">

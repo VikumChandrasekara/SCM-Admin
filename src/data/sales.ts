@@ -16,6 +16,7 @@ import { dateTime, monthBounds, monthKey, todayKey } from '../lib/format';
 import {
   SALE_CODE_ALPHABET,
   SALE_TYPE,
+  customerKeyOf,
   nameOf,
   padSaleNumber,
   pricesFrom,
@@ -23,7 +24,9 @@ import {
   saleStatus,
   unitPriceOf,
   type Person,
+  type PaymentType,
   type Sale,
+  type SaleMaterial,
   type SaleType,
   type SalesPrices,
 } from '../lib/model';
@@ -91,6 +94,8 @@ export interface SaleInput {
   type: SaleType;
   quantity: number;
   customerName: string;
+  material: SaleMaterial;
+  paymentType: PaymentType;
   customerPhone: string;
   vehicleNo: string;
   note: string;
@@ -142,6 +147,9 @@ export async function createSale(input: SaleInput, by: Person): Promise<string> 
       unitPrice,
       amount,
       customerName,
+      customerKey: customerKeyOf(customerName),
+      material: input.material,
+      paymentType: input.paymentType,
       customerPhone: input.customerPhone.trim(),
       vehicleNo,
       note: input.note.trim(),

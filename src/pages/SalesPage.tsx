@@ -3,6 +3,7 @@ import { useState } from 'react';
 
 import { useSession } from '../auth/AuthContext';
 import { permissionsFor } from '../auth/permissions';
+import { CreditAccounts } from '../components/CreditAccounts';
 import { DataError } from '../components/DataError';
 import { PricesModal } from '../components/PricesModal';
 import { SaleModal } from '../components/SaleModal';
@@ -100,6 +101,8 @@ export function SalesPage() {
         <Tile label="අවලංගු වූ" value={rupees(cancelled.amount)} detail={`බිල්පත් ${cancelled.count}`} tone="out" />
         <Tile label="සෑදූ සියලු බිල්පත්" value={String(all.length)} detail={monthLabel(month)} />
       </div>
+
+      <CreditAccounts />
 
       <Panel className="p-4 sm:p-5">
         <div className="mb-4 flex flex-wrap items-center gap-3">
