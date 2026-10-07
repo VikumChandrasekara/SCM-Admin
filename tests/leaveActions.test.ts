@@ -178,6 +178,50 @@ describe('marking a leave day worked, with its ON meter', () => {
   });
 });
 
+describe('a day whose first filling was OK’d with no ON', () => {
+  /** The crew filled the machine but never typed the meter — so the day still reads as leave. */
+  const filledWithoutOn = (date: string, slots: string[] = ['1']) =>
+    direct((db) =>
+      setDoc(doc(db, 'machines', 'ex1', 'days', date), {
+        date,
+        fillings: Object.fromEntries(
+          slots.map((slot) => [slot, { onHours: null, offHours: null, amounts: { diesel: 40 }, lockedAt: `${date}T07:00:00.000Z` }]),
+        ),
+      }),
+    );
+
+  it('takes the ON into the locked slot, leaving what the crew recorded as it was', async () => {
+    await workedDay('2026-10-03', 6700);
+    await filledWithoutOn('2026-10-04');
+    await month('2026-10', 100);
+    signIn('admin1');
+
+    await markLeaveWorked(crew, '2026-10-04', admin, 6708);
+
+    const day = await data('machines/ex1/days/2026-10-04');
+    expect(day?.fillings['1']).toMatchObject({
+      onHours: 6708,
+      amounts: { diesel: 40 },
+      lockedAt: '2026-10-04T07:00:00.000Z',
+    });
+    // The day before closes at it, as for any other day.
+    expect(await data('machines/ex1/days/2026-10-03')).toMatchObject({ closingHours: 6708 });
+    expect(await data('machines/ex1/months/2026-10')).toMatchObject({ hours: 108 });
+  });
+
+  it('does the same for a supervisor, on a day whose later fillings are locked too', async () => {
+    await filledWithoutOn('2026-10-04', ['1', '2']);
+    signIn('sup1');
+
+    await markLeaveWorked(crew, '2026-10-04', supervisor, 6720);
+
+    const day = await data('machines/ex1/days/2026-10-04');
+    expect(day?.fillings['1']).toMatchObject({ onHours: 6720, lockedAt: '2026-10-04T07:00:00.000Z' });
+    expect(day?.fillings['2']).toMatchObject({ onHours: null });
+    expect(await data('machines/ex1')).toMatchObject({ totalHours: 6720 });
+  });
+});
+
 describe('marking a leave day worked, without a meter', () => {
   it('only marks the day, and leaves the meter and the month’s hours alone', async () => {
     await workedDay('2026-10-03', 6700);

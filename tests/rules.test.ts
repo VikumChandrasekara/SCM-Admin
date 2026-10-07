@@ -226,6 +226,37 @@ describe('machines and days', () => {
     );
   });
 
+  it('staff add the ON a locked slot was OK’d without — and only that', async () => {
+    await env.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore() as unknown as Firestore;
+      const slot = { offHours: null, amounts: { diesel: 30 }, lockedAt: '2026-09-14T07:00:00.000Z' };
+      // OK'd with a null ON, and OK'd with no ON key at all.
+      await setDoc(doc(db, 'machines', 'ex1', 'days', '2026-09-14'), {
+        date: '2026-09-14',
+        fillings: { '1': { onHours: null, ...slot } },
+      });
+      await setDoc(doc(db, 'machines', 'ex1', 'days', '2026-09-15'), {
+        date: '2026-09-15',
+        fillings: { '1': slot },
+      });
+    });
+    const withOn = (on: unknown, more: object = {}) => ({ fillings: { '1': { onHours: on, ...more } } });
+    const day = (uid: string, date: string) => doc(as(uid), 'machines', 'ex1', 'days', date);
+
+    // Not the crew, and not with anything else in the slot moving alongside.
+    await assertFails(setDoc(day('op1', '2026-09-14'), withOn(102), { merge: true }));
+    await assertFails(setDoc(day('admin1', '2026-09-14'), withOn(102, { amounts: { diesel: 99 } }), { merge: true }));
+    await assertFails(setDoc(day('admin1', '2026-09-14'), withOn(102, { lockedAt: null }), { merge: true }));
+    await assertFails(setDoc(day('admin1', '2026-09-14'), withOn('102'), { merge: true }));
+
+    await assertSucceeds(setDoc(day('sup1', '2026-09-14'), withOn(102), { merge: true }));
+    await assertSucceeds(setDoc(day('admin1', '2026-09-15'), withOn(102), { merge: true }));
+
+    // Once it is there the slot is a record again, for everyone.
+    await assertFails(setDoc(day('admin1', '2026-09-14'), withOn(103), { merge: true }));
+    await assertFails(setDoc(day('sup1', '2026-09-15'), withOn(103), { merge: true }));
+  });
+
   it('staff reset a service counter; crews cannot', async () => {
     await assertSucceeds(updateDoc(doc(as('sup1'), 'machines', 'ex1'), { 'serviceDueAt.engineOil': 350 }));
     await assertFails(updateDoc(doc(as('op1'), 'machines', 'ex1'), { 'serviceDueAt.engineOil': 999 }));
