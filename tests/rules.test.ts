@@ -14,10 +14,12 @@ import {
   getDoc,
   getDocs,
   increment,
+  query,
   serverTimestamp,
   setDoc,
   Timestamp,
   updateDoc,
+  where,
   writeBatch,
   type Firestore,
 } from 'firebase/firestore';
@@ -619,7 +621,7 @@ describe('sales', () => {
     );
   });
 
-  it('staff add a sale priced from the settings; crews cannot', async () => {
+  it('staff and the excavator crew add a sale priced from the settings; the compressor crew cannot', async () => {
     await setPrices({ tipperPrice: 21000, cubePrice: 7000, tractorPrice: 5000 });
     // A tipper by the cube: three at 7,000.
     await assertSucceeds(
@@ -642,8 +644,16 @@ describe('sales', () => {
       ),
     );
     await assertFails(addSale(as('sup1'), 'DFLT2345', sale('sup1', 'DFLT2345', { number: 3 })));
+    // The excavator crew load the trucks, so they bill them too — as
+    // themselves, never as someone else.
     await assertFails(
+      addSale(as('op1'), 'CREW2345', sale('sup1', 'CREW2345', { unitPrice: 7000, amount: 21000, number: 3 })),
+    );
+    await assertSucceeds(
       addSale(as('op1'), 'CREW2345', sale('op1', 'CREW2345', { unitPrice: 7000, amount: 21000, number: 3 })),
+    );
+    await assertFails(
+      addSale(as('comp1'), 'COMP2345', sale('comp1', 'COMP2345', { unitPrice: 7000, amount: 21000, number: 4 })),
     );
   });
 
@@ -689,9 +699,11 @@ describe('sales', () => {
     // A new month starts again at 1 — and a sale is counted in its own month.
     await assertSucceeds(addSale(db, 'NXMN2345', sale('sup1', 'NXMN2345', { date: '2026-10-01' }), '2026-10'));
     await assertFails(addSale(db, 'WRNG2345', sale('sup1', 'WRNG2345', { number: 2 }), '2026-10'));
-    // Staff read the count, as the transaction does; the crews have no need.
+    // Whoever sells reads the count, as the transaction does; the compressor
+    // crew have no need.
     await assertSucceeds(getDoc(doc(db, 'saleCounters', '2026-09')));
-    await assertFails(getDoc(doc(as('op1'), 'saleCounters', '2026-09')));
+    await assertSucceeds(getDoc(doc(as('op1'), 'saleCounters', '2026-09')));
+    await assertFails(getDoc(doc(as('comp1'), 'saleCounters', '2026-09')));
   });
 
   it("a bill's invoice number points to its code, for anyone to read but never list", async () => {
@@ -700,20 +712,35 @@ describe('sales', () => {
     await assertSucceeds(addSale(db, 'NDXA2345', sale('sup1', 'NDXA2345')));
     await assertSucceeds(getDoc(doc(as('op1'), 'saleIndex', '2026-09-1')));
     await assertFails(getDocs(collection(as('sup1'), 'saleIndex')));
-    // Only staff point one at a code, and only a real bill's code.
+    // Only ever written with the bill it names: a pointer set on its own —
+    // ahead of a number, or at a bill already written — is refused, staff's
+    // included, so no seller can hold a number's id against the real bill.
     await assertFails(setDoc(doc(as('op1'), 'saleIndex', '2026-09-2'), { code: 'NDXA2345' }));
+    await assertFails(setDoc(doc(db, 'saleIndex', '2026-09-2'), { code: 'NDXA2345' }));
+    await assertFails(setDoc(doc(db, 'saleIndex', '2026-09-9'), { code: 'NDXB2345' }));
     await assertFails(setDoc(doc(db, 'saleIndex', '2026-09-2'), { code: 'not-a-code' }));
+    // Pointed at the wrong number, the bill and its count are refused with it.
+    const wrong = writeBatch(db);
+    wrong.set(doc(db, 'sales', 'NDXC2345'), sale('sup1', 'NDXC2345', { number: 2 }));
+    wrong.set(doc(db, 'saleCounters', '2026-09'), { last: 2, lastCode: 'NDXC2345' });
+    wrong.set(doc(db, 'saleIndex', '2026-09-3'), { code: 'NDXC2345' });
+    await assertFails(wrong.commit());
     // Set once; never repointed or removed.
     await assertFails(setDoc(doc(db, 'saleIndex', '2026-09-1'), { code: 'NDXA2345' }));
     await assertFails(deleteDoc(doc(db, 'saleIndex', '2026-09-1')));
   });
 
-  it('anyone looks a sale up by its code; only staff list them', async () => {
+  it('anyone looks a sale up by its code; staff list them all, the excavator crew their own', async () => {
     await seedSale('LOOK2345', 1);
     await assertSucceeds(getDoc(doc(as('op1'), 'sales', 'LOOK2345')));
     await assertSucceeds(getDoc(doc(as('comp1'), 'sales', 'LOOK2345')));
     await assertFails(getDocs(collection(as('op1'), 'sales')));
     await assertSucceeds(getDocs(collection(as('sup1'), 'sales')));
+    // Only by asking for the ones they wrote — never anyone else's.
+    const own = (uid: string, by = uid) => query(collection(as(uid), 'sales'), where('createdBy', '==', by));
+    await assertSucceeds(getDocs(own('op1')));
+    await assertFails(getDocs(own('op1', 'sup1')));
+    await assertFails(getDocs(own('comp1')));
   });
 
   it('any role verifies a pending sale within the day — once', async () => {

@@ -90,7 +90,8 @@ they were written at.
 Every bill has an 8-character code, such as `K7Q2-M9XA`, with no 0/O or 1/I
 to misread, and a QR code carrying it. The code is the sale's document ID.
 Anyone signed in can look a sale up by its code, but only staff can list
-sales.
+every sale. Excavator operators write sales bills too, and list only the ones
+they wrote.
 
 A sale counts as income only once someone has verified it. Any role can
 verify, by scanning the QR or by typing the code. The panel's
