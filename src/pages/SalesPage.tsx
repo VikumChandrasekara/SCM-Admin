@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, Plus, ShoppingCart, Tag } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Pencil, Plus, ShoppingCart, Tag, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 
 import { useSession } from '../auth/AuthContext';
@@ -6,13 +6,16 @@ import { permissionsFor } from '../auth/permissions';
 import { CreditAccounts } from '../components/CreditAccounts';
 import { DataError } from '../components/DataError';
 import { PricesModal } from '../components/PricesModal';
+import { SaleEditModal } from '../components/SaleEditModal';
 import { SaleModal } from '../components/SaleModal';
 import { SaleReceiptModal, SaleStatusBadge } from '../components/SaleReceipt';
+import { useToast } from '../components/Toasts';
 import {
   Button,
   EmptyState,
   IconButton,
   Loading,
+  Modal,
   PageHeader,
   Panel,
   Segmented,
@@ -21,7 +24,8 @@ import {
   td,
   th,
 } from '../components/ui';
-import { useMonthSales, useNow, useSalesPrices } from '../data/sales';
+import { deleteSale, useMonthSales, useNow, useSalesPrices } from '../data/sales';
+import { errorMessage } from '../lib/errors';
 import { addMonths, dateTime, money, monthKey, monthLabel, quantity, rupees } from '../lib/format';
 import {
   SALE_STATUS,
@@ -29,6 +33,7 @@ import {
   awaitsPrepaidLoad,
   formatSaleCode,
   isSaleIncome,
+  padSaleNumber,
   saleNumber,
   saleStatus,
   type Sale,
@@ -40,6 +45,7 @@ type Filter = 'all' | SaleStatus | 'prepaid';
 export function SalesPage() {
   const { profile } = useSession();
   const permissions = permissionsFor(profile);
+  const toast = useToast();
   const now = useNow();
 
   const current = monthKey(new Date());
@@ -48,6 +54,9 @@ export function SalesPage() {
   const [creating, setCreating] = useState(false);
   const [editingPrices, setEditingPrices] = useState(false);
   const [showing, setShowing] = useState<string | null>(null);
+  const [editing, setEditing] = useState<Sale | null>(null);
+  const [deleting, setDeleting] = useState<Sale | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
 
   const prices = useSalesPrices();
   const sales = useMonthSales(month);
@@ -69,6 +78,23 @@ export function SalesPage() {
   const prepaidOpen = all.filter((sale) => awaitsPrepaidLoad(sale, now)).length;
   const pending = totalOf(all.filter((sale) => matches(sale, 'pending')));
   const cancelled = totalOf(all.filter((sale) => matches(sale, 'cancelled')));
+
+  async function confirmDelete(sale: Sale) {
+    setDeleteBusy(true);
+    try {
+      const freed = await deleteSale(sale.code, profile);
+      toast.success(
+        freed == null
+          ? 'බිල්පත ඉවත් කළා.'
+          : `බිල්පත ඉවත් කළා — ඊළඟ බිල්පත ${padSaleNumber(freed)} ලෙස සෑදේ.`,
+      );
+      setDeleting(null);
+    } catch (failure) {
+      toast.error(errorMessage(failure));
+    } finally {
+      setDeleteBusy(false);
+    }
+  }
 
   return (
     <>
@@ -167,6 +193,7 @@ export function SalesPage() {
                   <th className={th}>පාරිභෝගිකයා</th>
                   <th className={th}>තත්වය</th>
                   <th className={th}>තහවුරු කළේ</th>
+                  {permissions.editSales && <th className={cx(th, 'text-right')}>ක්‍රියා</th>}
                 </tr>
               </thead>
               <tbody>
@@ -209,6 +236,19 @@ export function SalesPage() {
                         '—'
                       )}
                     </td>
+                    {permissions.editSales && (
+                      // The row opens the bill; these must not.
+                      <td className={cx(td, 'text-right')} onClick={(event) => event.stopPropagation()}>
+                        <div className="flex justify-end gap-1">
+                          <IconButton label="සංස්කරණය" onClick={() => setEditing(sale)}>
+                            <Pencil className="size-4" />
+                          </IconButton>
+                          <IconButton label="ඉවත් කරන්න" onClick={() => setDeleting(sale)} className="hover:text-red-200">
+                            <Trash2 className="size-4" />
+                          </IconButton>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -228,6 +268,39 @@ export function SalesPage() {
       )}
       {editingPrices && prices.data && <PricesModal prices={prices.data} onClose={() => setEditingPrices(false)} />}
       {showing && <SaleReceiptModal code={showing} onClose={() => setShowing(null)} />}
+      {editing && <SaleEditModal sale={editing} onClose={() => setEditing(null)} />}
+      {deleting && (
+        <Modal
+          open
+          size="sm"
+          title="බිල්පත ඉවත් කරන්නද?"
+          onClose={() => setDeleting(null)}
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setDeleting(null)}>
+                අවලංගු
+              </Button>
+              <Button variant="danger" busy={deleteBusy} onClick={() => void confirmDelete(deleting)}>
+                ඉවත් කරන්න
+              </Button>
+            </>
+          }
+        >
+          <p className="text-sm text-white/80">
+            <b>{saleNumber(deleting)}</b> · {formatSaleCode(deleting.code)} · {SALE_TYPE[deleting.type].label} ·{' '}
+            {deleting.customerName || '—'} · <b>{rupees(deleting.amount)}</b>
+            {isSaleIncome(deleting, now) && (
+              <span className="mt-2 block text-white/65">මෙය ආදායමක් ලෙස ගණන් වී ඇත — ඉවත් කළ විට එයින් අඩු වේ.</span>
+            )}
+            {deleting.paymentType === 'credit' && (
+              <span className="mt-2 block text-white/65">පාරිභෝගිකයාගේ ණය ගිණුමෙන් ද අඩු වේ.</span>
+            )}
+            <span className="mt-2 block text-white/65">
+              මාසයේ අවසාන බිල්පත නම් එහි අංකය ඊළඟ බිල්පතට නැවත ලැබේ; අතරමැදක් නම් එම අංකය හිස්ව පවතී. මෙය ආපසු හැරවිය නොහැක — විගණන සටහනේ විස්තර ඉතිරි වේ.
+            </span>
+          </p>
+        </Modal>
+      )}
     </>
   );
 }

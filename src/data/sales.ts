@@ -21,6 +21,7 @@ import {
   padSaleNumber,
   pricesFrom,
   saleFrom,
+  saleNumber,
   saleStatus,
   unitPriceOf,
   type Person,
@@ -30,6 +31,7 @@ import {
   type SaleType,
   type SalesPrices,
 } from '../lib/model';
+import { saleDeleteSummary, saleEditFields, saleEditSummary, type SaleEdit } from '../lib/saleEdit';
 import { auditEntry } from './audit';
 import { commit } from './commit';
 import { useLiveDoc, useLiveQuery } from './live';
@@ -178,6 +180,79 @@ export async function createSale(input: SaleInput, by: Person): Promise<string> 
   });
 
   return code;
+}
+
+/**
+ * Puts a mistake on bill [code] right — the admin's alone, see
+ * firestore.rules for what may change.
+ *
+ * In a transaction, measured against the server's copy: an attempt that
+ * follows one which went through finds nothing left to change and writes
+ * nothing, so it is never logged twice.
+ */
+export async function updateSale(code: string, edit: SaleEdit, by: Person): Promise<void> {
+  const ref = doc(db, 'sales', code);
+  await runTransaction(db, async (tx) => {
+    const stored = await tx.get(ref);
+    if (!stored.exists()) throw new Error('මෙම බිල්පත මේ අතර ඉවත් කර ඇත.');
+    const before = saleFrom(stored.id, stored.data());
+    const fields = saleEditFields(before, edit);
+    const changes = saleEditSummary(before, fields);
+    if (changes === null) return;
+
+    tx.update(ref, fields);
+    tx.set(
+      doc(collection(db, 'auditLog')),
+      auditEntry('sales.update', 'sale', code, `බිල්පත ${saleNumber(before)}`, changes, by),
+    );
+  });
+}
+
+/**
+ * Removes bill [code] for good — the admin's alone. The audit log keeps what
+ * it said.
+ *
+ * Its invoice-number pointer goes with it. And when it is the month's newest
+ * bill, the month's count goes back by one, so the next bill takes the number
+ * that is now free and the month's numbers still run 001, 002, … with none
+ * skipped. A bill from the middle leaves its number empty: winding the count
+ * back past a bill still there would give its number out twice.
+ *
+ * Returns the number given back, or null when there is none to give.
+ */
+export async function deleteSale(code: string, by: Person): Promise<number | null> {
+  const ref = doc(db, 'sales', code);
+  return runTransaction(db, async (tx) => {
+    const stored = await tx.get(ref);
+    if (!stored.exists()) return null; // already gone, with its pointer and number
+    const sale = saleFrom(stored.id, stored.data());
+
+    // Every read comes before the first write. A bill from before bills were
+    // numbered has no pointer and was never counted.
+    const month = sale.date.slice(0, 7);
+    const number = sale.number;
+    const counterRef = doc(db, 'saleCounters', month);
+    const indexRef = number == null ? null : doc(db, 'saleIndex', `${month}-${number}`);
+    const index = indexRef ? await tx.get(indexRef) : null;
+    const counter = number == null ? null : await tx.get(counterRef);
+    const counted = counter?.data();
+    // The number to give back — set only when this bill is the count's top.
+    const freed = number != null && counted?.last === number && counted.lastCode === code ? number : null;
+    const below = freed != null && freed > 1 ? await tx.get(doc(db, 'saleIndex', `${month}-${freed - 1}`)) : null;
+
+    tx.delete(ref);
+    if (indexRef && index?.data()?.code === code) tx.delete(indexRef);
+    if (freed != null) {
+      const previous: unknown = below?.data()?.code;
+      // lastCode names the bill now at the top of the count, if one is known.
+      tx.update(counterRef, { last: freed - 1, lastCode: typeof previous === 'string' ? previous : '' });
+    }
+    tx.set(
+      doc(collection(db, 'auditLog')),
+      auditEntry('sales.delete', 'sale', code, `බිල්පත ${saleNumber(sale)}`, saleDeleteSummary(sale), by),
+    );
+    return freed;
+  });
 }
 
 /** One sale, followed live — the bill on screen shows its verification land. */

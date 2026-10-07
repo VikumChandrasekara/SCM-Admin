@@ -21,6 +21,8 @@ export interface Permissions {
   addSales: boolean;
   /** What a tipper load and a tractor load sell for — supervisors too. */
   setSalePrices: boolean;
+  /** Correct or delete any sale. */
+  editSales: boolean;
   /** Income, expenses and profit. */
   viewFinance: boolean;
 }
@@ -37,6 +39,7 @@ export function permissionsFor(profile: Person): Permissions {
     setRates: isAdmin,
     addSales: true,
     setSalePrices: true,
+    editSales: isAdmin,
     viewFinance: isAdmin,
   };
 }

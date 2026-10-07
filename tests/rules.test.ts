@@ -788,8 +788,191 @@ describe('sales', () => {
     await assertFails(updateDoc(doc(as('comp1'), 'sales', 'WEEK2345'), verify('comp1')));
   });
 
-  it('no sale is ever deleted', async () => {
-    await seedSale('KEEP2345', 30, 'cancelled');
-    await assertFails(deleteDoc(doc(as('admin1'), 'sales', 'KEEP2345')));
+  /** What the panel writes to put a bill right: 2 cubes at 6,500, for someone else. */
+  const correction = (overrides: object = {}) => ({
+    quantity: 2,
+    amount: 13000,
+    customerName: 'Perera',
+    customerKey: 'perera',
+    customerPhone: '0711234567',
+    vehicleNo: 'WP LK-1234',
+    material: 'boldas',
+    paymentType: 'credit',
+    note: 'corrected',
+    ...overrides,
+  });
+
+  it('the admin corrects a bill in any state; nobody else does', async () => {
+    await seedSale('FIXA2345', 2);
+    await assertFails(updateDoc(doc(as('sup1'), 'sales', 'FIXA2345'), correction()));
+    await assertFails(updateDoc(doc(as('op1'), 'sales', 'FIXA2345'), correction()));
+    await assertSucceeds(updateDoc(doc(as('admin1'), 'sales', 'FIXA2345'), correction()));
+
+    // Verified income and a lapsed bill are put right as well.
+    await seedSale('FIXB2345', 2, 'verified', { verifiedBy: 'sup1' });
+    await assertSucceeds(updateDoc(doc(as('admin1'), 'sales', 'FIXB2345'), correction()));
+    await seedSale('FIXC2345', 30, 'cancelled');
+    await assertSucceeds(updateDoc(doc(as('admin1'), 'sales', 'FIXC2345'), correction()));
+  });
+
+  it('a corrected bill still adds up, at the price it was written at', async () => {
+    await seedSale('SUMA2345', 2);
+    const db = as('admin1');
+    await assertFails(updateDoc(doc(db, 'sales', 'SUMA2345'), correction({ amount: 14000 })));
+    await assertFails(updateDoc(doc(db, 'sales', 'SUMA2345'), correction({ quantity: 0, amount: 0 })));
+    await assertFails(updateDoc(doc(db, 'sales', 'SUMA2345'), correction({ quantity: 'two' })));
+    await assertFails(updateDoc(doc(db, 'sales', 'SUMA2345'), correction({ material: 'gold' })));
+    await assertFails(updateDoc(doc(db, 'sales', 'SUMA2345'), correction({ paymentType: 'cheque' })));
+    await assertFails(updateDoc(doc(db, 'sales', 'SUMA2345'), correction({ customerName: 7 })));
+    // A fractional load, as the tipper takes.
+    await assertSucceeds(updateDoc(doc(db, 'sales', 'SUMA2345'), correction({ quantity: 2.5, amount: 16250 })));
+  });
+
+  it('a correction never moves the price, the number, the date, the status or who wrote it', async () => {
+    await seedSale('KEPA2345', 2);
+    const db = as('admin1');
+    const refused: object[] = [
+      { unitPrice: 5000, amount: 10000 },
+      { number: 9 },
+      { date: '2026-09-14' },
+      { status: 'verified' },
+      { status: 'cancelled' },
+      { createdBy: 'admin1' },
+      { code: 'KEPB2345' },
+      { type: 'tractor' },
+      { prepaid: true },
+      { machineCharge: 1 },
+      { verifiedBy: 'admin1' },
+    ];
+    for (const change of refused) {
+      await assertFails(updateDoc(doc(db, 'sales', 'KEPA2345'), correction(change)));
+    }
+  });
+
+  it('a prepaid bill stays paid in cash through a correction', async () => {
+    await seedSale('PRPA2345', 2, 'pending', { prepaid: true });
+    const db = as('admin1');
+    await assertFails(updateDoc(doc(db, 'sales', 'PRPA2345'), correction({ paymentType: 'credit' })));
+    await assertSucceeds(updateDoc(doc(db, 'sales', 'PRPA2345'), correction({ paymentType: 'cash' })));
+  });
+
+  it('only the admin deletes a sale, and its invoice pointer goes with it', async () => {
+    await setPrices();
+    await assertSucceeds(addSale(as('sup1'), 'DELA2345', sale('sup1', 'DELA2345')));
+    await assertFails(deleteDoc(doc(as('sup1'), 'sales', 'DELA2345')));
+    await assertFails(deleteDoc(doc(as('op1'), 'sales', 'DELA2345')));
+    await assertFails(deleteDoc(doc(as('comp1'), 'sales', 'DELA2345')));
+
+    // A pointer is not taken from a bill that is still there, nor by anyone
+    // but the admin.
+    await assertFails(deleteDoc(doc(as('admin1'), 'saleIndex', '2026-09-1')));
+    const supervisor = as('sup1');
+    const bySupervisor = writeBatch(supervisor);
+    bySupervisor.delete(doc(supervisor, 'sales', 'DELA2345'));
+    bySupervisor.delete(doc(supervisor, 'saleIndex', '2026-09-1'));
+    await assertFails(bySupervisor.commit());
+
+    const admin = as('admin1');
+    const removal = writeBatch(admin);
+    removal.delete(doc(admin, 'sales', 'DELA2345'));
+    removal.delete(doc(admin, 'saleIndex', '2026-09-1'));
+    await assertSucceeds(removal.commit());
+  });
+
+  /** Takes the bill, its pointer and one off the count — what the panel writes for the newest bill. */
+  function removeNewest(db: Firestore, code: string, number: number, below: string, month = '2026-09') {
+    const batch = writeBatch(db);
+    batch.delete(doc(db, 'sales', code));
+    batch.delete(doc(db, 'saleIndex', `${month}-${number}`));
+    batch.update(doc(db, 'saleCounters', month), { last: number - 1, lastCode: below });
+    return batch.commit();
+  }
+
+  async function addThreeBills() {
+    const db = as('sup1');
+    await assertSucceeds(addSale(db, 'BLKA2345', sale('sup1', 'BLKA2345')));
+    await assertSucceeds(addSale(db, 'BLKB2345', sale('sup1', 'BLKB2345', { number: 2 })));
+    await assertSucceeds(addSale(db, 'BLKC2345', sale('sup1', 'BLKC2345', { number: 3 })));
+  }
+
+  it("deleting the month's newest bill gives its number back — and only the newest's", async () => {
+    await setPrices();
+    await addThreeBills();
+    const admin = as('admin1');
+
+    // The count goes back with the bill it names, never on its own...
+    const alone = writeBatch(admin);
+    alone.update(doc(admin, 'saleCounters', '2026-09'), { last: 2, lastCode: 'BLKB2345' });
+    await assertFails(alone.commit());
+    // ...nor for a bill that is not the newest: a count moved down by one
+    // while the newest bill is still there would hand its number out twice...
+    const middle = writeBatch(admin);
+    middle.delete(doc(admin, 'sales', 'BLKB2345'));
+    middle.delete(doc(admin, 'saleIndex', '2026-09-2'));
+    middle.update(doc(admin, 'saleCounters', '2026-09'), { last: 2, lastCode: 'BLKA2345' });
+    await assertFails(middle.commit());
+    await assertFails(removeNewest(admin, 'BLKB2345', 2, 'BLKA2345'));
+    // ...nor by more than one, to a code that is no code, or at anyone else's hand.
+    const byTwo = writeBatch(admin);
+    byTwo.delete(doc(admin, 'sales', 'BLKC2345'));
+    byTwo.delete(doc(admin, 'saleIndex', '2026-09-3'));
+    byTwo.update(doc(admin, 'saleCounters', '2026-09'), { last: 1, lastCode: 'BLKA2345' });
+    await assertFails(byTwo.commit());
+    await assertFails(removeNewest(admin, 'BLKC2345', 3, 'not-a-code'));
+    await assertFails(removeNewest(as('sup1'), 'BLKC2345', 3, 'BLKB2345'));
+
+    await assertSucceeds(removeNewest(admin, 'BLKC2345', 3, 'BLKB2345'));
+    const count = await getDoc(doc(as('sup1'), 'saleCounters', '2026-09'));
+    expect(count.data()).toEqual({ last: 2, lastCode: 'BLKB2345' });
+
+    // The freed number goes to the next bill, with a pointer of its own.
+    await assertSucceeds(addSale(as('sup1'), 'BLKD2345', sale('sup1', 'BLKD2345', { number: 3 })));
+    const pointer = await getDoc(doc(as('sup1'), 'saleIndex', '2026-09-3'));
+    expect(pointer.data()).toEqual({ code: 'BLKD2345' });
+  });
+
+  it('a bill taken out of the middle leaves its number empty and the count where it was', async () => {
+    await setPrices();
+    await addThreeBills();
+    const admin = as('admin1');
+
+    const removal = writeBatch(admin);
+    removal.delete(doc(admin, 'sales', 'BLKB2345'));
+    removal.delete(doc(admin, 'saleIndex', '2026-09-2'));
+    await assertSucceeds(removal.commit());
+
+    // The count never goes back past a bill that is still there.
+    const db = as('sup1');
+    await assertFails(addSale(db, 'BLKD2345', sale('sup1', 'BLKD2345', { number: 2 })));
+    await assertFails(addSale(db, 'BLKD2345', sale('sup1', 'BLKD2345', { number: 3 })));
+    await assertSucceeds(addSale(db, 'BLKD2345', sale('sup1', 'BLKD2345', { number: 4 })));
+  });
+
+  it('with every bill of a month deleted, the month starts again at 001', async () => {
+    await setPrices();
+    const db = as('sup1');
+    await assertSucceeds(addSale(db, 'BLKA2345', sale('sup1', 'BLKA2345')));
+    await assertSucceeds(addSale(db, 'BLKB2345', sale('sup1', 'BLKB2345', { number: 2 })));
+    const admin = as('admin1');
+    await assertSucceeds(removeNewest(admin, 'BLKB2345', 2, 'BLKA2345'));
+    await assertSucceeds(removeNewest(admin, 'BLKA2345', 1, ''));
+
+    await assertFails(addSale(db, 'BLKC2345', sale('sup1', 'BLKC2345', { number: 2 })));
+    await assertSucceeds(addSale(db, 'BLKC2345', sale('sup1', 'BLKC2345')));
+  });
+
+  it('a sale is deleted whole or not at all: a bill from before bills were numbered goes alone', async () => {
+    await env.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore() as unknown as Firestore;
+      const unnumbered = Object.entries(sale('sup1', 'OLDA2345', { status: 'cancelled' })).filter(
+        ([key]) => key !== 'number',
+      );
+      await setDoc(doc(db, 'sales', 'OLDA2345'), {
+        ...Object.fromEntries(unnumbered),
+        createdAt: Timestamp.fromMillis(Date.now() - 30 * 3_600_000),
+      });
+    });
+    await assertFails(deleteDoc(doc(as('sup1'), 'sales', 'OLDA2345')));
+    await assertSucceeds(deleteDoc(doc(as('admin1'), 'sales', 'OLDA2345')));
   });
 });

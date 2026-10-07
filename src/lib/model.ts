@@ -754,6 +754,8 @@ export type AuditAction =
   | 'bill.update'
   | 'bill.delete'
   | 'sales.create'
+  | 'sales.update'
+  | 'sales.delete'
   | 'sales.prices'
   | 'service.reset'
   | 'leave.workday'
@@ -773,6 +775,8 @@ export const AUDIT_LABEL: Record<AuditAction, string> = {
   'bill.update': 'බිල්පතක් සංස්කරණය කළා',
   'bill.delete': 'බිල්පතක් ඉවත් කළා',
   'sales.create': 'විකුණුම් බිල්පතක් සෑදුවා',
+  'sales.update': 'විකුණුම් බිල්පතක් සංස්කරණය කළා',
+  'sales.delete': 'විකුණුම් බිල්පතක් ඉවත් කළා',
   'sales.prices': 'විකුණුම් මිල වෙනස් කළා',
   'service.reset': 'සේවා කාලය යළි පිහිටෙව්වා',
   'leave.workday': 'නිවාඩු දිනයක් වැඩ කළ දිනයක් ලෙස සුරැකුණා',
