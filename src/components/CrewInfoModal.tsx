@@ -78,6 +78,8 @@ export function CrewInfoModal({ person, date, onClose }: { person: Person; date:
   const [tally, setTally] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<ServiceTask | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  /** The leave day being marked worked, and the ON meter typed for it so far. */
+  const [leaveDraft, setLeaveDraft] = useState<{ date: string; reading: string } | null>(null);
   const leaveDates = monthDays.data
     ? leaveDatesFor(
         month,
@@ -134,13 +136,21 @@ export function CrewInfoModal({ person, date, onClose }: { person: Person; date:
     ).then((saved) => saved && setTally(null));
   }
 
-  function markLeave(leaveDate: string) {
-    if (!window.confirm(`${leaveDate} වැඩ කළ දිනයක් ලෙස සටහන් කරන්නද? නිවාඩු ගණන අඩු වේ.`)) return;
+  // Marking a leave day worked is confirmed here, in the list, with the ON
+  // meter the crew read off the dash that day — left empty, the day is only
+  // marked and the meter and the month's hours stay as they were.
+  function markLeave(leaveDate: string, reading: string) {
+    const typed = reading.trim();
+    const onHours = typed === '' ? null : Number(typed);
+    if (onHours != null && (!Number.isFinite(onHours) || onHours < 0)) {
+      toast.error('ON මීටරය ඍණ නොවන සංඛ්‍යාවක් විය යුතුය.');
+      return;
+    }
     void run(
       `leave:${leaveDate}`,
-      () => markLeaveWorked(live, leaveDate, profile),
-      `${leaveDate} වැඩ කළ දිනයක් ලෙස සටහන් කළා.`,
-    );
+      () => markLeaveWorked(live, leaveDate, profile, onHours),
+      `${leaveDate} වැඩ කළ දිනයක් ලෙස සටහන් කළා.` + (onHours == null ? '' : ` ON මීටරය ${hours(onHours)}.`),
+    ).then((saved) => saved && setLeaveDraft(null));
   }
 
   function confirmService(task: ServiceTask) {
@@ -215,19 +225,50 @@ export function CrewInfoModal({ person, date, onClose }: { person: Person; date:
           </SectionLabel>
           <div className="space-y-2 rounded-card bg-well p-4 text-sm">
             {leaveDates.length === 0 && <p className="text-white/55">මේ මාසයේ නිවාඩු දින නැත.</p>}
-            {leaveDates.map((leaveDate) => (
-              <div key={leaveDate} className="flex items-center justify-between gap-2">
-                <span>{leaveDate}</span>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  busy={busy === `leave:${leaveDate}`}
-                  onClick={() => markLeave(leaveDate)}
-                >
-                  වැඩ කළා
-                </Button>
-              </div>
-            ))}
+            {leaveDates.map((leaveDate) =>
+              leaveDraft?.date === leaveDate ? (
+                <div key={leaveDate} className="space-y-2 rounded-xl bg-black/20 p-3">
+                  <p className="font-semibold">{leaveDate} — වැඩ කළ දිනයක් ලෙස සටහන් කරන්නද?</p>
+                  <Field
+                    label="ON මීටරය (පැය)"
+                    hint={
+                      (machine ? `යන්ත්‍රයේ මීටරය දැනට ${hours(machine.totalHours)}. ` : '') +
+                      'ඇතුළත් කළොත් කලින් දවස වසා මාසයේ පැය වැඩි වේ; හිස්ව තැබුවොත් මීටරය වෙනස් නොවේ.'
+                    }
+                  >
+                    <Input
+                      type="number"
+                      inputMode="decimal"
+                      min="0"
+                      step="any"
+                      autoFocus
+                      value={leaveDraft.reading}
+                      onChange={(event) => setLeaveDraft({ date: leaveDate, reading: event.target.value })}
+                    />
+                  </Field>
+                  <div className="flex justify-end gap-2">
+                    <Button size="sm" variant="secondary" onClick={() => setLeaveDraft(null)}>
+                      අවලංගු
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="success"
+                      busy={busy === `leave:${leaveDate}`}
+                      onClick={() => markLeave(leaveDate, leaveDraft.reading)}
+                    >
+                      සටහන් කරන්න
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div key={leaveDate} className="flex items-center justify-between gap-2">
+                  <span>{leaveDate}</span>
+                  <Button size="sm" variant="secondary" onClick={() => setLeaveDraft({ date: leaveDate, reading: '' })}>
+                    වැඩ කළා
+                  </Button>
+                </div>
+              ),
+            )}
           </div>
         </div>
 

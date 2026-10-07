@@ -13,10 +13,13 @@ import {
 } from 'firebase/firestore';
 
 import { db } from '../db';
+import { addDays, hours } from '../lib/format';
+import { leaveWorkPlan, readingBounds, readingError } from '../lib/leaveWork';
 import {
   SERVICE,
   WAGE_BASIS_LABEL,
   dayFrom,
+  dayWorked,
   nameOf,
   type Day,
   type Machine,
@@ -91,17 +94,32 @@ export async function saveTally(
   });
 }
 
+/** How far either side of a day to look for the readings its own has to sit between. */
+const READING_WINDOW_DAYS = 31;
+
+const ALREADY_WORKED = 'මේ දිනය දැනටමත් වැඩ කළ දිනයක්';
+
 /**
  * Marks a past day as worked when it was never entered. It leaves the leave
- * count and counts toward a day-basis wage, with no meter reading and no hours,
- * so the hour meter and the month's hours are left alone.
+ * count and counts toward a day-basis wage.
+ *
+ * Without [onHours] that is all: no meter reading and no hours, so the hour
+ * meter and the month's hours are left alone. With the ON meter the crew read
+ * off the dash it is entered as the day's ON, and everything a morning's ON
+ * moves moves with it — see [markLeaveWorkedWithMeter].
  */
-export async function markLeaveWorked(person: Person, date: string, by: Person): Promise<void> {
+export async function markLeaveWorked(
+  person: Person,
+  date: string,
+  by: Person,
+  onHours: number | null = null,
+): Promise<void> {
+  if (onHours != null) return markLeaveWorkedWithMeter(person, date, by, onHours);
+
   const machineId = person.machineId;
   const ref = dayRef(machineId, date);
   const data = (await getDoc(ref)).data();
-  const worked = typeof data?.fillings?.['1']?.onHours === 'number' || data?.workedManually === true;
-  if (worked) throw new Error('මේ දිනය දැනටමත් වැඩ කළ දිනයක්');
+  if (dayWorked(dayFrom(date, data))) throw new Error(ALREADY_WORKED);
 
   const batch = writeBatch(db);
   batch.set(ref, { date, workedManually: true }, { merge: true });
@@ -110,6 +128,96 @@ export async function markLeaveWorked(person: Person, date: string, by: Person):
     auditEntry('leave.workday', 'operator', person.id, nameOf(person), `${date} · වැඩ කළ දිනයක් ලෙස සටහන් කළා`, by),
   );
   await commit(batch);
+}
+
+/**
+ * A leave day marked worked, with its ON meter. What the operator app does
+ * when a morning's ON is entered, done for a day entered afterwards:
+ *
+ * - the day's ON goes in slot 1, where both apps read it;
+ * - the day before is closed at it, and its hours join its month;
+ * - the day after, if it already has an ON, closes this day at that;
+ * - the machine's meter follows — but only upward, as it holds the last
+ *   reading off the dash and an earlier day must not wind it back.
+ *
+ * A reading that does not sit between its neighbours is refused: an hour
+ * meter only counts up. In a transaction, reading the days on the server —
+ * an attempt that follows one which went through finds the day worked and
+ * refuses rather than adding the hours twice.
+ */
+async function markLeaveWorkedWithMeter(person: Person, date: string, by: Person, onHours: number): Promise<void> {
+  const machineId = person.machineId;
+  const around = await fetchDays(
+    machineId,
+    addDays(date, -READING_WINDOW_DAYS),
+    addDays(date, READING_WINDOW_DAYS),
+  );
+  const refused = readingError(onHours, readingBounds(around, date));
+  if (refused) throw new Error(refused);
+
+  const ref = dayRef(machineId, date);
+  const previousDate = addDays(date, -1);
+  const nextDate = addDays(date, 1);
+  const machineRef = doc(db, 'machines', machineId);
+
+  await runTransaction(db, async (tx) => {
+    const day = await tx.get(ref);
+    const previousSnapshot = await tx.get(dayRef(machineId, previousDate));
+    const nextSnapshot = await tx.get(dayRef(machineId, nextDate));
+    const machine = await tx.get(machineRef);
+
+    if (dayWorked(dayFrom(date, day.data()))) throw new Error(ALREADY_WORKED);
+    const previous = previousSnapshot.exists() ? dayFrom(previousDate, previousSnapshot.data()) : null;
+    const next = nextSnapshot.exists() ? dayFrom(nextDate, nextSnapshot.data()) : null;
+    // The days either side are read again here, so a reading entered since
+    // the check above is held to as well.
+    const neighbours = [previous, next].filter((entry): entry is Day => entry != null);
+    const stale = readingError(onHours, readingBounds(neighbours, date));
+    if (stale) throw new Error(stale);
+
+    const plan = leaveWorkPlan(onHours, previous, next, machine.data()?.totalHours ?? 0);
+
+    tx.set(
+      ref,
+      {
+        date,
+        fillings: { '1': { onHours } },
+        ...(plan.closeThis ? { closingHours: plan.closeThis.closingHours } : {}),
+      },
+      { merge: true },
+    );
+    if (plan.closePrevious) {
+      tx.set(dayRef(machineId, previousDate), { date: previousDate, closingHours: plan.closePrevious.closingHours }, { merge: true });
+    }
+    // What each closed day worked, summed by month — the two days can share
+    // one, and a month's document is written once.
+    const addedHours = new Map<string, number>();
+    for (const [closedDate, closing] of [
+      [previousDate, plan.closePrevious],
+      [date, plan.closeThis],
+    ] as const) {
+      if (closing && closing.worked > 0) {
+        const month = closedDate.slice(0, 7);
+        addedHours.set(month, (addedHours.get(month) ?? 0) + closing.worked);
+      }
+    }
+    for (const [month, worked] of addedHours) {
+      tx.set(monthRef(machineId, month), { month, hours: increment(worked) }, { merge: true });
+    }
+    if (plan.totalHours != null) tx.set(machineRef, { totalHours: plan.totalHours }, { merge: true });
+
+    tx.set(
+      doc(collection(db, 'auditLog')),
+      auditEntry(
+        'leave.workday',
+        'operator',
+        person.id,
+        nameOf(person),
+        `${date} · වැඩ කළ දිනයක් ලෙස සටහන් කළා · ON මීටරය ${hours(onHours)}`,
+        by,
+      ),
+    );
+  });
 }
 
 /**
