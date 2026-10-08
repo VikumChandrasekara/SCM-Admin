@@ -6,23 +6,18 @@ import {
   limit,
   orderBy,
   query,
+  runTransaction,
   serverTimestamp,
   writeBatch,
 } from 'firebase/firestore';
 
 import { db } from '../db';
-import {
-  linkDocId,
-  movementFrom,
-  nameOf,
-  type MovementType,
-  type Person,
-  type StockLink,
-  type StoreItem,
-} from '../lib/model';
+import { linkDocId, movementFrom, type Person, type StockLink, type StoreItem } from '../lib/model';
 import { auditEntry } from './audit';
 import { commit } from './commit';
 import { useLiveQuery } from './live';
+import { movement } from './movement';
+import { binEntryData, binRef } from './recycle';
 
 /** The most recent changes to any count, newest first. */
 export function useMovements(count = 80) {
@@ -39,26 +34,6 @@ export interface ItemInput {
   minQuantity: number;
   unitPrice: number;
   note: string;
-}
-
-function movement(
-  type: MovementType,
-  item: { id: string; name: string; unit: string; unitPrice: number },
-  delta: number,
-  note: string,
-  by: Person,
-) {
-  return {
-    type,
-    // The price rides along, so the finance view can value the change at
-    // what it cost then rather than at whatever the item costs now.
-    items: [{ itemId: item.id, name: item.name, unit: item.unit, delta, unitPrice: item.unitPrice }],
-    unmatched: [],
-    note: note.trim(),
-    createdBy: by.id,
-    createdByName: nameOf(by),
-    createdAt: serverTimestamp(),
-  };
 }
 
 /** Admin only. A linked item takes the fixed id its link dictates. */
@@ -162,16 +137,40 @@ export async function changeStock(
   }
 
   batch.set(doc(collection(db, 'storeMovements')), movement(change, item, delta, note, by));
+  batch.set(
+    doc(collection(db, 'auditLog')),
+    auditEntry('store.stock', 'store', item.id, item.name, stockSummary(change, item, amount, delta, note), by),
+  );
   await commit(batch);
 }
 
+/** The audit line for a change to a count: what it was, and what it became. */
+function stockSummary(change: StockChange, item: StoreItem, amount: number, delta: number, note: string): string {
+  const what =
+    change === 'restock'
+      ? `තොගය එකතු කළා +${amount} ${item.unit}`
+      : change === 'use'
+        ? `භාවිත කළා −${amount} ${item.unit}`
+        : `නැවත ගණන් කළා ${item.quantity} → ${amount} ${item.unit}`;
+  const after = change === 'adjust' ? amount : item.quantity + delta;
+  return `${what} · දැන් ${after} ${item.unit}${note.trim() ? ` · ${note.trim()}` : ''}`;
+}
+
+/**
+ * Moves the item to the recycle bin for 30 days. A transaction, reading the
+ * item as the server holds it: the bin's copy has to match it field for
+ * field, and a repeat after a dropped line finds it already gone.
+ */
 export async function deleteItem(item: StoreItem, by: Person): Promise<void> {
-  const batch = writeBatch(db);
-  batch.delete(doc(db, 'store', item.id));
-  batch.set(doc(collection(db, 'storeMovements')), movement('delete', item, -item.quantity, '', by));
-  batch.set(
-    doc(collection(db, 'auditLog')),
-    auditEntry('store.delete', 'store', item.id, item.name, `ඉතිරිව තිබූ ප්‍රමාණය ${item.quantity} ${item.unit}`, by),
-  );
-  await commit(batch);
+  const ref = doc(db, 'store', item.id);
+  await runTransaction(db, async (tx) => {
+    const stored = await tx.get(ref);
+    if (!stored.exists()) return;
+
+    const summary = `ඉතිරිව තිබූ ප්‍රමාණය ${item.quantity} ${item.unit}`;
+    tx.set(binRef('store', item.id), binEntryData('store', item.id, stored.data(), item.name, summary, by));
+    tx.delete(ref);
+    tx.set(doc(collection(db, 'storeMovements')), movement('delete', item, -item.quantity, '', by));
+    tx.set(doc(collection(db, 'auditLog')), auditEntry('store.delete', 'store', item.id, item.name, summary, by));
+  });
 }

@@ -20,16 +20,30 @@ import { useAuditLog } from '../data/audit';
 import { dateTime } from '../lib/format';
 import { AUDIT_LABEL, auditGroup, type AuditEntry } from '../lib/model';
 
-type Group = 'all' | 'account' | 'store' | 'bill' | 'sales' | 'service' | 'figures' | 'tally';
+type Group =
+  | 'all'
+  | 'account'
+  | 'store'
+  | 'bill'
+  | 'sales'
+  | 'payment'
+  | 'service'
+  | 'leave'
+  | 'figures'
+  | 'tally'
+  | 'crew';
 
 const GROUP_LABEL: Record<Exclude<Group, 'all'>, string> = {
   account: 'ගිණුම්',
   store: 'ගබඩාව',
   bill: 'බිල්පත්',
   sales: 'විකුණුම්',
+  payment: 'ණය ගෙවීම්',
   service: 'සේවා',
+  leave: 'නිවාඩු',
   figures: 'වැටුප/ඇඩ්වාන්ස්',
   tally: 'ලෝඩ්/අඩි',
+  crew: 'කණ්ඩායම් වෙනුවෙන්',
 };
 
 const actionTone: Record<string, 'grape' | 'info' | 'amber' | 'ok' | 'muted'> = {
@@ -37,10 +51,15 @@ const actionTone: Record<string, 'grape' | 'info' | 'amber' | 'ok' | 'muted'> = 
   store: 'info',
   bill: 'amber',
   sales: 'ok',
+  payment: 'ok',
   service: 'muted',
+  leave: 'muted',
   figures: 'muted',
   tally: 'muted',
+  crew: 'muted',
 };
+
+const SOURCE_LABEL = { panel: 'පුවරුවෙන්', phone: 'ෆෝනයෙන්', '': '' } as const;
 
 /** විගණන සටහන — every account, store, bill, sale and price change, who made it and when. */
 export function AuditLogPage() {
@@ -119,7 +138,10 @@ function AuditRow({ entry }: { entry: AuditEntry }) {
         <p className="font-semibold">{entry.entityLabel}</p>
         <p className="text-xs text-white/60">{entry.summary}</p>
       </td>
-      <td className={cx(td, 'text-xs whitespace-nowrap text-white/70')}>{entry.createdByName}</td>
+      <td className={cx(td, 'text-xs whitespace-nowrap text-white/70')}>
+        {entry.createdByName}
+        {entry.source && <span className="block text-white/50">{SOURCE_LABEL[entry.source]}</span>}
+      </td>
     </tr>
   );
 }

@@ -13,13 +13,13 @@ import {
   nameOf,
   serviceAlerts,
   serviceStatus,
-  tallyField,
   totalFilled,
   type Day,
   type FillItem,
   type Machine,
   type Person,
 } from '../lib/model';
+import { TallyStepper } from './TallyStepper';
 import { Button, ValueChip, cx } from './ui';
 
 /**
@@ -167,12 +167,9 @@ export const CrewColumn = memo(function CrewColumn({
       </div>
 
       <footer className="mt-3 flex items-center gap-3 px-1">
-        <p className="text-[13px]">
-          <span className="text-white/55">{tallyField(person) === 'loads' ? 'ලෝඩ් ' : 'අඩි '}</span>
-          <span className="text-[15px] font-bold text-amber-hi tabular-nums">
-            {tallyField(person) === 'loads' ? day.loads : hours(day.feet)}
-          </span>
-        </p>
+        {/* Staff — the admin included — set a crew's ලෝඩ් / අඩි, which they
+            cannot set themselves; the exact figure is in තොරතුරු. */}
+        <TallyStepper key={day.date} person={person} day={day} />
         <Button
           variant="secondary"
           size="sm"

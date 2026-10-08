@@ -746,43 +746,62 @@ export type AuditAction =
   | 'account.create'
   | 'account.update'
   | 'account.remove'
+  | 'account.restore'
   | 'account.password'
   | 'store.create'
   | 'store.update'
   | 'store.delete'
+  | 'store.restore'
+  | 'store.stock'
   | 'bill.create'
   | 'bill.update'
   | 'bill.delete'
+  | 'bill.restore'
   | 'sales.create'
   | 'sales.update'
   | 'sales.delete'
+  | 'sales.restore'
+  | 'sales.verify'
   | 'sales.prices'
   | 'service.reset'
   | 'leave.workday'
   | 'payment.add'
   | 'figures.set'
-  | 'tally.set';
+  | 'tally.set'
+  // Staff recording for a crew member, which the crew record for themselves.
+  | 'crew.fill'
+  | 'crew.blast'
+  | 'crew.inspect';
 
 export const AUDIT_LABEL: Record<AuditAction, string> = {
   'account.create': 'ගිණුම සෑදුවා',
   'account.update': 'ගිණුම යාවත්කාලීන කළා',
   'account.remove': 'ගිණුම ඉවත් කළා',
+  'account.restore': 'ගිණුම ආපසු ගත්තා',
   'account.password': 'මුරපදය වෙනස් කළා',
   'store.create': 'ගබඩා අයිතමය සෑදුවා',
   'store.update': 'ගබඩා අයිතමය යාවත්කාලීන කළා',
   'store.delete': 'ගබඩා අයිතමය ඉවත් කළා',
+  'store.restore': 'ගබඩා අයිතමය ආපසු ගත්තා',
+  'store.stock': 'ගබඩා තොගය වෙනස් කළා',
   'bill.create': 'බිල්පතක් සෑදුවා',
   'bill.update': 'බිල්පතක් සංස්කරණය කළා',
   'bill.delete': 'බිල්පතක් ඉවත් කළා',
+  'bill.restore': 'බිල්පතක් ආපසු ගත්තා',
   'sales.create': 'විකුණුම් බිල්පතක් සෑදුවා',
   'sales.update': 'විකුණුම් බිල්පතක් සංස්කරණය කළා',
   'sales.delete': 'විකුණුම් බිල්පතක් ඉවත් කළා',
+  'sales.restore': 'විකුණුම් බිල්පතක් ආපසු ගත්තා',
+  'sales.verify': 'විකුණුම් බිල්පතක් තහවුරු කළා',
   'sales.prices': 'විකුණුම් මිල වෙනස් කළා',
   'service.reset': 'සේවා කාලය යළි පිහිටෙව්වා',
   'leave.workday': 'නිවාඩු දිනයක් වැඩ කළ දිනයක් ලෙස සුරැකුණා',
   'payment.add': 'ණය ගෙවීමක් එකතු කළා',
   'figures.set': 'වැටුප/ඇඩ්වාන්ස් වෙනස් කළා',
   'tally.set': 'ලෝඩ්/අඩි නිවැරදි කළා',
+  'crew.fill': 'කණ්ඩායමක් වෙනුවෙන් පිරවීමක් සුරැකුවා',
+  'crew.blast': 'කණ්ඩායමක් වෙනුවෙන් වෙඩි බඩු සුරැකුවා',
+  'crew.inspect': 'කණ්ඩායමක් වෙනුවෙන් පරික්ෂාව සුරැකුවා',
 };
 
 /** What group of the panel [action] belongs to — the audit page's filter. */
@@ -799,6 +818,8 @@ export interface AuditEntry {
   entityLabel: string;
   /** A human-readable line, before → after where that matters. */
   summary: string;
+  /** Which app wrote it; empty on an entry from before this was kept. */
+  source: 'panel' | 'phone' | '';
   createdBy: string;
   createdByName: string;
   createdAt: Date | null;
@@ -813,6 +834,7 @@ export function auditEntryFrom(id: string, data: DocumentData): AuditEntry {
     entityId: str(data.entityId),
     entityLabel: str(data.entityLabel),
     summary: str(data.summary),
+    source: data.source === 'panel' || data.source === 'phone' ? data.source : '',
     createdBy: str(data.createdBy),
     createdByName: str(data.createdByName),
     createdAt: toDate(data.createdAt),

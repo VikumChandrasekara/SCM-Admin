@@ -57,6 +57,9 @@ const data = (path: string) =>
     return snapshot.exists() ? snapshot.data() : undefined;
   });
 
+const all = (path: string) =>
+  direct(async (db) => (await getDocs(collection(db, path))).docs.map((entry) => entry.data()));
+
 const auditLog = () =>
   direct(async (db) => (await getDocs(collection(db, 'auditLog'))).docs.map((entry) => entry.data()));
 
@@ -88,10 +91,10 @@ const sale = (number: number | null, overrides: object = {}) => {
 };
 
 /** Bills 1…[count] of September, written the way the apps write them. */
-function seedBills(count: number) {
+function seedBills(count: number, by = 'sup1') {
   return direct(async (db) => {
     for (let number = 1; number <= count; number++) {
-      await setDoc(doc(db, 'sales', codeOf(number)), sale(number));
+      await setDoc(doc(db, 'sales', codeOf(number)), sale(number, { createdBy: by }));
       await setDoc(doc(db, 'saleIndex', `2026-09-${number}`), { code: codeOf(number) });
     }
     await setDoc(doc(db, 'saleCounters', '2026-09'), { last: count, lastCode: codeOf(count) });
@@ -182,8 +185,8 @@ describe('deleting a bill', () => {
     expect(await auditLog()).toHaveLength(1);
   });
 
-  it('is refused for anyone but the admin, and nothing is half-done', async () => {
-    await seedBills(2);
+  it('is refused for a supervisor on a bill the admin wrote, and nothing is half-done', async () => {
+    await seedBills(2, 'admin1');
     signIn('sup1');
 
     await expect(deleteSale(codeOf(2), supervisor)).rejects.toThrow();
@@ -191,6 +194,19 @@ describe('deleting a bill', () => {
     expect(await data('saleIndex/2026-09-2')).toBeDefined();
     expect(await data('saleCounters/2026-09')).toEqual({ last: 2, lastCode: codeOf(2) });
     expect(await auditLog()).toEqual([]);
+    expect(await all('recycleBin')).toEqual([]);
+  });
+
+  it('is a supervisor’s own to do: the newest bill they wrote goes to the bin and gives its number back', async () => {
+    await seedBills(2, 'sup1');
+    signIn('sup1');
+
+    expect(await deleteSale(codeOf(2), supervisor)).toBe(2);
+    expect(await data(`sales/${codeOf(2)}`)).toBeUndefined();
+    expect(await data('saleIndex/2026-09-2')).toBeUndefined();
+    expect(await data('saleCounters/2026-09')).toEqual({ last: 1, lastCode: codeOf(1) });
+    expect((await data(`recycleBin/sale__${codeOf(2)}`))?.deletedBy).toBe('sup1');
+    expect(await auditLog()).toMatchObject([{ action: 'sales.delete', createdBy: 'sup1' }]);
   });
 });
 
@@ -230,12 +246,21 @@ describe('correcting a bill', () => {
     await expect(updateSale(codeOf(1), edit, admin)).rejects.toThrow('ඉවත් කර ඇත');
   });
 
-  it('is refused for anyone but the admin', async () => {
-    await seedBills(1);
+  it('is refused for a supervisor on a bill the admin wrote', async () => {
+    await seedBills(1, 'admin1');
     signIn('sup1');
 
     await expect(updateSale(codeOf(1), edit, supervisor)).rejects.toThrow();
     expect(await data(`sales/${codeOf(1)}`)).toMatchObject({ quantity: 3, amount: 19500, customerName: 'Silva' });
     expect(await auditLog()).toEqual([]);
+  });
+
+  it('is a supervisor’s own to do, on the bill they wrote', async () => {
+    await seedBills(1, 'sup1');
+    signIn('sup1');
+
+    await updateSale(codeOf(1), edit, supervisor);
+    expect(await data(`sales/${codeOf(1)}`)).toMatchObject({ quantity: 2, amount: 13000, customerName: 'Perera' });
+    expect(await auditLog()).toMatchObject([{ action: 'sales.update', createdBy: 'sup1' }]);
   });
 });

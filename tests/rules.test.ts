@@ -461,6 +461,187 @@ describe('bills', () => {
   });
 });
 
+describe('recycle bin', () => {
+  // The bill the suite seeds for the supervisor, as the server holds it.
+  const seeded = { category: 'food', amount: 500, date: '2026-09-01', note: '', createdBy: 'sup1' };
+  const DAY = 24 * 3_600_000;
+
+  const entry = (overrides: object = {}) => ({
+    kind: 'bill',
+    docId: 'b-sup',
+    data: seeded,
+    label: 'කෑම · රු.500',
+    summary: '2026-09-01',
+    deletedBy: 'sup1',
+    deletedByName: 'Nimal',
+    deletedAt: serverTimestamp(),
+    purgeAt: Timestamp.fromMillis(Date.now() + 30 * DAY),
+    ...overrides,
+  });
+
+  /** The bill deleted and binned in one write, as the panel does it. */
+  function bin(uid: string, overrides: object = {}, id = 'bill__b-sup') {
+    const db = as(uid);
+    const batch = writeBatch(db);
+    batch.set(doc(db, 'recycleBin', id), entry({ deletedBy: uid, ...overrides }));
+    batch.delete(doc(db, 'bills', 'b-sup'));
+    return batch.commit();
+  }
+
+  /** The bill binned already, by the supervisor, with the rules out of the way. */
+  async function binned(purgeAt = Date.now() + 30 * DAY) {
+    await env.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore() as unknown as Firestore;
+      await setDoc(doc(db, 'recycleBin', 'bill__b-sup'), entry({ deletedAt: Timestamp.now(), purgeAt: Timestamp.fromMillis(purgeAt) }));
+      await deleteDoc(doc(db, 'bills', 'b-sup'));
+    });
+  }
+
+  it('whoever may delete may bin — in the write that deletes, and only a faithful copy', async () => {
+    // Not a copy of what is being deleted, or not under its own id...
+    await assertFails(bin('sup1', { data: { ...seeded, amount: 999 } }));
+    await assertFails(bin('sup1', { docId: 'b-other' }));
+    await assertFails(bin('sup1', {}, 'bill__elsewhere'));
+    await assertFails(bin('sup1', { kind: 'sale' }));
+    // ...or in another's name, or stamped by the client...
+    await assertFails(bin('sup1', { deletedBy: 'admin1' }));
+    await assertFails(bin('sup1', { deletedAt: Timestamp.fromMillis(Date.now()) }));
+    // ...or kept for any length but about 30 days, or carrying anything extra.
+    await assertFails(bin('sup1', { purgeAt: Timestamp.fromMillis(Date.now() + 2 * DAY) }));
+    await assertFails(bin('sup1', { purgeAt: Timestamp.fromMillis(Date.now() + 90 * DAY) }));
+    await assertFails(bin('sup1', { extra: true }));
+    // A crew member cannot bin, and nothing is binned without the delete.
+    await assertFails(bin('op1'));
+    await assertFails(setDoc(doc(as('sup1'), 'recycleBin', 'bill__b-sup'), entry()));
+
+    // The right copy, in the write that deletes the bill, goes through.
+    await assertSucceeds(bin('sup1'));
+  });
+
+  it('is read by the admin, and by a supervisor for the sales, bills and store items — never by a crew', async () => {
+    await binned();
+    await env.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore() as unknown as Firestore;
+      await setDoc(doc(db, 'recycleBin', 'sale__SALE2345'), entry({ kind: 'sale', docId: 'SALE2345', data: { code: 'SALE2345' } }));
+      await setDoc(doc(db, 'recycleBin', 'operator__u9'), entry({ kind: 'operator', docId: 'u9', data: { name: 'Gone' } }));
+    });
+    await assertSucceeds(getDoc(doc(as('admin1'), 'recycleBin', 'bill__b-sup')));
+    await assertSucceeds(getDocs(collection(as('admin1'), 'recycleBin')));
+
+    // A supervisor reads the bill, asks for their own kinds, and is refused the rest.
+    await assertSucceeds(getDoc(doc(as('sup1'), 'recycleBin', 'bill__b-sup')));
+    await assertSucceeds(getDoc(doc(as('sup1'), 'recycleBin', 'sale__SALE2345')));
+    await assertSucceeds(
+      getDocs(query(collection(as('sup1'), 'recycleBin'), where('kind', 'in', ['sale', 'bill', 'store']))),
+    );
+    await assertFails(getDocs(collection(as('sup1'), 'recycleBin')));
+    await assertFails(getDocs(query(collection(as('sup1'), 'recycleBin'), where('kind', 'in', ['bill', 'operator']))));
+    await assertFails(getDoc(doc(as('sup1'), 'recycleBin', 'operator__u9')));
+
+    await assertFails(getDoc(doc(as('op1'), 'recycleBin', 'bill__b-sup')));
+    await assertFails(updateDoc(doc(as('admin1'), 'recycleBin', 'bill__b-sup'), { label: 'changed' }));
+  });
+
+  it('is restored by the admin, exactly as binned, in the write that empties the entry', async () => {
+    await binned();
+    const restore = (uid: string, data: object) => {
+      const db = as(uid);
+      const batch = writeBatch(db);
+      batch.set(doc(db, 'bills', 'b-sup'), data);
+      batch.delete(doc(db, 'recycleBin', 'bill__b-sup'));
+      return batch.commit();
+    };
+
+    // A crew member cannot, and nothing but the binned copy goes back.
+    await assertFails(restore('op1', seeded));
+    await assertFails(restore('admin1', { ...seeded, amount: 999 }));
+    await assertFails(restore('sup1', { ...seeded, amount: 999 }));
+    await assertFails(restore('admin1', { ...seeded, createdBy: 'admin1' }));
+    // The bill is not written back without emptying the entry, nor the entry
+    // emptied without the bill coming back.
+    await assertFails(setDoc(doc(as('admin1'), 'bills', 'b-sup'), seeded));
+    await assertFails(deleteDoc(doc(as('admin1'), 'recycleBin', 'bill__b-sup')));
+
+    await assertSucceeds(restore('admin1', seeded));
+    expect((await getDoc(doc(as('admin1'), 'bills', 'b-sup'))).data()).toEqual(seeded);
+    expect((await getDoc(doc(as('admin1'), 'recycleBin', 'bill__b-sup'))).exists()).toBe(false);
+  });
+
+  it('is purged by the admin once its days are up, and not before', async () => {
+    await binned();
+    await assertFails(deleteDoc(doc(as('admin1'), 'recycleBin', 'bill__b-sup')));
+  });
+
+  it('is put back by a supervisor for a store item or a bill or sale they wrote — not another’s, not an account', async () => {
+    const grease = { name: 'Grease', unit: 'kg', quantity: 10, minQuantity: 2, unitPrice: 1200, link: null, note: '' };
+    const others = { ...seeded, createdBy: 'admin1' };
+    await env.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore() as unknown as Firestore;
+      const put = (kind: string, docId: string, data: object) =>
+        setDoc(doc(db, 'recycleBin', `${kind}__${docId}`), entry({ kind, docId, data, deletedAt: Timestamp.now() }));
+      await put('store', 'grease', grease);
+      await put('bill', 'b-sup', seeded);
+      await put('bill', 'b-admin', others);
+      await put('operator', 'u9', { name: 'Gone', role: 'operator', machineId: 'ex9' });
+      await deleteDoc(doc(db, 'bills', 'b-sup'));
+      await deleteDoc(doc(db, 'bills', 'b-admin'));
+    });
+    const restore = (uid: string, collectionName: string, kind: string, id: string, data: object) => {
+      const db = as(uid);
+      const batch = writeBatch(db);
+      batch.set(doc(db, collectionName, id), data);
+      batch.delete(doc(db, 'recycleBin', `${kind}__${id}`));
+      return batch.commit();
+    };
+
+    await assertFails(restore('sup1', 'bills', 'bill', 'b-admin', others));
+    await assertFails(restore('sup1', 'operators', 'operator', 'u9', { name: 'Gone', role: 'operator', machineId: 'ex9' }));
+    await assertFails(restore('op1', 'store', 'store', 'grease', grease));
+
+    await assertSucceeds(restore('sup1', 'store', 'store', 'grease', grease));
+    await assertSucceeds(restore('sup1', 'bills', 'bill', 'b-sup', seeded));
+    await assertSucceeds(restore('admin1', 'bills', 'bill', 'b-admin', others));
+  });
+
+  it('is purged by the admin alone once its days are up', async () => {
+    await binned(Date.now() - 60_000);
+    await assertFails(deleteDoc(doc(as('sup1'), 'recycleBin', 'bill__b-sup')));
+    await assertSucceeds(deleteDoc(doc(as('admin1'), 'recycleBin', 'bill__b-sup')));
+  });
+
+  it('lets a sale back only from the bin, past the price and count rules a fresh one meets', async () => {
+    const old = {
+      code: 'OLDS2345', type: 'tipper', quantity: 3, unitPrice: 5000, amount: 15000, customerName: 'Silva',
+      customerKey: 'silva', material: 'sakka', paymentType: 'cash', machineCharge: 4000, customerPhone: '',
+      vehicleNo: '', note: '', date: '2026-09-13', number: 1, status: 'verified', createdBy: 'admin1',
+      createdByName: 'admin1', createdAt: Timestamp.fromMillis(Date.now() - 5 * DAY),
+    };
+    // Written fresh, a sale at a price that is not today's is refused.
+    await assertFails(setDoc(doc(as('admin1'), 'sales', 'OLDS2345'), old));
+
+    await env.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore() as unknown as Firestore;
+      await setDoc(
+        doc(db, 'recycleBin', 'sale__OLDS2345'),
+        entry({ kind: 'sale', docId: 'OLDS2345', data: old, deletedAt: Timestamp.now() }),
+      );
+    });
+    const db = as('admin1');
+    // Not without emptying the entry in the same write, nor for anyone else.
+    await assertFails(setDoc(doc(db, 'sales', 'OLDS2345'), old));
+    const staff = as('sup1');
+    const byStaff = writeBatch(staff);
+    byStaff.set(doc(staff, 'sales', 'OLDS2345'), old);
+    byStaff.delete(doc(staff, 'recycleBin', 'sale__OLDS2345'));
+    await assertFails(byStaff.commit());
+
+    const back = writeBatch(db);
+    back.set(doc(db, 'sales', 'OLDS2345'), old);
+    back.delete(doc(db, 'recycleBin', 'sale__OLDS2345'));
+    await assertSucceeds(back.commit());
+  });
+});
+
 describe('queued writes sent twice', () => {
   // A write the server took, but whose reply never reached the phone, is sent
   // again when the connection comes back. Only the first may count.
@@ -833,8 +1014,18 @@ describe('sales', () => {
     ...overrides,
   });
 
-  it('the admin corrects a bill in any state; nobody else does', async () => {
-    await seedSale('FIXA2345', 2);
+  it('a supervisor corrects the bills they wrote, and no one else’s', async () => {
+    await seedSale('OWNA2345', 2, 'pending', { createdBy: 'sup1' });
+    await seedSale('OWNB2345', 2, 'pending', { createdBy: 'admin1' });
+    await assertSucceeds(updateDoc(doc(as('sup1'), 'sales', 'OWNA2345'), correction()));
+    await assertFails(updateDoc(doc(as('sup1'), 'sales', 'OWNB2345'), correction()));
+    // What it may change is the same as for the admin: never the price or the number.
+    await assertFails(updateDoc(doc(as('sup1'), 'sales', 'OWNA2345'), correction({ number: 9 })));
+    await assertFails(updateDoc(doc(as('sup1'), 'sales', 'OWNA2345'), correction({ unitPrice: 1, amount: 2 })));
+  });
+
+  it('the admin corrects a bill in any state; a crew member never does', async () => {
+    await seedSale('FIXA2345', 2, 'pending', { createdBy: 'admin1' });
     await assertFails(updateDoc(doc(as('sup1'), 'sales', 'FIXA2345'), correction()));
     await assertFails(updateDoc(doc(as('op1'), 'sales', 'FIXA2345'), correction()));
     await assertSucceeds(updateDoc(doc(as('admin1'), 'sales', 'FIXA2345'), correction()));
@@ -887,9 +1078,31 @@ describe('sales', () => {
     await assertSucceeds(updateDoc(doc(db, 'sales', 'PRPA2345'), correction({ paymentType: 'cash' })));
   });
 
-  it('only the admin deletes a sale, and its invoice pointer goes with it', async () => {
+  it('a supervisor deletes the sale they wrote — pointer and all — and no one else’s', async () => {
     await setPrices();
-    await assertSucceeds(addSale(as('sup1'), 'DELA2345', sale('sup1', 'DELA2345')));
+    await assertSucceeds(addSale(as('sup1'), 'MYSA2345', sale('sup1', 'MYSA2345')));
+    await assertSucceeds(addSale(as('admin1'), 'ADMA2345', sale('admin1', 'ADMA2345', { number: 2 })));
+
+    // Another's bill, and its pointer, are not theirs to take.
+    await assertFails(deleteDoc(doc(as('sup1'), 'sales', 'ADMA2345')));
+    const theirs = as('sup1');
+    const taking = writeBatch(theirs);
+    taking.delete(doc(theirs, 'sales', 'ADMA2345'));
+    taking.delete(doc(theirs, 'saleIndex', '2026-09-2'));
+    await assertFails(taking.commit());
+
+    // A pointer is not taken from a bill that is still there.
+    await assertFails(deleteDoc(doc(as('sup1'), 'saleIndex', '2026-09-1')));
+    const mine = as('sup1');
+    const removal = writeBatch(mine);
+    removal.delete(doc(mine, 'sales', 'MYSA2345'));
+    removal.delete(doc(mine, 'saleIndex', '2026-09-1'));
+    await assertSucceeds(removal.commit());
+  });
+
+  it('only the admin deletes a sale written by someone else, and its invoice pointer goes with it', async () => {
+    await setPrices();
+    await assertSucceeds(addSale(as('admin1'), 'DELA2345', sale('admin1', 'DELA2345')));
     await assertFails(deleteDoc(doc(as('sup1'), 'sales', 'DELA2345')));
     await assertFails(deleteDoc(doc(as('op1'), 'sales', 'DELA2345')));
     await assertFails(deleteDoc(doc(as('comp1'), 'sales', 'DELA2345')));
@@ -919,12 +1132,27 @@ describe('sales', () => {
     return batch.commit();
   }
 
+  /** Three bills of September, written by the admin — so a supervisor has none of them to take away. */
   async function addThreeBills() {
-    const db = as('sup1');
-    await assertSucceeds(addSale(db, 'BLKA2345', sale('sup1', 'BLKA2345')));
-    await assertSucceeds(addSale(db, 'BLKB2345', sale('sup1', 'BLKB2345', { number: 2 })));
-    await assertSucceeds(addSale(db, 'BLKC2345', sale('sup1', 'BLKC2345', { number: 3 })));
+    const db = as('admin1');
+    await assertSucceeds(addSale(db, 'BLKA2345', sale('admin1', 'BLKA2345')));
+    await assertSucceeds(addSale(db, 'BLKB2345', sale('admin1', 'BLKB2345', { number: 2 })));
+    await assertSucceeds(addSale(db, 'BLKC2345', sale('admin1', 'BLKC2345', { number: 3 })));
   }
+
+  it('a supervisor gives back the number of the newest bill they wrote, and of no one else’s', async () => {
+    await setPrices();
+    const db = as('sup1');
+    await assertSucceeds(addSale(as('admin1'), 'ADMA2345', sale('admin1', 'ADMA2345')));
+    await assertSucceeds(addSale(db, 'MYSB2345', sale('sup1', 'MYSB2345', { number: 2 })));
+
+    // The newest is theirs: it comes off with the count.
+    await assertSucceeds(removeNewest(db, 'MYSB2345', 2, 'ADMA2345'));
+    expect((await getDoc(doc(db, 'saleCounters', '2026-09'))).data()).toEqual({ last: 1, lastCode: 'ADMA2345' });
+    // The one before it is the admin's — not theirs to take back to nothing.
+    await assertFails(removeNewest(db, 'ADMA2345', 1, ''));
+    await assertSucceeds(removeNewest(as('admin1'), 'ADMA2345', 1, ''));
+  });
 
   it("deleting the month's newest bill gives its number back — and only the newest's", async () => {
     await setPrices();
@@ -995,7 +1223,7 @@ describe('sales', () => {
   it('a sale is deleted whole or not at all: a bill from before bills were numbered goes alone', async () => {
     await env.withSecurityRulesDisabled(async (context) => {
       const db = context.firestore() as unknown as Firestore;
-      const unnumbered = Object.entries(sale('sup1', 'OLDA2345', { status: 'cancelled' })).filter(
+      const unnumbered = Object.entries(sale('admin1', 'OLDA2345', { status: 'cancelled' })).filter(
         ([key]) => key !== 'number',
       );
       await setDoc(doc(db, 'sales', 'OLDA2345'), {

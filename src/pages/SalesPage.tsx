@@ -72,6 +72,8 @@ export function SalesPage() {
           ? statusOf(sale) === 'pending' && !sale.prepaid
           : statusOf(sale) === value;
   const shown = all.filter((sale) => matches(sale, filter));
+  // The actions column is there when any bill on show is one this person may change.
+  const editable = shown.some(permissions.canEditSale);
 
   const totalOf = (list: Sale[]) => ({ count: list.length, amount: list.reduce((sum, sale) => sum + sale.amount, 0) });
   const income = totalOf(all.filter((sale) => isSaleIncome(sale, now)));
@@ -193,7 +195,7 @@ export function SalesPage() {
                   <th className={th}>පාරිභෝගිකයා</th>
                   <th className={th}>තත්වය</th>
                   <th className={th}>තහවුරු කළේ</th>
-                  {permissions.editSales && <th className={cx(th, 'text-right')}>ක්‍රියා</th>}
+                  {editable && <th className={cx(th, 'text-right')}>ක්‍රියා</th>}
                 </tr>
               </thead>
               <tbody>
@@ -236,17 +238,19 @@ export function SalesPage() {
                         '—'
                       )}
                     </td>
-                    {permissions.editSales && (
+                    {editable && (
                       // The row opens the bill; these must not.
                       <td className={cx(td, 'text-right')} onClick={(event) => event.stopPropagation()}>
-                        <div className="flex justify-end gap-1">
-                          <IconButton label="සංස්කරණය" onClick={() => setEditing(sale)}>
-                            <Pencil className="size-4" />
-                          </IconButton>
-                          <IconButton label="ඉවත් කරන්න" onClick={() => setDeleting(sale)} className="hover:text-red-200">
-                            <Trash2 className="size-4" />
-                          </IconButton>
-                        </div>
+                        {permissions.canEditSale(sale) && (
+                          <div className="flex justify-end gap-1">
+                            <IconButton label="සංස්කරණය" onClick={() => setEditing(sale)}>
+                              <Pencil className="size-4" />
+                            </IconButton>
+                            <IconButton label="ඉවත් කරන්න" onClick={() => setDeleting(sale)} className="hover:text-red-200">
+                              <Trash2 className="size-4" />
+                            </IconButton>
+                          </div>
+                        )}
                       </td>
                     )}
                   </tr>

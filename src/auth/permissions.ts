@@ -1,4 +1,4 @@
-import type { Bill, Person } from '../lib/model';
+import type { Bill, Person, Sale } from '../lib/model';
 
 /**
  * What the signed-in person may do. firestore.rules is what actually
@@ -21,8 +21,8 @@ export interface Permissions {
   addSales: boolean;
   /** What a tipper load and a tractor load sell for — supervisors too. */
   setSalePrices: boolean;
-  /** Correct or delete any sale. */
-  editSales: boolean;
+  /** Correct or delete a sale — any, for the admin; one they wrote, for a supervisor. */
+  canEditSale: (sale: Sale) => boolean;
   /** Income, expenses and profit. */
   viewFinance: boolean;
 }
@@ -39,7 +39,7 @@ export function permissionsFor(profile: Person): Permissions {
     setRates: isAdmin,
     addSales: true,
     setSalePrices: true,
-    editSales: isAdmin,
+    canEditSale: (sale) => isAdmin || (profile.role === 'supervisor' && sale.createdBy === profile.id),
     viewFinance: isAdmin,
   };
 }

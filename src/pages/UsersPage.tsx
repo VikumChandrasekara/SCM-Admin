@@ -458,12 +458,13 @@ function RemoveModal({ person, onClose }: { person: Person; onClose: () => void 
     >
       <p className="text-sm text-white/80">
         ඉවත් කළ සැණින් ඔවුන්ට SCM යෙදුමට හෝ මෙම පුවරුවට ප්‍රවේශ විය නොහැක. පසුගිය වාර්තා (පිරවීම්, බිල්පත්) රැඳේ.
+        ගිණුම කුණු කූඩයට යයි — දින 30ක් ඇතුළත ආපසු ගත හැක.
       </p>
       {person.username && (
         <Field
           className="mt-4"
           label="දැනට ඇති මුරපදය (විකල්ප)"
-          hint="ඇතුළත් කළොත් පිවිසුමද මැකේ, එවිට පරිශීලක නාමය නැවත භාවිත කළ හැක."
+          hint="ඇතුළත් කළොත් පිවිසුමද මැකේ, එවිට පරිශීලක නාමය නැවත භාවිත කළ හැක — එහෙත් එවිට ගිණුම කුණු කූඩයට නොයන අතර ආපසු ගත නොහැක."
         >
           <Input type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
         </Field>

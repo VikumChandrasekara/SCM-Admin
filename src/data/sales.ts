@@ -35,6 +35,7 @@ import { saleDeleteSummary, saleEditFields, saleEditSummary, type SaleEdit } fro
 import { auditEntry } from './audit';
 import { commit } from './commit';
 import { useLiveDoc, useLiveQuery } from './live';
+import { binEntryData, binRef } from './recycle';
 
 const pricesRef = () => doc(db, 'settings', 'sales');
 
@@ -209,8 +210,8 @@ export async function updateSale(code: string, edit: SaleEdit, by: Person): Prom
 }
 
 /**
- * Removes bill [code] for good — the admin's alone. The audit log keeps what
- * it said.
+ * Removes bill [code] — the admin's alone. It goes to the recycle bin for 30
+ * days, and the audit log keeps what it said.
  *
  * Its invoice-number pointer goes with it. And when it is the month's newest
  * bill, the month's count goes back by one, so the next bill takes the number
@@ -240,6 +241,12 @@ export async function deleteSale(code: string, by: Person): Promise<number | nul
     const freed = number != null && counted?.last === number && counted.lastCode === code ? number : null;
     const below = freed != null && freed > 1 ? await tx.get(doc(db, 'saleIndex', `${month}-${freed - 1}`)) : null;
 
+    // Kept 30 days in the recycle bin, whole — restoring it takes the bill
+    // back with its invoice number.
+    tx.set(
+      binRef('sale', code),
+      binEntryData('sale', code, stored.data(), `බිල්පත ${saleNumber(sale)}`, saleDeleteSummary(sale), by),
+    );
     tx.delete(ref);
     if (indexRef && index?.data()?.code === code) tx.delete(indexRef);
     if (freed != null) {
@@ -315,6 +322,17 @@ export async function verifySale(code: string, by: Person): Promise<Sale> {
         verifiedByName: nameOf(by),
         verifiedAt: serverTimestamp(),
       });
+      tx.set(
+        doc(collection(db, 'auditLog')),
+        auditEntry(
+          'sales.verify',
+          'sale',
+          code,
+          `බිල්පත ${saleNumber(sale)}`,
+          `රු.${sale.amount} · ${sale.customerName || '—'}`,
+          by,
+        ),
+      );
       return { ...sale, status: 'verified' as const, verifiedBy: by.id, verifiedByName: nameOf(by), verifiedAt: new Date() };
     });
   } catch (error) {

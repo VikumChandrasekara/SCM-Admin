@@ -15,6 +15,7 @@ import { monthBounds } from '../lib/format';
 import { BILL, billFrom, nameOf, type Bill, type BillCategory, type Person } from '../lib/model';
 import { auditEntry } from './audit';
 import { useLiveQuery } from './live';
+import { binEntryData, binRef } from './recycle';
 
 /** Every bill dated inside `yyyy-MM`, newest first. */
 export function useMonthBills(month: string) {
@@ -148,24 +149,21 @@ export async function saveBill(
   });
 }
 
+/**
+ * Moves the bill to the recycle bin for 30 days, taking an advance off the
+ * crew member's figure as before; restoring it puts the advance back.
+ */
 export async function deleteBill(bill: Bill, peopleById: Map<string, Person>, by: Person): Promise<void> {
   const ref = doc(db, 'bills', bill.id);
   await runTransaction(db, async (tx) => {
     const stored = await tx.get(ref);
     if (!stored.exists()) return; // already gone, and its advance with it
-    tx.delete(ref);
     const before = billFrom(stored.id, stored.data());
+    const label = billLabel(before.category, before.amount);
+    const summary = before.operatorName ?? 'වියදම';
+    tx.set(binRef('bill', ref.id), binEntryData('bill', ref.id, stored.data(), label, `${before.date} · ${summary}`, by));
+    tx.delete(ref);
     moveAdvances(tx, before, null, peopleById);
-    tx.set(
-      doc(collection(db, 'auditLog')),
-      auditEntry(
-        'bill.delete',
-        'bill',
-        ref.id,
-        billLabel(before.category, before.amount),
-        before.operatorName ?? 'වියදම',
-        by,
-      ),
-    );
+    tx.set(doc(collection(db, 'auditLog')), auditEntry('bill.delete', 'bill', ref.id, label, summary, by));
   });
 }

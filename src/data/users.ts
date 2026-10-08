@@ -5,7 +5,7 @@ import {
   signOut,
   updatePassword,
 } from 'firebase/auth';
-import { collection, doc, serverTimestamp, writeBatch, type WriteBatch } from 'firebase/firestore';
+import { collection, doc, runTransaction, serverTimestamp, writeBatch, type WriteBatch } from 'firebase/firestore';
 
 import { db } from '../db';
 import { emailFor, provisioningAuth } from '../firebase';
@@ -22,6 +22,7 @@ import {
 } from '../lib/model';
 import { auditEntry } from './audit';
 import { commit } from './commit';
+import { binEntryData, binRef } from './recycle';
 
 /**
  * Account management on the Spark plan.
@@ -182,8 +183,12 @@ export async function changePassword(
 }
 
 /**
- * Removes the record, which ends the account's access at once. With the
- * current password the login is deleted too, freeing the username.
+ * Removes the record, which ends the account's access at once. The record
+ * goes to the recycle bin for 30 days, login untouched, so restoring it
+ * gives the access back.
+ *
+ * With the current password the login is deleted too, freeing the username —
+ * and that cannot be undone, so that account does not go to the bin.
  */
 export async function removeAccount(
   person: Person,
@@ -191,13 +196,21 @@ export async function removeAccount(
   by: Person,
 ): Promise<void> {
   if (!currentPassword) {
-    const batch = writeBatch(db);
-    batch.delete(doc(db, 'operators', person.id));
-    batch.set(
-      doc(collection(db, 'auditLog')),
-      auditEntry('account.remove', 'operator', person.id, nameOf(person), 'ප්‍රවේශය ඉවත් කළා', by),
-    );
-    await batch.commit();
+    const ref = doc(db, 'operators', person.id);
+    await runTransaction(db, async (tx) => {
+      const stored = await tx.get(ref);
+      if (!stored.exists()) return;
+      const summary = `${ROLES[person.role].label} · ${person.machineId || 'යන්ත්‍රයක් නැත'}`;
+      tx.set(
+        binRef('operator', person.id),
+        binEntryData('operator', person.id, stored.data(), nameOf(person), summary, by),
+      );
+      tx.delete(ref);
+      tx.set(
+        doc(collection(db, 'auditLog')),
+        auditEntry('account.remove', 'operator', person.id, nameOf(person), 'ප්‍රවේශය ඉවත් කළා', by),
+      );
+    });
     return;
   }
 
@@ -213,7 +226,7 @@ export async function removeAccount(
     batch.delete(doc(db, 'operators', person.id));
     batch.set(
       doc(collection(db, 'auditLog')),
-      auditEntry('account.remove', 'operator', person.id, nameOf(person), 'ගිණුම සම්පූර්ණයෙන් මැකුවා', by),
+      auditEntry('account.remove', 'operator', person.id, nameOf(person), 'ගිණුම සම්පූර්ණයෙන් මැකුවා (ආපසු ගත නොහැක)', by),
     );
     await batch.commit();
     await deleteUser(credential.user);

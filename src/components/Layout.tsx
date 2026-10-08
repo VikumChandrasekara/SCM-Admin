@@ -11,6 +11,7 @@ import {
   ReceiptText,
   ScanLine,
   ShoppingCart,
+  Trash2,
   Users,
   WifiOff,
   type LucideIcon,
@@ -22,6 +23,7 @@ import { useAuth, useSession } from '../auth/AuthContext';
 import { permissionsFor } from '../auth/permissions';
 import { useLiveData } from '../data/LiveData';
 import { useUsageReconciler } from '../data/reconcile';
+import { useBinSweeper } from '../data/recycle';
 import { useExpiredSalesSweeper } from '../data/sales';
 import { usingEmulators } from '../firebase';
 import { serviceAlertsFor, stockAlerts, type ServiceAlert, type StockAlert } from '../lib/alerts';
@@ -55,6 +57,7 @@ const NAV: NavEntry[] = [
   { to: '/finance', label: 'මූල්‍ය', icon: Landmark, adminOnly: true },
   { to: '/users', label: 'පරිශීලකයින්', icon: Users, adminOnly: true },
   { to: '/audit', label: 'විගණන සටහන', icon: ClipboardList, adminOnly: true },
+  { to: '/recycle-bin', label: 'කුණු කූඩය', icon: Trash2 },
 ];
 
 export function Layout() {
@@ -70,6 +73,8 @@ export function Layout() {
   useStockWatcher(store, ready);
   useServiceWatcher(crew, machines, ready);
   useExpiredSalesSweeper();
+  // Purges the recycle bin's expired entries — admins only, as the bin is.
+  useBinSweeper(permissions.isAdmin);
 
   // Once the panel is up, the other pages' code follows in the background —
   // about 25 kB, once — so moving between pages never waits on the line and

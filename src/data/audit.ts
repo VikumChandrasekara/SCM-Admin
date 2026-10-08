@@ -23,6 +23,8 @@ export function auditEntry(
     entityId,
     entityLabel,
     summary,
+    // Which app wrote it — the phone's entries say 'phone'.
+    source: 'panel' as const,
     createdBy: by.id,
     createdByName: nameOf(by),
     createdAt: serverTimestamp(),
