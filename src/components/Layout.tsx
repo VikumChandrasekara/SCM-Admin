@@ -7,6 +7,7 @@ import {
   Landmark,
   LayoutDashboard,
   LogOut,
+  Mountain,
   Package,
   ReceiptText,
   ScanLine,
@@ -52,6 +53,7 @@ const NAV: NavEntry[] = [
   // so a second entry in the header would only repeat it.
   { to: '/store', label: 'ගබඩාව', icon: Package },
   { to: '/bills', label: 'බිල්පත්', icon: ReceiptText },
+  { to: '/landowner', label: 'ඉඩම් හිමියා', icon: Mountain },
   { to: '/explosives', label: 'වෙඩි බඩු', icon: Bomb },
   { to: '/history', label: 'ඉතිහාසය', icon: History },
   { to: '/finance', label: 'මූල්‍ය', icon: Landmark, adminOnly: true },

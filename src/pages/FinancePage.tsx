@@ -5,6 +5,7 @@ import { DataError } from '../components/DataError';
 import { IconButton, Loading, PageHeader, Panel, SectionLabel, TableFrame, cx, td, th } from '../components/ui';
 import { useMonthBills } from '../data/bills';
 import { useCrewMonths, useMonthMovements } from '../data/finance';
+import { useLandownerRates } from '../data/landowner';
 import { useLiveData } from '../data/LiveData';
 import { usePayments } from '../data/payments';
 import { useMonthSales, useNow, useSalesPrices } from '../data/sales';
@@ -34,6 +35,7 @@ export function FinancePage() {
   const previousCrew = useCrewMonths(crew, addMonths(month, -1), version);
   const prices = useSalesPrices();
   const payments = usePayments();
+  const landowner = useLandownerRates();
 
   // Last month's gross, from the same days and loads — no bills, as gross never takes them off.
   const previousGross = previousCrew.data
@@ -45,7 +47,7 @@ export function FinancePage() {
 
   const finance = useMemo(
     () =>
-      sales.data && bills.data && movements.data && crewMonths.data && prices.data && payments.data
+      sales.data && bills.data && movements.data && crewMonths.data && prices.data && payments.data && landowner.data
         ? financeFor({
             month,
             sales: sales.data,
@@ -54,15 +56,29 @@ export function FinancePage() {
             crewMonths: crewMonths.data,
             payments: payments.data,
             store,
-            machineCharge: prices.data.machineCharge,
+            machineHourly: prices.data.machineHourly,
+            landownerRates: landowner.data,
             now,
             today,
           })
         : null,
-    [month, sales.data, bills.data, movements.data, crewMonths.data, prices.data, payments.data, store, now, today],
+    [
+      month,
+      sales.data,
+      bills.data,
+      movements.data,
+      crewMonths.data,
+      prices.data,
+      payments.data,
+      landowner.data,
+      store,
+      now,
+      today,
+    ],
   );
 
-  const failure = sales.error ?? bills.error ?? movements.error ?? prices.error ?? payments.error;
+  const failure =
+    sales.error ?? bills.error ?? movements.error ?? prices.error ?? payments.error ?? landowner.error;
 
   return (
     <>
@@ -110,7 +126,12 @@ function FinanceReport({ finance, previousGross }: { finance: Finance; previousG
     {
       label: 'යන්ත්‍රයට කපන ගණන',
       value: finance.machineTotal,
-      detail: `තහවුරු කළ විකුණුම් ලෝඩ් ${quantity(finance.machineLoads)}`,
+      detail: `එක්ස්කැවේටර් වැඩ කළ පැය ${quantity(finance.machineHours)}`,
+    },
+    {
+      label: 'ඉඩම් හිමියාට කපන ගණන',
+      value: finance.landownerTotal,
+      detail: `6/9, සක්කර, කෝරි දූවිලි ලෝඩ් ${quantity(finance.landownerLoads)} — බිල්පත සෑදූ වේලාවේ ගාස්තුවෙන්`,
     },
     ...BILL_CATEGORIES.filter((category) => finance.siteBills[category] > 0).map((category) => ({
       label: `${BILL[category].label} බිල්පත්`,
@@ -421,6 +442,7 @@ const KIND_LABEL: Record<LedgerKind, string> = {
   sale: 'විකුණුම',
   payment: 'ණය ගෙවීම',
   machine: 'යන්ත්‍රයට',
+  landowner: 'ඉඩම් හිමියාට',
   bill: 'බිල්පත',
   purchase: 'ගබඩා මිලදී ගැනීම',
   salary: 'වැටුප් ශේෂය',

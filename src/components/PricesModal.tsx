@@ -18,25 +18,32 @@ export function PricesModal({ prices, onClose }: { prices: SalesPrices; onClose:
   const toast = useToast();
   const [tipper, setTipper] = useState(String(prices.tipperPrice));
   const [tractor, setTractor] = useState(String(prices.tractorPrice));
-  const [machine, setMachine] = useState(String(prices.machineCharge));
+  const [hourly, setHourly] = useState(String(prices.machineHourly));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const tipperPrice = Number(tipper);
   const tractorPrice = Number(tractor);
-  const machineCharge = machine.trim() === '' ? NaN : Number(machine);
+  const machineHourly = hourly.trim() === '' ? NaN : Number(hourly);
   const cubePrice = tipperPrice > 0 ? cubePriceFor(tipperPrice) : null;
 
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (!(tipperPrice > 0) || !(tractorPrice > 0)) return setError('මිල ශුන්‍යයට වඩා වැඩි විය යුතුය.');
-    if (!(machineCharge >= 0)) return setError('යන්ත්‍ර ගාස්තුව ඍණ නොවන ගණනක් විය යුතුය.');
+    if (!(machineHourly >= 0)) return setError('යන්ත්‍ර ගාස්තුව ඍණ නොවන ගණනක් විය යුතුය.');
 
     setBusy(true);
     setError(null);
     try {
       await saveSalesPrices(
-        { tipperPrice, cubePrice: cubePriceFor(tipperPrice), tractorPrice, machineCharge },
+        {
+          tipperPrice,
+          cubePrice: cubePriceFor(tipperPrice),
+          tractorPrice,
+          // The old per-load figure rides along untouched: each new bill still carries it.
+          machineCharge: prices.machineCharge,
+          machineHourly,
+        },
         profile,
       );
       toast.success('මිල යාවත්කාලීන කළා. නව බිල්පත් මෙම මිලට සෑදේ.');
@@ -80,10 +87,10 @@ export function PricesModal({ prices, onClose }: { prices: SalesPrices; onClose:
           <Input type="number" inputMode="decimal" min="0" step="1" required value={tractor} onChange={(event) => setTractor(event.target.value)} />
         </Field>
         <Field
-          label="යන්ත්‍රයට — ලෝඩ් එකකට (රු.)"
-          hint="ටිපර් බිල්පතක් ලෝඩ් 1ක්; ට්‍රැක්ටර් බිල්පතක ලෝඩ් ගණනට. මූල්‍ය වාර්තාවේ වියදමක් ලෙස අඩු වේ."
+          label="යන්ත්‍රයට — පැයකට (රු.)"
+          hint="එක්ස්කැවේටර් වැඩ කළ පැය ගණනට. සියලු මාසවල මූල්‍ය වාර්තාවේ වියදමක් ලෙස අඩු වේ."
         >
-          <Input type="number" inputMode="decimal" min="0" step="1" required value={machine} onChange={(event) => setMachine(event.target.value)} />
+          <Input type="number" inputMode="decimal" min="0" step="1" required value={hourly} onChange={(event) => setHourly(event.target.value)} />
         </Field>
         {error && <ErrorNote>{error}</ErrorNote>}
       </form>

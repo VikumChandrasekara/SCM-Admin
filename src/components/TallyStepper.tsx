@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from 'react';
 import { useSession } from '../auth/AuthContext';
 import { saveTally } from '../data/machines';
 import { errorMessage } from '../lib/errors';
-import { hours } from '../lib/format';
 import { tallyField, type Day, type Person } from '../lib/model';
 import { useToast } from './Toasts';
 import { IconButton } from './ui';
@@ -77,6 +76,28 @@ export function TallyStepper({ person, day }: { person: Person; day: Day }) {
     [],
   );
 
+  /** What is being typed in the field, or null while it just shows the figure. */
+  const [typing, setTyping] = useState<string | null>(null);
+  const cancelled = useRef(false);
+
+  // A figure typed in is final: written at once rather than after the taps settle.
+  function commit() {
+    const text = typing;
+    setTyping(null);
+    if (cancelled.current) {
+      cancelled.current = false;
+      return;
+    }
+    if (text == null || text.trim() === '') return;
+    const typed = Number(text);
+    if (!Number.isFinite(typed) || typed < 0) return;
+    const next = whole ? Math.round(typed) : typed;
+    if (next === value) return;
+    setDraft(next);
+    window.clearTimeout(timer.current);
+    void write({ value: next, date: day.date });
+  }
+
   const label = whole ? 'ලෝඩ්' : 'අඩි';
   return (
     <div className="flex items-center gap-1">
@@ -89,9 +110,29 @@ export function TallyStepper({ person, day }: { person: Person; day: Day }) {
       >
         <Minus className="size-3.5" />
       </IconButton>
-      <span className="min-w-9 text-center text-[15px] font-bold text-amber-hi tabular-nums">
-        {whole ? value : hours(value)}
-      </span>
+      <input
+        type="number"
+        inputMode="decimal"
+        min="0"
+        step={whole ? '1' : 'any'}
+        aria-label={`${label} ගණන`}
+        disabled={!person.machineId}
+        value={typing ?? (whole ? String(value) : String(Number(value.toFixed(2))))}
+        onFocus={(event) => {
+          setTyping(String(value));
+          event.target.select();
+        }}
+        onChange={(event) => setTyping(event.target.value)}
+        onBlur={commit}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') event.currentTarget.blur();
+          if (event.key === 'Escape') {
+            cancelled.current = true;
+            event.currentTarget.blur();
+          }
+        }}
+        className="h-7 w-14 rounded-control bg-transparent text-center text-[15px] font-bold text-amber-hi tabular-nums outline-none [appearance:textfield] focus:bg-white/10 focus:ring-1 focus:ring-amber-hi/60 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+      />
       <IconButton
         label={`${label} වැඩි කරන්න`}
         className="size-7 bg-white/5"

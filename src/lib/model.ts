@@ -763,6 +763,7 @@ export type AuditAction =
   | 'sales.restore'
   | 'sales.verify'
   | 'sales.prices'
+  | 'landowner.rate'
   | 'service.reset'
   | 'leave.workday'
   | 'payment.add'
@@ -794,6 +795,7 @@ export const AUDIT_LABEL: Record<AuditAction, string> = {
   'sales.restore': 'විකුණුම් බිල්පතක් ආපසු ගත්තා',
   'sales.verify': 'විකුණුම් බිල්පතක් තහවුරු කළා',
   'sales.prices': 'විකුණුම් මිල වෙනස් කළා',
+  'landowner.rate': 'ඉඩම් හිමියාගේ ගාස්තුව වෙනස් කළා',
   'service.reset': 'සේවා කාලය යළි පිහිටෙව්වා',
   'leave.workday': 'නිවාඩු දිනයක් වැඩ කළ දිනයක් ලෙස සුරැකුණා',
   'payment.add': 'ණය ගෙවීමක් එකතු කළා',
@@ -941,12 +943,21 @@ export interface SalesPrices {
   cubePrice: number;
   /** Rupees for one tractor load. */
   tractorPrice: number;
-  /** Rupees that go to the machine for each load sold — see {@link machineLoadsOf}. */
+  /**
+   * Rupees per load that went to the machine before it was charged by the
+   * hour. Still written on every sale (firestore.rules checks it) but the
+   * finance report no longer reads it — see {@link machineHourly}.
+   */
   machineCharge: number;
+  /** Rupees the machine is charged for each hour the loading excavator worked. */
+  machineHourly: number;
 }
 
-/** What goes to the machine per load until staff set otherwise. firestore.rules falls back to the same figure. */
+/** What the machine was charged per load until it moved to the hour. firestore.rules falls back to the same figure. */
 export const DEFAULT_MACHINE_CHARGE = 4000;
+
+/** What the machine is charged for each hour worked until staff set otherwise. */
+export const DEFAULT_MACHINE_HOURLY = 6000;
 
 /**
  * What sales are priced at until staff set otherwise. firestore.rules falls
@@ -957,20 +968,8 @@ export const DEFAULT_SALES_PRICES: SalesPrices = {
   cubePrice: 6500,
   tractorPrice: 6500,
   machineCharge: DEFAULT_MACHINE_CHARGE,
+  machineHourly: DEFAULT_MACHINE_HOURLY,
 };
-
-/** Loads a sale counts for the machine: a tipper bill is one trip whatever it carried; a tractor bill is its load count. */
-export function machineLoadsOf(sale: Pick<Sale, 'type' | 'quantity'>): number {
-  return sale.type === 'tipper' ? 1 : sale.quantity;
-}
-
-/**
- * What a sale sends to the machine, at the figure it was written at — or
- * [currentRate] for a sale written before the figure was kept on it.
- */
-export function machineChargeOf(sale: Sale, currentRate: number): number {
-  return machineLoadsOf(sale) * (sale.machineCharge ?? currentRate);
-}
 
 /** One cube's price for `tipperPrice` — what a tipper load's figure comes to. */
 export function cubePriceFor(tipperPrice: number): number {
@@ -994,14 +993,19 @@ export function pricesFrom(data: DocumentData | undefined): SalesPrices {
   };
   const charge = numOrNull(data?.machineCharge);
   const machineCharge = charge != null && charge >= 0 ? charge : DEFAULT_MACHINE_CHARGE;
+  const hourly = numOrNull(data?.machineHourly);
+  const machineHourly = hourly != null && hourly >= 0 ? hourly : DEFAULT_MACHINE_HOURLY;
   const tipperPrice = positive(data?.tipperPrice);
   const cubePrice = positive(data?.cubePrice);
-  if (tipperPrice == null || cubePrice == null) return { ...DEFAULT_SALES_PRICES, machineCharge };
+  if (tipperPrice == null || cubePrice == null) {
+    return { ...DEFAULT_SALES_PRICES, machineCharge, machineHourly };
+  }
   return {
     tipperPrice,
     cubePrice,
     tractorPrice: positive(data?.tractorPrice) ?? DEFAULT_SALES_PRICES.tractorPrice,
     machineCharge,
+    machineHourly,
   };
 }
 

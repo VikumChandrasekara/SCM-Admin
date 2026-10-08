@@ -26,6 +26,7 @@ type Group =
   | 'store'
   | 'bill'
   | 'sales'
+  | 'landowner'
   | 'payment'
   | 'service'
   | 'leave'
@@ -38,6 +39,7 @@ const GROUP_LABEL: Record<Exclude<Group, 'all'>, string> = {
   store: 'ගබඩාව',
   bill: 'බිල්පත්',
   sales: 'විකුණුම්',
+  landowner: 'ඉඩම් හිමියා',
   payment: 'ණය ගෙවීම්',
   service: 'සේවා',
   leave: 'නිවාඩු',
@@ -51,6 +53,7 @@ const actionTone: Record<string, 'grape' | 'info' | 'amber' | 'ok' | 'muted'> = 
   store: 'info',
   bill: 'amber',
   sales: 'ok',
+  landowner: 'amber',
   payment: 'ok',
   service: 'muted',
   leave: 'muted',

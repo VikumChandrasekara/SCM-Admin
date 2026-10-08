@@ -57,7 +57,7 @@ export async function saveSalesPrices(prices: SalesPrices, by: Person): Promise<
       'settings',
       'sales',
       'විකුණුම් මිල',
-      `ටිපර් ලෝඩ් රු.${prices.tipperPrice} (කියුබ් රු.${prices.cubePrice}) · ට්‍රැක්ටර් ලෝඩ් රු.${prices.tractorPrice} · යන්ත්‍රයට ලෝඩ් එකකට රු.${prices.machineCharge}`,
+      `ටිපර් ලෝඩ් රු.${prices.tipperPrice} (කියුබ් රු.${prices.cubePrice}) · ට්‍රැක්ටර් ලෝඩ් රු.${prices.tractorPrice} · යන්ත්‍රයට පැයකට රු.${prices.machineHourly}`,
       by,
     ),
   );

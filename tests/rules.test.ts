@@ -8,6 +8,7 @@ import {
   type RulesTestEnvironment,
 } from '@firebase/rules-unit-testing';
 import {
+  addDoc,
   collection,
   deleteDoc,
   doc,
@@ -802,6 +803,19 @@ describe('sales', () => {
     );
   });
 
+  it('staff may set the machine hourly figure, never a negative one; it does not touch the per-load figure on bills', async () => {
+    const prices = { tipperPrice: 19500, cubePrice: 6500, tractorPrice: 6500 };
+    await assertFails(setDoc(doc(as('sup1'), 'settings', 'sales'), { ...prices, machineHourly: -1 }));
+    await assertFails(setDoc(doc(as('sup1'), 'settings', 'sales'), { ...prices, machineHourly: '6000' }));
+    await assertFails(setDoc(doc(as('op1'), 'settings', 'sales'), { ...prices, machineHourly: 6000 }));
+    await assertSucceeds(setDoc(doc(as('sup1'), 'settings', 'sales'), { ...prices, machineHourly: 6000 }));
+    await assertSucceeds(
+      setDoc(doc(as('admin1'), 'settings', 'sales'), { ...prices, machineCharge: 4000, machineHourly: 6000 }),
+    );
+    // Bills are still written at the per-load figure, as before.
+    await assertSucceeds(addSale(as('sup1'), 'HRLY2345', sale('sup1', 'HRLY2345')));
+  });
+
   it('with no prices set, sales are written at the defaults', async () => {
     // 6,500 a cube — a third of 19,500 — and 6,500 a tractor load.
     await assertSucceeds(addSale(as('sup1'), 'CUBE2345', sale('sup1', 'CUBE2345')));
@@ -1233,5 +1247,43 @@ describe('sales', () => {
     });
     await assertFails(deleteDoc(doc(as('sup1'), 'sales', 'OLDA2345')));
     await assertSucceeds(deleteDoc(doc(as('admin1'), 'sales', 'OLDA2345')));
+  });
+});
+
+describe('the landowner’s per-load figure', () => {
+  const entry = (by: string, overrides: object = {}) => ({
+    rate: 500,
+    previousRate: null,
+    setBy: by,
+    setByName: by,
+    at: serverTimestamp(),
+    ...overrides,
+  });
+  const rates = (uid: string) => collection(as(uid), 'landownerRates');
+
+  it('staff set it, the crew cannot, and nobody signs for someone else', async () => {
+    await assertSucceeds(addDoc(rates('sup1'), entry('sup1')));
+    await assertSucceeds(addDoc(rates('admin1'), entry('admin1', { rate: 800, previousRate: 500 })));
+    await assertFails(addDoc(rates('op1'), entry('op1')));
+    await assertFails(addDoc(rates('comp1'), entry('comp1')));
+    await assertFails(addDoc(rates('sup1'), entry('admin1')));
+  });
+
+  it('is a number from zero up, stamped by the server, with nothing else on it', async () => {
+    await assertSucceeds(addDoc(rates('sup1'), entry('sup1', { rate: 0 })));
+    await assertFails(addDoc(rates('sup1'), entry('sup1', { rate: -1 })));
+    await assertFails(addDoc(rates('sup1'), entry('sup1', { rate: '500' })));
+    await assertFails(addDoc(rates('sup1'), entry('sup1', { previousRate: -5 })));
+    await assertFails(addDoc(rates('sup1'), entry('sup1', { at: Timestamp.fromMillis(Date.now() - 86_400_000) })));
+    await assertFails(addDoc(rates('sup1'), entry('sup1', { extra: true })));
+  });
+
+  it('is read by staff only, and no entry is ever changed or removed', async () => {
+    const created = await addDoc(rates('sup1'), entry('sup1'));
+    await assertSucceeds(getDoc(doc(as('admin1'), 'landownerRates', created.id)));
+    await assertSucceeds(getDoc(doc(as('sup1'), 'landownerRates', created.id)));
+    await assertFails(getDoc(doc(as('op1'), 'landownerRates', created.id)));
+    await assertFails(updateDoc(doc(as('admin1'), 'landownerRates', created.id), { rate: 1 }));
+    await assertFails(deleteDoc(doc(as('admin1'), 'landownerRates', created.id)));
   });
 });

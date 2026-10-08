@@ -15,6 +15,7 @@ import {
   GetAppPage,
   HistoryPage,
   LoginPage,
+  LandownerPage,
   RecycleBinPage,
   SalesPage,
   Shell,
@@ -77,6 +78,7 @@ export function App() {
                 />
                 {/* The admin's, and the supervisor's for their bills and store items. */}
                 <Route path="recycle-bin" element={<RecycleBinPage />} />
+                <Route path="landowner" element={<LandownerPage />} />
               </Route>
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

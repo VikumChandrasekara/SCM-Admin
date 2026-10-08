@@ -133,7 +133,7 @@ export function SalesPage() {
             ට්‍රැක්ටර් ලෝඩ් එකක් <span className="text-amber-hi tabular-nums">{rupees(prices.data.tractorPrice)}</span>
           </span>
           <span className="rounded-full bg-well px-3 py-1.5 text-sm font-bold ring-1 ring-hairline">
-            යන්ත්‍රයට ලෝඩ් එකකට <span className="text-amber-hi tabular-nums">{rupees(prices.data.machineCharge)}</span>
+            යන්ත්‍රයට පැයකට <span className="text-amber-hi tabular-nums">{rupees(prices.data.machineHourly)}</span>
           </span>
           {permissions.setSalePrices && (
             <Button variant="ghost" size="sm" onClick={() => setEditingPrices(true)}>

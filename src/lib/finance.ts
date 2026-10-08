@@ -1,11 +1,11 @@
 import type { CrewMonth } from '../data/finance';
 import { dateKey, monthBounds, quantity } from './format';
+import { landownerChargeOf, paysLandowner, saleLoads, type LandownerRate } from './landowner';
 import {
   BILL,
   MOVEMENT_LABEL,
+  SALE_MATERIAL,
   SALE_TYPE,
-  machineChargeOf,
-  machineLoadsOf,
   saleNumber,
   nameOf,
   awaitsPrepaidLoad,
@@ -32,7 +32,8 @@ import { payFor, type PayFigures } from './pay';
  *     part of it, paid early, so they are not counted again as bills;
  *   - every other bill (water, other, food charged to nobody);
  *   - store purchases — new stock and restocks, at what it cost then;
- *   - what goes to the machine for each verified load sold.
+ *   - what goes to the machine for each hour the excavator worked;
+ *   - what goes to the landowner for each load of 6/9, සක්කර or කෝරි දූවිලි sold.
  *
  * What the machines drew out of the store is reported too, but beside the
  * total rather than in it: that fuel and those parts were paid for when
@@ -65,7 +66,7 @@ export interface StockRow {
   estimated: boolean;
 }
 
-export type LedgerKind = 'sale' | 'payment' | 'machine' | 'bill' | 'purchase' | 'salary';
+export type LedgerKind = 'sale' | 'payment' | 'machine' | 'landowner' | 'bill' | 'purchase' | 'salary';
 
 export interface LedgerEntry {
   date: string;
@@ -95,10 +96,14 @@ export interface Finance {
   siteBillTotal: number;
   purchases: StockRow[];
   purchaseTotal: number;
-  /** Loads the verified sales count for the machine — one per tipper bill, the load count of a tractor bill. */
-  machineLoads: number;
-  /** What those loads sent to the machine. */
+  /** Hours the loading excavator crews worked this month. */
+  machineHours: number;
+  /** What those hours sent to the machine. */
   machineTotal: number;
+  /** Loads of 6/9, සක්කර and කෝරි දූවිලි the verified sales count for the landowner. */
+  landownerLoads: number;
+  /** What those loads sent to the landowner. */
+  landownerTotal: number;
 
   usageByMachine: StockRow[];
   usageByItem: StockRow[];
@@ -151,7 +156,8 @@ export function financeFor({
   crewMonths,
   payments = [],
   store,
-  machineCharge,
+  machineHourly,
+  landownerRates = [],
   now,
   today,
 }: {
@@ -163,8 +169,10 @@ export function financeFor({
   /** Every payment against a credit account — only this month's are counted. */
   payments?: readonly Payment[];
   store: readonly StoreItem[];
-  /** Today's per-load figure — only for sales written before each sale kept its own. */
-  machineCharge: number;
+  /** Rupees charged for each hour the excavator worked — one figure, applied to every month. */
+  machineHourly: number;
+  /** Every setting of the landowner's per-load figure — each sale is worked out at the one in force when it was written. */
+  landownerRates?: readonly LandownerRate[];
   now: number;
   /** `yyyy-MM-dd` — only feeds payFor's leaveDays, which this report never shows. */
   today: string;
@@ -176,13 +184,12 @@ export function financeFor({
   const pending = noSales();
   const cancelled = noSales();
   const prepaidOpen = noSales();
-  let machineLoads = 0;
-  let machineTotal = 0;
+  let landownerLoads = 0;
+  let landownerTotal = 0;
   for (const sale of sales) {
     const status = saleStatus(sale, now);
-    // A prepaid bill is income from the day it was paid, in that month —
-    // its machine charge with it, so a closed month's figures never move
-    // when the load goes later.
+    // A prepaid bill is income from the day it was paid, in that month, so a
+    // closed month's figures never move when the load goes later.
     if (isSaleIncome(sale, now)) {
       addSale(incomeByType[sale.type], sale);
       if (awaitsPrepaidLoad(sale, now)) addSale(prepaidOpen, sale);
@@ -197,17 +204,18 @@ export function financeFor({
         expense: 0,
       });
 
-      const loads = machineLoadsOf(sale);
-      const charge = machineChargeOf(sale, machineCharge);
-      machineLoads += loads;
-      machineTotal += charge;
-      if (charge > 0) {
+      // The landowner's share goes with the income, in the month it was paid,
+      // at the figure that was set when the bill was written.
+      const share = landownerChargeOf(sale, landownerRates);
+      if (paysLandowner(sale)) landownerLoads += saleLoads(sale);
+      landownerTotal += share;
+      if (share > 0) {
         ledger.push({
           date: sale.date,
-          kind: 'machine',
-          description: `යන්ත්‍රයට · ලෝඩ් ${quantity(loads)} · බිල් ${saleNumber(sale)}`,
+          kind: 'landowner',
+          description: `ඉඩම් හිමියාට · ලෝඩ් ${quantity(saleLoads(sale))} · ${sale.material ? SALE_MATERIAL[sale.material] : ''} · බිල් ${saleNumber(sale)}`,
           income: 0,
-          expense: charge,
+          expense: share,
         });
       }
     } else if (status === 'pending') {
@@ -244,6 +252,26 @@ export function financeFor({
   });
   const salaryTotal = sum(salaries.map((row) => row.pay.gross));
   const monthEnd = monthBounds(month).to;
+
+  // ---- the machine ----
+  // Charged for the hours the loading excavator worked, whatever was sold.
+  let machineHours = 0;
+  let machineTotal = 0;
+  for (const { person, tally } of crewMonths) {
+    if (person.role !== 'operator' || !(tally.hours > 0)) continue;
+    const charge = tally.hours * machineHourly;
+    machineHours += tally.hours;
+    machineTotal += charge;
+    if (charge > 0) {
+      ledger.push({
+        date: monthEnd,
+        kind: 'machine',
+        description: `යන්ත්‍රයට · පැය ${quantity(tally.hours)} · ${nameOf(person)}`,
+        income: 0,
+        expense: charge,
+      });
+    }
+  }
   for (const row of salaries) {
     ledger.push({
       date: monthEnd,
@@ -318,8 +346,16 @@ export function financeFor({
   const purchaseTotal = sum(purchaseRows.map((row) => row.value));
   const usageItems = [...usageByItem.values()].sort(byValue);
 
-  const expenses = salaryTotal + siteBillTotal + purchaseTotal + machineTotal;
-  const order: Record<LedgerKind, number> = { sale: 0, payment: 1, machine: 2, bill: 3, purchase: 4, salary: 5 };
+  const expenses = salaryTotal + siteBillTotal + purchaseTotal + machineTotal + landownerTotal;
+  const order: Record<LedgerKind, number> = {
+    sale: 0,
+    payment: 1,
+    landowner: 2,
+    machine: 3,
+    bill: 4,
+    purchase: 5,
+    salary: 6,
+  };
   ledger.sort((a, b) => a.date.localeCompare(b.date) || order[a.kind] - order[b.kind]);
 
   return {
@@ -335,8 +371,10 @@ export function financeFor({
     siteBillTotal,
     purchases: purchaseRows,
     purchaseTotal,
-    machineLoads,
+    machineHours,
     machineTotal,
+    landownerLoads,
+    landownerTotal,
     usageByMachine: [...usageByMachine.values()].sort(byValue),
     usageByItem: usageItems,
     usageTotal: sum(usageItems.map((row) => row.value)),

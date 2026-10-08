@@ -18,6 +18,7 @@ const load = {
   finance: () => import('./FinancePage'),
   auditLog: () => import('./AuditLogPage'),
   recycleBin: () => import('./RecycleBinPage'),
+  landowner: () => import('./LandownerPage'),
   login: () => import('./LoginPage'),
 };
 
@@ -34,6 +35,7 @@ export const VerifyPage = lazy(() => load.verify().then((module) => ({ default: 
 export const FinancePage = lazy(() => load.finance().then((module) => ({ default: module.FinancePage })));
 export const AuditLogPage = lazy(() => load.auditLog().then((module) => ({ default: module.AuditLogPage })));
 export const RecycleBinPage = lazy(() => load.recycleBin().then((module) => ({ default: module.RecycleBinPage })));
+export const LandownerPage = lazy(() => load.landowner().then((module) => ({ default: module.LandownerPage })));
 export const LoginPage = lazy(() => load.login().then((module) => ({ default: module.LoginPage })));
 
 const byPath: Record<string, () => Promise<unknown>> = {
@@ -51,6 +53,7 @@ const byPath: Record<string, () => Promise<unknown>> = {
   '/finance': load.finance,
   '/audit': load.auditLog,
   '/recycle-bin': load.recycleBin,
+  '/landowner': load.landowner,
 };
 
 /** Starts downloading a page's code before it is opened. */
