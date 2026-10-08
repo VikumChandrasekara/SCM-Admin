@@ -764,6 +764,8 @@ export type AuditAction =
   | 'sales.verify'
   | 'sales.prices'
   | 'landowner.rate'
+  | 'landowner.paid'
+  | 'landowner.unpaid'
   | 'service.reset'
   | 'leave.workday'
   | 'payment.add'
@@ -795,7 +797,9 @@ export const AUDIT_LABEL: Record<AuditAction, string> = {
   'sales.restore': 'විකුණුම් බිල්පතක් ආපසු ගත්තා',
   'sales.verify': 'විකුණුම් බිල්පතක් තහවුරු කළා',
   'sales.prices': 'විකුණුම් මිල වෙනස් කළා',
-  'landowner.rate': 'ඉඩම් හිමියාගේ ගාස්තුව වෙනස් කළා',
+  'landowner.rate': 'ඉඩම් හිමියාගේ ගාස්තු වෙනස් කළා',
+  'landowner.paid': 'ඉඩම් හිමියාට ගෙවූ බව සලකුණු කළා',
+  'landowner.unpaid': 'ඉඩම් හිමියාට ගෙවූ බව ඉවත් කළා',
   'service.reset': 'සේවා කාලය යළි පිහිටෙව්වා',
   'leave.workday': 'නිවාඩු දිනයක් වැඩ කළ දිනයක් ලෙස සුරැකුණා',
   'payment.add': 'ණය ගෙවීමක් එකතු කළා',

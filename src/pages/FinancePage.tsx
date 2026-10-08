@@ -131,7 +131,7 @@ function FinanceReport({ finance, previousGross }: { finance: Finance; previousG
     {
       label: 'ඉඩම් හිමියාට කපන ගණන',
       value: finance.landownerTotal,
-      detail: `6/9, සක්කර, කෝරි දූවිලි ලෝඩ් ${quantity(finance.landownerLoads)} — බිල්පත සෑදූ වේලාවේ ගාස්තුවෙන්`,
+      detail: `6/9, සක්කර, කෝරි ඩස්ට් ලෝඩ් ${quantity(finance.landownerLoads)} — බිල්පත සෑදූ වේලාවේ ගාස්තුවෙන්`,
     },
     ...BILL_CATEGORIES.filter((category) => finance.siteBills[category] > 0).map((category) => ({
       label: `${BILL[category].label} බිල්පත්`,

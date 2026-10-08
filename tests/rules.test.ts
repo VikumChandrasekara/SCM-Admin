@@ -1250,40 +1250,95 @@ describe('sales', () => {
   });
 });
 
-describe('the landowner’s per-load figure', () => {
+describe('the landowner’s per-load figures', () => {
+  const rates = { six_nine: 500, sakka: 400, kory_dust: 300 };
   const entry = (by: string, overrides: object = {}) => ({
-    rate: 500,
-    previousRate: null,
+    rates,
+    previousRates: null,
     setBy: by,
     setByName: by,
     at: serverTimestamp(),
     ...overrides,
   });
-  const rates = (uid: string) => collection(as(uid), 'landownerRates');
+  const entries = (uid: string) => collection(as(uid), 'landownerRates');
 
-  it('staff set it, the crew cannot, and nobody signs for someone else', async () => {
-    await assertSucceeds(addDoc(rates('sup1'), entry('sup1')));
-    await assertSucceeds(addDoc(rates('admin1'), entry('admin1', { rate: 800, previousRate: 500 })));
-    await assertFails(addDoc(rates('op1'), entry('op1')));
-    await assertFails(addDoc(rates('comp1'), entry('comp1')));
-    await assertFails(addDoc(rates('sup1'), entry('admin1')));
+  it('staff set them, the crew cannot, and nobody signs for someone else', async () => {
+    await assertSucceeds(addDoc(entries('sup1'), entry('sup1')));
+    await assertSucceeds(
+      addDoc(entries('admin1'), entry('admin1', { rates: { ...rates, six_nine: 800 }, previousRates: rates })),
+    );
+    await assertFails(addDoc(entries('op1'), entry('op1')));
+    await assertFails(addDoc(entries('comp1'), entry('comp1')));
+    await assertFails(addDoc(entries('sup1'), entry('admin1')));
   });
 
-  it('is a number from zero up, stamped by the server, with nothing else on it', async () => {
-    await assertSucceeds(addDoc(rates('sup1'), entry('sup1', { rate: 0 })));
-    await assertFails(addDoc(rates('sup1'), entry('sup1', { rate: -1 })));
-    await assertFails(addDoc(rates('sup1'), entry('sup1', { rate: '500' })));
-    await assertFails(addDoc(rates('sup1'), entry('sup1', { previousRate: -5 })));
-    await assertFails(addDoc(rates('sup1'), entry('sup1', { at: Timestamp.fromMillis(Date.now() - 86_400_000) })));
-    await assertFails(addDoc(rates('sup1'), entry('sup1', { extra: true })));
+  it('are three numbers from zero up, stamped by the server, with nothing else on them', async () => {
+    await assertSucceeds(addDoc(entries('sup1'), entry('sup1', { rates: { six_nine: 0, sakka: 0, kory_dust: 0 } })));
+    await assertFails(addDoc(entries('sup1'), entry('sup1', { rates: { ...rates, sakka: -1 } })));
+    await assertFails(addDoc(entries('sup1'), entry('sup1', { rates: { ...rates, sakka: '400' } })));
+    await assertFails(addDoc(entries('sup1'), entry('sup1', { rates: { six_nine: 1, sakka: 2 } })));
+    await assertFails(addDoc(entries('sup1'), entry('sup1', { rates: { ...rates, boldas: 5 } })));
+    await assertFails(addDoc(entries('sup1'), entry('sup1', { rates: 500 })));
+    await assertFails(addDoc(entries('sup1'), entry('sup1', { previousRates: { ...rates, sakka: -5 } })));
+    await assertFails(addDoc(entries('sup1'), entry('sup1', { at: Timestamp.fromMillis(Date.now() - 86_400_000) })));
+    await assertFails(addDoc(entries('sup1'), entry('sup1', { extra: true })));
   });
 
-  it('is read by staff only, and no entry is ever changed or removed', async () => {
-    const created = await addDoc(rates('sup1'), entry('sup1'));
+  it('are read by staff only, and no entry is ever changed or removed', async () => {
+    const created = await addDoc(entries('sup1'), entry('sup1'));
     await assertSucceeds(getDoc(doc(as('admin1'), 'landownerRates', created.id)));
     await assertSucceeds(getDoc(doc(as('sup1'), 'landownerRates', created.id)));
     await assertFails(getDoc(doc(as('op1'), 'landownerRates', created.id)));
-    await assertFails(updateDoc(doc(as('admin1'), 'landownerRates', created.id), { rate: 1 }));
+    await assertFails(updateDoc(doc(as('admin1'), 'landownerRates', created.id), { 'rates.sakka': 1 }));
     await assertFails(deleteDoc(doc(as('admin1'), 'landownerRates', created.id)));
+  });
+});
+
+describe('the landowner’s monthly payment', () => {
+  const signature = 'M20 100L28 104L36 108M60 90L61 91';
+  const payment = (by: string, month: string, overrides: object = {}) => ({
+    month,
+    amount: 2400,
+    loads: 5,
+    byMaterial: { six_nine: { loads: 2, amount: 1300 } },
+    confirmedName: 'Kasun',
+    signature,
+    markedBy: by,
+    markedByName: by,
+    paidAt: serverTimestamp(),
+    ...overrides,
+  });
+  const mark = (uid: string, month: string, overrides: object = {}) =>
+    setDoc(doc(as(uid), 'landownerPayments', month), payment(uid, month, overrides));
+
+  it('staff mark a month paid, the crew cannot, and nobody signs for someone else', async () => {
+    await assertSucceeds(mark('sup1', '2026-09'));
+    await assertSucceeds(mark('admin1', '2026-10'));
+    await assertFails(mark('op1', '2026-11'));
+    await assertFails(setDoc(doc(as('sup1'), 'landownerPayments', '2026-11'), payment('admin1', '2026-11')));
+  });
+
+  it('needs a name, a signature in the pad’s shape, the month it is filed under, and the server’s time', async () => {
+    await assertFails(mark('sup1', '2026-09', { confirmedName: '' }));
+    await assertFails(mark('sup1', '2026-09', { confirmedName: 'x'.repeat(101) }));
+    await assertFails(mark('sup1', '2026-09', { signature: '' }));
+    await assertFails(mark('sup1', '2026-09', { signature: 'M20 100L28' }));
+    await assertFails(mark('sup1', '2026-09', { signature: 'M20 100<script>' }));
+    await assertFails(mark('sup1', '2026-09', { signature: `M1 1${'L22 22'.repeat(4000)}` }));
+    await assertFails(mark('sup1', '2026-09', { month: '2026-10' }));
+    await assertFails(mark('sup1', 'october'));
+    await assertFails(mark('sup1', '2026-09', { amount: -1 }));
+    await assertFails(mark('sup1', '2026-09', { paidAt: Timestamp.fromMillis(Date.now() - 86_400_000) }));
+    await assertFails(mark('sup1', '2026-09', { extra: true }));
+  });
+
+  it('is once a month and never changed; only the admin takes it back; the crew read none of it', async () => {
+    await assertSucceeds(mark('sup1', '2026-09'));
+    await assertFails(mark('admin1', '2026-09', { confirmedName: 'Other' }));
+    await assertFails(updateDoc(doc(as('admin1'), 'landownerPayments', '2026-09'), { amount: 1 }));
+    await assertFails(deleteDoc(doc(as('sup1'), 'landownerPayments', '2026-09')));
+    await assertSucceeds(getDoc(doc(as('sup1'), 'landownerPayments', '2026-09')));
+    await assertFails(getDoc(doc(as('op1'), 'landownerPayments', '2026-09')));
+    await assertSucceeds(deleteDoc(doc(as('admin1'), 'landownerPayments', '2026-09')));
   });
 });

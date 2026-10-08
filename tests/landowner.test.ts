@@ -2,32 +2,37 @@ import { describe, expect, it } from 'vitest';
 
 import { financeFor } from '../src/lib/finance';
 import {
-  currentRate,
+  currentRates,
   landownerChargeOf,
+  landownerPaymentFrom,
+  landownerRateFrom,
+  landownerShare,
   newestFirst,
   paysLandowner,
   rateAt,
   saleLoads,
   type LandownerRate,
+  type MaterialRates,
 } from '../src/lib/landowner';
 import type { Sale } from '../src/lib/model';
+import { isSignature, signaturePath } from '../src/lib/signature';
 
 const at = (iso: string) => new Date(iso);
 
-const setting = (id: string, rate: number, when: string | null, previousRate: number | null = null): LandownerRate => ({
-  id,
-  rate,
-  previousRate,
-  setBy: 'sup1',
-  setByName: 'Nimal',
-  at: when ? at(when) : null,
-});
+const figures = (six_nine: number, sakka: number, kory_dust: number): MaterialRates => ({ six_nine, sakka, kory_dust });
 
-/** 500 from 1 October, 800 from 15 October, 700 from 1 November. */
+const setting = (
+  id: string,
+  rates: MaterialRates,
+  when: string | null,
+  previousRates: MaterialRates | null = null,
+): LandownerRate => ({ id, rates, previousRates, setBy: 'sup1', setByName: 'Nimal', at: when ? at(when) : null });
+
+/** From 1 October 6/9 500, සක්කර 400, කෝරි ඩස්ට් 300; from 15 October 6/9 800, the others as they were; from 1 November all 700. */
 const history = [
-  setting('c', 700, '2026-11-01T08:00:00Z', 800),
-  setting('a', 500, '2026-10-01T08:00:00Z'),
-  setting('b', 800, '2026-10-15T08:00:00Z', 500),
+  setting('c', figures(700, 700, 700), '2026-11-01T08:00:00Z', figures(800, 400, 300)),
+  setting('a', figures(500, 400, 300), '2026-10-01T08:00:00Z'),
+  setting('b', figures(800, 400, 300), '2026-10-15T08:00:00Z', figures(500, 400, 300)),
 ];
 
 const sale = (code: string, overrides: Partial<Sale> = {}): Sale => ({
@@ -58,50 +63,59 @@ const sale = (code: string, overrides: Partial<Sale> = {}): Sale => ({
   ...overrides,
 });
 
-describe('the landowner figure over time', () => {
-  it('is the newest setting now, and nothing before one is ever set', () => {
-    expect(currentRate(history)).toBe(700);
-    expect(currentRate([])).toBe(0);
+describe('the landowner figures over time', () => {
+  it('are the newest setting now, and nothing before one is ever set', () => {
+    expect(currentRates(history)).toEqual(figures(700, 700, 700));
+    expect(currentRates([])).toEqual(figures(0, 0, 0));
     expect(newestFirst(history).map((entry) => entry.id)).toEqual(['c', 'b', 'a']);
   });
 
-  it('a moment takes the setting in force then, the first for any earlier moment', () => {
-    expect(rateAt(history, at('2026-10-10T00:00:00Z'))).toBe(500);
-    expect(rateAt(history, at('2026-10-15T08:00:00Z'))).toBe(800);
-    expect(rateAt(history, at('2026-10-31T23:00:00Z'))).toBe(800);
-    expect(rateAt(history, at('2026-12-01T00:00:00Z'))).toBe(700);
-    expect(rateAt(history, at('2026-01-01T00:00:00Z'))).toBe(500);
-    expect(rateAt([], at('2026-10-10T00:00:00Z'))).toBe(0);
+  it('a moment takes the figure for its material in force then, the first for any earlier moment', () => {
+    expect(rateAt(history, at('2026-10-10T00:00:00Z'), 'six_nine')).toBe(500);
+    expect(rateAt(history, at('2026-10-15T08:00:00Z'), 'six_nine')).toBe(800);
+    expect(rateAt(history, at('2026-10-31T23:00:00Z'), 'sakka')).toBe(400);
+    expect(rateAt(history, at('2026-12-01T00:00:00Z'), 'kory_dust')).toBe(700);
+    expect(rateAt(history, at('2026-01-01T00:00:00Z'), 'sakka')).toBe(400);
+    expect(rateAt([], at('2026-10-10T00:00:00Z'), 'sakka')).toBe(0);
   });
 
   it('an entry the server has not stamped yet counts as the newest, in force from now', () => {
-    const past = [setting('a', 500, '2020-01-01T00:00:00Z')];
-    const fresh = [...past, setting('d', 900, null, 500)];
-    expect(currentRate(fresh)).toBe(900);
-    expect(rateAt(fresh, at('2021-06-01T00:00:00Z'))).toBe(500);
-    expect(rateAt(fresh, new Date(Date.now() + 1000))).toBe(900);
+    const past = [setting('a', figures(500, 400, 300), '2020-01-01T00:00:00Z')];
+    const fresh = [...past, setting('d', figures(900, 900, 900), null, figures(500, 400, 300))];
+    expect(currentRates(fresh)).toEqual(figures(900, 900, 900));
+    expect(rateAt(fresh, at('2021-06-01T00:00:00Z'), 'sakka')).toBe(400);
+    expect(rateAt(fresh, new Date(Date.now() + 1000), 'sakka')).toBe(900);
+  });
+
+  it('reads an entry from when there was one figure for every material', () => {
+    const old = landownerRateFrom('x', { rate: 600, previousRate: 500, setBy: 'a', setByName: 'A' });
+    expect(old.rates).toEqual(figures(600, 600, 600));
+    expect(old.previousRates).toEqual(figures(500, 500, 500));
+    expect(landownerRateFrom('y', { rates: { six_nine: 1, sakka: 2, kory_dust: 3 } }).previousRates).toBeNull();
   });
 });
 
 describe('what a sale sends to the landowner', () => {
-  it('6/9, සක්කර and කෝරි දූවිලි only — not බෝල්දාස්', () => {
+  it('6/9, සක්කර and කෝරි ඩස්ට් only — not බෝල්දාස්, nor a bill with no material', () => {
     for (const material of ['six_nine', 'sakka', 'kory_dust'] as const) {
       expect(paysLandowner({ material })).toBe(true);
     }
     expect(paysLandowner({ material: 'boldas' })).toBe(false);
+    expect(paysLandowner({ material: null })).toBe(false);
     expect(landownerChargeOf(sale('BOLD2345', { material: 'boldas' }), history)).toBe(0);
   });
 
-  it('a tipper bill is one load, a tractor bill its load count', () => {
+  it('is its material’s own figure, a tipper bill as one load and a tractor bill as its load count', () => {
     expect(saleLoads({ type: 'tipper', quantity: 3 })).toBe(1);
     expect(saleLoads({ type: 'tractor', quantity: 2 })).toBe(2);
-    expect(landownerChargeOf(sale('TIPR2345'), history)).toBe(800);
-    expect(landownerChargeOf(sale('TRAC2345', { type: 'tractor', quantity: 2 }), history)).toBe(1600);
+    expect(landownerChargeOf(sale('SAKK2345'), history)).toBe(400);
+    expect(landownerChargeOf(sale('SIXN2345', { material: 'six_nine' }), history)).toBe(800);
+    expect(landownerChargeOf(sale('TRAC2345', { type: 'tractor', quantity: 2, material: 'kory_dust' }), history)).toBe(600);
   });
 
   it('is worked out at the figure in force when the bill was written, not today’s', () => {
-    expect(landownerChargeOf(sale('EARL2345', { createdAt: at('2026-10-05T06:00:00Z') }), history)).toBe(500);
-    expect(landownerChargeOf(sale('LATE2345', { createdAt: at('2026-10-20T06:00:00Z') }), history)).toBe(800);
+    expect(landownerChargeOf(sale('EARL2345', { material: 'six_nine', createdAt: at('2026-10-05T06:00:00Z') }), history)).toBe(500);
+    expect(landownerChargeOf(sale('LATE2345', { material: 'six_nine' }), history)).toBe(800);
   });
 
   it('with no figure ever set sends nothing', () => {
@@ -109,10 +123,34 @@ describe('what a sale sends to the landowner', () => {
   });
 });
 
-describe('the landowner in finance', () => {
+describe('the month’s share, worked out from the bills', () => {
   const now = at('2026-10-25T12:00:00Z').getTime();
-  const report = (sales: Sale[], landownerRates: LandownerRate[] = history) =>
-    financeFor({
+  const sales = [
+    sale('SIX12345', { material: 'six_nine' }),
+    sale('SIX22345', { material: 'six_nine', createdAt: at('2026-10-05T06:00:00Z') }),
+    sale('SAK12345', { type: 'tractor', quantity: 2 }),
+    sale('DUST2345', { material: 'kory_dust' }),
+    sale('BOLD2345', { material: 'boldas' }),
+    // Not verified yet: not income, so nothing is owed on it.
+    sale('PEND2345', { status: 'pending', verifiedAt: null, createdAt: new Date(now - 60 * 60 * 1000) }),
+  ];
+
+  it('adds up loads and money by material, each bill at its own figure', () => {
+    const share = landownerShare(sales, history, now);
+    expect(share.byMaterial.six_nine).toEqual({ loads: 2, amount: 800 + 500 });
+    expect(share.byMaterial.sakka).toEqual({ loads: 2, amount: 2 * 400 });
+    expect(share.byMaterial.kory_dust).toEqual({ loads: 1, amount: 300 });
+    expect(share.loads).toBe(5);
+    expect(share.amount).toBe(1300 + 800 + 300);
+  });
+
+  it('is nothing for a month with no such bills or no figures', () => {
+    expect(landownerShare([], history, now)).toMatchObject({ loads: 0, amount: 0 });
+    expect(landownerShare(sales, [], now).amount).toBe(0);
+  });
+
+  it('is what finance takes off as the landowner’s expense', () => {
+    const finance = financeFor({
       month: '2026-10',
       sales,
       bills: [],
@@ -120,43 +158,67 @@ describe('the landowner in finance', () => {
       crewMonths: [],
       store: [],
       machineHourly: 6000,
-      landownerRates,
+      landownerRates: history,
       now,
       today: '2026-10-25',
     });
-
-  it('is an expense for verified loads of the three materials, each at its own bill’s figure', () => {
-    const finance = report([
-      sale('EARL2345', { createdAt: at('2026-10-05T06:00:00Z'), date: '2026-10-05' }),
-      sale('LATE2345', { type: 'tractor', quantity: 2, material: 'six_nine' }),
-      sale('DUST2345', { material: 'kory_dust' }),
-      // No share on this material.
-      sale('BOLD2345', { material: 'boldas' }),
-      // Not verified yet: not income, so nothing goes to the landowner.
-      sale('PEND2345', { status: 'pending', verifiedAt: null, createdAt: new Date(now - 60 * 60 * 1000) }),
-    ]);
-
-    expect(finance.landownerLoads).toBe(1 + 2 + 1);
-    expect(finance.landownerTotal).toBe(500 + 2 * 800 + 800);
+    expect(finance.landownerLoads).toBe(5);
+    expect(finance.landownerTotal).toBe(landownerShare(sales, history, now).amount);
     expect(finance.expenses).toBe(finance.landownerTotal);
-    expect(finance.profit).toBe(finance.income - finance.landownerTotal);
-    expect(finance.ledger.filter((entry) => entry.kind === 'landowner')).toHaveLength(3);
+    expect(finance.ledger.filter((entry) => entry.kind === 'landowner')).toHaveLength(4);
   });
 
-  it('changing the figure later leaves a bill already written at its old one', () => {
-    const sales = [sale('EARL2345', { createdAt: at('2026-10-05T06:00:00Z'), date: '2026-10-05' })];
-    const before = report(sales, [setting('a', 500, '2026-10-01T08:00:00Z')]);
-    const after = report(sales, [
-      setting('a', 500, '2026-10-01T08:00:00Z'),
-      setting('b', 900, '2026-10-20T08:00:00Z', 500),
-    ]);
-    expect(before.landownerTotal).toBe(500);
-    expect(after.landownerTotal).toBe(500);
+  it('a figure changed later leaves a bill already written at its old one', () => {
+    const early = [sale('EARL2345', { material: 'six_nine', createdAt: at('2026-10-05T06:00:00Z') })];
+    const before = landownerShare(early, [setting('a', figures(500, 400, 300), '2026-10-01T08:00:00Z')], now);
+    const after = landownerShare(
+      early,
+      [setting('a', figures(500, 400, 300), '2026-10-01T08:00:00Z'), setting('b', figures(900, 400, 300), '2026-10-20T08:00:00Z')],
+      now,
+    );
+    expect(before.amount).toBe(500);
+    expect(after.amount).toBe(500);
+  });
+});
+
+describe('a payment as it is stored', () => {
+  it('reads back the amount, who confirmed it and the signature', () => {
+    const payment = landownerPaymentFrom('2026-10', {
+      amount: 2400,
+      loads: 5,
+      byMaterial: { six_nine: { loads: 2, amount: 1300 } },
+      confirmedName: 'Kasun',
+      signature: 'M1 2L3 4',
+      markedBy: 'sup1',
+      markedByName: 'Nimal',
+    });
+    expect(payment).toMatchObject({ month: '2026-10', amount: 2400, loads: 5, confirmedName: 'Kasun', markedByName: 'Nimal' });
+    expect(payment.byMaterial.six_nine).toEqual({ loads: 2, amount: 1300 });
+    expect(payment.byMaterial.sakka).toEqual({ loads: 0, amount: 0 });
+    expect(payment.paidAt).toBeNull();
+  });
+});
+
+describe('a signature', () => {
+  it('is drawn as a path, a tap leaves a dot, and anything off the page is held to it', () => {
+    expect(
+      signaturePath([
+        [
+          [10.4, 20.6],
+          [30, 40],
+        ],
+        [[100, 100]],
+      ]),
+    ).toBe('M10 21L30 40M100 100L100 100');
+    expect(signaturePath([[[-5, 999]]])).toBe('M0 200L0 200');
+    expect(signaturePath([])).toBe('');
   });
 
-  it('with no figure set adds no ledger line', () => {
-    const finance = report([sale('NONE2345')], []);
-    expect(finance.landownerTotal).toBe(0);
-    expect(finance.ledger.some((entry) => entry.kind === 'landowner')).toBe(false);
+  it('is accepted only in the shape the rules take, and only when something was drawn', () => {
+    expect(isSignature('M10 21L30 40M100 100L100 100')).toBe(true);
+    expect(isSignature('')).toBe(false);
+    expect(isSignature('M10 21L30')).toBe(false);
+    expect(isSignature('M10 21 <script>')).toBe(false);
+    expect(isSignature(`M1 1${'L2 2'.repeat(6000)}`)).toBe(false);
   });
 });

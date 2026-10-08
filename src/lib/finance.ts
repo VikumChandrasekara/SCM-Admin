@@ -33,7 +33,7 @@ import { payFor, type PayFigures } from './pay';
  *   - every other bill (water, other, food charged to nobody);
  *   - store purchases — new stock and restocks, at what it cost then;
  *   - what goes to the machine for each hour the excavator worked;
- *   - what goes to the landowner for each load of 6/9, සක්කර or කෝරි දූවිලි sold.
+ *   - what goes to the landowner for each load of 6/9, සක්කර or කෝරි ඩස්ට් sold.
  *
  * What the machines drew out of the store is reported too, but beside the
  * total rather than in it: that fuel and those parts were paid for when
@@ -100,7 +100,7 @@ export interface Finance {
   machineHours: number;
   /** What those hours sent to the machine. */
   machineTotal: number;
-  /** Loads of 6/9, සක්කර and කෝරි දූවිලි the verified sales count for the landowner. */
+  /** Loads of 6/9, සක්කර and කෝරි ඩස්ට් the verified sales count for the landowner. */
   landownerLoads: number;
   /** What those loads sent to the landowner. */
   landownerTotal: number;
