@@ -25,6 +25,8 @@ export interface Permissions {
   canEditSale: (sale: Sale) => boolean;
   /** Income, expenses and profit. */
   viewFinance: boolean;
+  /** Put a recorded day right on the history page — supervisors too. */
+  editHistory: boolean;
 }
 
 export function permissionsFor(profile: Person): Permissions {
@@ -41,5 +43,6 @@ export function permissionsFor(profile: Person): Permissions {
     setSalePrices: true,
     canEditSale: (sale) => isAdmin || (profile.role === 'supervisor' && sale.createdBy === profile.id),
     viewFinance: isAdmin,
+    editHistory: true,
   };
 }

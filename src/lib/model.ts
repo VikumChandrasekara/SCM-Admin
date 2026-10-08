@@ -771,6 +771,7 @@ export type AuditAction =
   | 'payment.add'
   | 'figures.set'
   | 'tally.set'
+  | 'day.edit'
   // Staff recording for a crew member, which the crew record for themselves.
   | 'crew.fill'
   | 'crew.blast'
@@ -805,6 +806,7 @@ export const AUDIT_LABEL: Record<AuditAction, string> = {
   'payment.add': 'ණය ගෙවීමක් එකතු කළා',
   'figures.set': 'වැටුප/ඇඩ්වාන්ස් වෙනස් කළා',
   'tally.set': 'ලෝඩ්/අඩි නිවැරදි කළා',
+  'day.edit': 'දවසක සටහන් සංස්කරණය කළා',
   'crew.fill': 'කණ්ඩායමක් වෙනුවෙන් පිරවීමක් සුරැකුවා',
   'crew.blast': 'කණ්ඩායමක් වෙනුවෙන් වෙඩි බඩු සුරැකුවා',
   'crew.inspect': 'කණ්ඩායමක් වෙනුවෙන් පරික්ෂාව සුරැකුවා',

@@ -217,17 +217,30 @@ describe('machines and days', () => {
     await assertSucceeds(setDoc(doc(as('admin1'), 'machines', 'ex1', 'days', '2026-09-12'), day));
   });
 
-  it('a locked slot holds even for the admin', async () => {
+  it('an OK’d slot holds for the crew; staff may correct what is in it but never lift the OK', async () => {
+    const day = (uid: string) => doc(as(uid), 'machines', 'ex1', 'days', '2026-09-10');
+
+    // The crew cannot change an OK'd slot at all.
+    await assertFails(setDoc(day('op1'), { fillings: { '1': { onHours: 101 } } }, { merge: true }));
+    await assertFails(setDoc(day('op1'), { fillings: { '1': { amounts: { diesel: 1 } } } }, { merge: true }));
+
+    // Staff correct a meter and an amount, and the OK stays as it was.
+    await assertSucceeds(setDoc(day('admin1'), { fillings: { '1': { onHours: 101 } } }, { merge: true }));
+    await assertSucceeds(setDoc(day('sup1'), { fillings: { '1': { amounts: { diesel: 55 } } } }, { merge: true }));
+
+    // …but never the lock itself, and what they write must be what a slot holds.
+    await assertFails(setDoc(day('admin1'), { fillings: { '1': { lockedAt: null } } }, { merge: true }));
     await assertFails(
-      setDoc(
-        doc(as('admin1'), 'machines', 'ex1', 'days', '2026-09-10'),
-        { fillings: { '1': { onHours: 101 } } },
-        { merge: true },
-      ),
+      setDoc(day('admin1'), { fillings: { '1': { lockedAt: '2030-01-01T00:00:00.000Z' } } }, { merge: true }),
     );
+    await assertFails(setDoc(day('sup1'), { fillings: { '1': { onHours: '101' } } }, { merge: true }));
+    await assertFails(setDoc(day('sup1'), { fillings: { '1': { onHours: -5 } } }, { merge: true }));
+    await assertFails(setDoc(day('sup1'), { fillings: { '1': { amounts: { diesel: -1 } } } }, { merge: true }));
+    await assertFails(setDoc(day('sup1'), { fillings: { '1': { amounts: { diesel: '5' } } } }, { merge: true }));
+    await assertFails(setDoc(day('sup1'), { fillings: { '1': { amounts: { water: 5 } } } }, { merge: true }));
   });
 
-  it('staff add the ON a locked slot was OK’d without — and only that', async () => {
+  it('staff add the ON a locked slot was OK’d without, and may correct it after; the crew cannot', async () => {
     await env.withSecurityRulesDisabled(async (context) => {
       const db = context.firestore() as unknown as Firestore;
       const slot = { offHours: null, amounts: { diesel: 30 }, lockedAt: '2026-09-14T07:00:00.000Z' };
@@ -244,18 +257,18 @@ describe('machines and days', () => {
     const withOn = (on: unknown, more: object = {}) => ({ fillings: { '1': { onHours: on, ...more } } });
     const day = (uid: string, date: string) => doc(as(uid), 'machines', 'ex1', 'days', date);
 
-    // Not the crew, and not with anything else in the slot moving alongside.
+    // Not the crew.
     await assertFails(setDoc(day('op1', '2026-09-14'), withOn(102), { merge: true }));
-    await assertFails(setDoc(day('admin1', '2026-09-14'), withOn(102, { amounts: { diesel: 99 } }), { merge: true }));
     await assertFails(setDoc(day('admin1', '2026-09-14'), withOn(102, { lockedAt: null }), { merge: true }));
     await assertFails(setDoc(day('admin1', '2026-09-14'), withOn('102'), { merge: true }));
 
     await assertSucceeds(setDoc(day('sup1', '2026-09-14'), withOn(102), { merge: true }));
     await assertSucceeds(setDoc(day('admin1', '2026-09-15'), withOn(102), { merge: true }));
 
-    // Once it is there the slot is a record again, for everyone.
-    await assertFails(setDoc(day('admin1', '2026-09-14'), withOn(103), { merge: true }));
-    await assertFails(setDoc(day('sup1', '2026-09-15'), withOn(103), { merge: true }));
+    // Once it is there a mistake in it can still be put right — by staff.
+    await assertSucceeds(setDoc(day('admin1', '2026-09-14'), withOn(103), { merge: true }));
+    await assertSucceeds(setDoc(day('sup1', '2026-09-15'), withOn(103), { merge: true }));
+    await assertFails(setDoc(day('op1', '2026-09-14'), withOn(104), { merge: true }));
   });
 
   it('staff reset a service counter; crews cannot', async () => {

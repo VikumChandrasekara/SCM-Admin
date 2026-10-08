@@ -32,6 +32,7 @@ type Group =
   | 'leave'
   | 'figures'
   | 'tally'
+  | 'day'
   | 'crew';
 
 const GROUP_LABEL: Record<Exclude<Group, 'all'>, string> = {
@@ -45,6 +46,7 @@ const GROUP_LABEL: Record<Exclude<Group, 'all'>, string> = {
   leave: 'නිවාඩු',
   figures: 'වැටුප/ඇඩ්වාන්ස්',
   tally: 'ලෝඩ්/අඩි',
+  day: 'දවස් සංස්කරණය',
   crew: 'කණ්ඩායම් වෙනුවෙන්',
 };
 
@@ -59,6 +61,7 @@ const actionTone: Record<string, 'grape' | 'info' | 'amber' | 'ok' | 'muted'> = 
   leave: 'muted',
   figures: 'muted',
   tally: 'muted',
+  day: 'info',
   crew: 'muted',
 };
 

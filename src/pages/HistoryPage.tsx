@@ -1,11 +1,15 @@
-import { CalendarDays, Check, X } from 'lucide-react';
+import { CalendarDays, Check, Pencil, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router';
 
+import { useSession } from '../auth/AuthContext';
+import { permissionsFor } from '../auth/permissions';
+import { DayEditModal } from '../components/DayEditModal';
 import {
   EmptyState,
   ErrorNote,
   Field,
+  IconButton,
   Input,
   Loading,
   PageHeader,
@@ -39,8 +43,14 @@ type Range = '7' | '30' | '90' | 'custom';
 /** ඉතිහාසය — one crew member's recorded days, newest first. */
 export function HistoryPage() {
   const { crew, ready } = useLiveData();
+  const { profile } = useSession();
+  const permissions = permissionsFor(profile);
   const [params, setParams] = useSearchParams();
   const today = useToday();
+
+  // Bumped after a day is edited, so the list is read again.
+  const [version, setVersion] = useState(0);
+  const [editing, setEditing] = useState<Day | null>(null);
 
   const [range, setRange] = useState<Range>('30');
   const [customFrom, setCustomFrom] = useState(() => addDays(today, -29));
@@ -52,7 +62,7 @@ export function HistoryPage() {
   const to = range === 'custom' ? customTo : today;
 
   const machineId = person?.machineId ?? '';
-  const key = `${machineId}|${from}|${to}`;
+  const key = `${machineId}|${from}|${to}|${version}`;
   const [loaded, setLoaded] = useState<{ key: string; days: Day[]; error: string | null } | null>(null);
 
   useEffect(() => {
@@ -156,6 +166,7 @@ export function HistoryPage() {
                       ))}
                       <th className={th}>පරික්ෂාව</th>
                       {role.tracksBlasting && <th className={th}>වෙඩි බඩු</th>}
+                      {permissions.editHistory && <th className={cx(th, 'text-right')}>ක්‍රියා</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -196,6 +207,13 @@ export function HistoryPage() {
                               {day.blasting.lockedAt ? `OK · අයිතම ${Object.keys(day.blasting.amounts).length}` : '—'}
                             </td>
                           )}
+                          {permissions.editHistory && (
+                            <td className={cx(td, 'text-right')}>
+                              <IconButton label={`${day.date} සංස්කරණය`} onClick={() => setEditing(day)}>
+                                <Pencil className="size-4" />
+                              </IconButton>
+                            </td>
+                          )}
                         </tr>
                       );
                     })}
@@ -205,6 +223,18 @@ export function HistoryPage() {
             )}
           </Panel>
         </>
+      )}
+
+      {editing && person && (
+        <DayEditModal
+          person={person}
+          day={editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null);
+            setVersion((value) => value + 1);
+          }}
+        />
       )}
     </>
   );
