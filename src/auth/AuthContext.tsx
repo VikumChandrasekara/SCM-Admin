@@ -71,7 +71,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             if (!person) {
               refuse('මෙම ගිණුම සොයාගත නොහැක. පරිපාලක අමතන්න.');
             } else if (!isStaffRole(person.role)) {
-              refuse('මෙම පුවරුව පරිපාලක සහ සුපවයිසර් සඳහා පමණි. කණ්ඩායම් සාමාජිකයින් SCM යෙදුම භාවිත කරන්න.');
+              refuse('මෙම පුවරුව පරිපාලක සහ සුපවයිසර් සඳහා පමණි. කණ්ඩායම් සාමාජිකයින් සහ ඉඩම් හිමියා SCM යෙදුම භාවිත කරන්න.');
             } else {
               setProfile(person);
               setStatus('signedIn');

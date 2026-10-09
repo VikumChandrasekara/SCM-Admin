@@ -56,6 +56,7 @@ beforeEach(async () => {
       sup1: { name: 'Nimal', role: 'supervisor', machineId: '' },
       op1: { name: 'Kamal', role: 'operator', machineId: 'ex1', advanceAmount: 0 },
       comp1: { name: 'Ruwan', role: 'compressor', machineId: 'cp1' },
+      land1: { name: 'Kasun', role: 'landowner', machineId: '' },
       // Written before roles existed.
       legacy: { name: 'Old', machineId: 'ex2' },
     };
@@ -1479,5 +1480,197 @@ describe('the landowner’s monthly payment', () => {
     await assertSucceeds(getDoc(doc(as('sup1'), 'landownerPayments', '2026-09')));
     await assertFails(getDoc(doc(as('op1'), 'landownerPayments', '2026-09')));
     await assertSucceeds(deleteDoc(doc(as('admin1'), 'landownerPayments', '2026-09')));
+  });
+});
+
+describe('the landowner’s own login', () => {
+  const landownerMaterials = ['six_nine', 'sakka', 'kory_dust'];
+  const sale = (code: string, material: string, date: string, overrides: object = {}) => ({
+    code,
+    type: 'tipper',
+    quantity: 3,
+    unitPrice: 6500,
+    amount: 19500,
+    customerName: 'Silva',
+    customerKey: 'silva',
+    material,
+    paymentType: 'cash',
+    machineCharge: 4000,
+    customerPhone: '',
+    vehicleNo: '',
+    note: '',
+    date,
+    number: 1,
+    status: 'verified',
+    createdBy: 'sup1',
+    createdByName: '',
+    createdAt: Timestamp.fromMillis(Date.now() - 3_600_000),
+    ...overrides,
+  });
+
+  beforeEach(async () => {
+    await env.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore() as unknown as Firestore;
+      await setDoc(doc(db, 'sales', 'SAKK2345'), sale('SAKK2345', 'sakka', '2026-09-12'));
+      await setDoc(doc(db, 'sales', 'SIXN2345'), sale('SIXN2345', 'six_nine', '2026-09-13'));
+      await setDoc(doc(db, 'sales', 'KORY2345'), sale('KORY2345', 'kory_dust', '2026-10-02'));
+      await setDoc(doc(db, 'sales', 'BOLD2345'), sale('BOLD2345', 'boldas', '2026-09-14'));
+      await setDoc(doc(db, 'saleIndex', '2026-09-1'), { code: 'SAKK2345' });
+      await setDoc(doc(db, 'settings', 'sales'), { tipperPrice: 19500, cubePrice: 6500, tractorPrice: 6500 });
+      await setDoc(doc(db, 'landownerRates', 'r1'), {
+        rates: { six_nine: 500, sakka: 400, kory_dust: 300 },
+        previousRates: null,
+        setBy: 'sup1',
+        setByName: 'Nimal',
+        at: Timestamp.fromMillis(Date.now() - 86_400_000),
+      });
+      await setDoc(doc(db, 'landownerPayments', '2026-08'), {
+        month: '2026-08',
+        amount: 2400,
+        loads: 5,
+        byMaterial: {},
+        confirmedName: 'Kasun',
+        signature: 'M20 100L28 104L36 108M60 90L61 91',
+        markedBy: 'sup1',
+        markedByName: 'Nimal',
+        paidAt: Timestamp.fromMillis(Date.now() - 86_400_000),
+      });
+    });
+  });
+
+  it('is created, and kept, by the admin alone', async () => {
+    const record = { name: 'New landowner', role: 'landowner', machineId: '' };
+    await assertSucceeds(setDoc(doc(as('admin1'), 'operators', 'land2'), record));
+    await assertFails(setDoc(doc(as('sup1'), 'operators', 'land3'), record));
+    await assertFails(setDoc(doc(as('land1'), 'operators', 'land4'), record));
+    // A supervisor keeps the crews' figures, not his; nor can he be made one's own.
+    await assertFails(updateDoc(doc(as('sup1'), 'operators', 'land1'), { advanceAmount: 500 }));
+    await assertFails(updateDoc(doc(as('sup1'), 'operators', 'land1'), { dailyWage: 500 }));
+    await assertFails(updateDoc(doc(as('land1'), 'operators', 'land1'), { name: 'Someone else' }));
+    await assertFails(updateDoc(doc(as('land1'), 'operators', 'land1'), { role: 'admin' }));
+    await assertSucceeds(updateDoc(doc(as('admin1'), 'operators', 'land1'), { name: 'Kasun Perera' }));
+    await assertSucceeds(deleteDoc(doc(as('admin1'), 'operators', 'land1')));
+  });
+
+  it('reads his own record and nobody else’s', async () => {
+    await assertSucceeds(getDoc(doc(as('land1'), 'operators', 'land1')));
+    await assertFails(getDoc(doc(as('land1'), 'operators', 'op1')));
+    await assertFails(getDoc(doc(as('land1'), 'operators', 'admin1')));
+    await assertFails(getDocs(collection(as('land1'), 'operators')));
+  });
+
+  it('reads what he is paid by and the months he has been paid — and writes neither', async () => {
+    await assertSucceeds(getDocs(collection(as('land1'), 'landownerRates')));
+    await assertSucceeds(getDoc(doc(as('land1'), 'landownerRates', 'r1')));
+    await assertSucceeds(getDocs(collection(as('land1'), 'landownerPayments')));
+    await assertSucceeds(getDoc(doc(as('land1'), 'landownerPayments', '2026-08')));
+
+    await assertFails(
+      addDoc(collection(as('land1'), 'landownerRates'), {
+        rates: { six_nine: 9999, sakka: 9999, kory_dust: 9999 },
+        previousRates: null,
+        setBy: 'land1',
+        setByName: 'Kasun',
+        at: serverTimestamp(),
+      }),
+    );
+    await assertFails(
+      setDoc(doc(as('land1'), 'landownerPayments', '2026-09'), {
+        month: '2026-09',
+        amount: 1,
+        loads: 1,
+        byMaterial: {},
+        confirmedName: 'Kasun',
+        signature: 'M20 100L28 104L36 108M60 90L61 91',
+        markedBy: 'land1',
+        markedByName: 'Kasun',
+        paidAt: serverTimestamp(),
+      }),
+    );
+    await assertFails(deleteDoc(doc(as('land1'), 'landownerPayments', '2026-08')));
+  });
+
+  it('lists the bills of 6/9, sakka and kory dust a month at a time, and no other', async () => {
+    const month = (from: string, to: string, materials: string[] = landownerMaterials) =>
+      getDocs(
+        query(
+          collection(as('land1'), 'sales'),
+          where('material', 'in', materials),
+          where('date', '>=', from),
+          where('date', '<=', to),
+        ),
+      );
+
+    const september = await assertSucceeds(month('2026-09-01', '2026-09-30'));
+    expect(september.docs.map((entry) => entry.id).sort()).toEqual(['SAKK2345', 'SIXN2345']);
+    const october = await assertSucceeds(month('2026-10-01', '2026-10-31'));
+    expect(october.docs.map((entry) => entry.id)).toEqual(['KORY2345']);
+    await assertSucceeds(
+      getDocs(query(collection(as('land1'), 'sales'), where('material', '==', 'sakka'))),
+    );
+
+    // Not every bill, not boldas, and not a query that could reach boldas.
+    await assertFails(getDocs(collection(as('land1'), 'sales')));
+    await assertFails(getDocs(query(collection(as('land1'), 'sales'), where('date', '>=', '2026-09-01'))));
+    await assertFails(month('2026-09-01', '2026-09-30', ['boldas']));
+    await assertFails(month('2026-09-01', '2026-09-30', [...landownerMaterials, 'boldas']));
+    await assertFails(getDocs(query(collection(as('land1'), 'sales'), where('createdBy', '==', 'sup1'))));
+  });
+
+  it('cannot open a bill by its code, nor find one by its number', async () => {
+    await assertFails(getDoc(doc(as('land1'), 'sales', 'SAKK2345')));
+    await assertFails(getDoc(doc(as('land1'), 'saleIndex', '2026-09-1')));
+    // What a crew member can do, he cannot: they verify by scanning the bill.
+    await assertSucceeds(getDoc(doc(as('op1'), 'sales', 'SAKK2345')));
+  });
+
+  it('is not a member of the yard: nothing the crews and staff share is open to him', async () => {
+    await assertFails(getDoc(doc(as('land1'), 'machines', 'ex1')));
+    await assertFails(getDocs(collection(as('land1'), 'machines')));
+    await assertFails(getDoc(doc(as('land1'), 'machines', 'ex1', 'days', '2026-09-10')));
+    await assertFails(getDoc(doc(as('land1'), 'store', 'fill-diesel')));
+    await assertFails(getDocs(collection(as('land1'), 'store')));
+    await assertFails(getDocs(collection(as('land1'), 'storeMovements')));
+    await assertFails(getDocs(collection(as('land1'), 'bills')));
+    await assertFails(getDocs(collection(as('land1'), 'auditLog')));
+    await assertFails(getDocs(collection(as('land1'), 'recycleBin')));
+    await assertFails(getDoc(doc(as('land1'), 'settings', 'sales')));
+    await assertFails(getDocs(collection(as('land1'), 'payments')));
+  });
+
+  it('writes nothing of the yard’s either: no bill, no verifying one, no drawing stock down', async () => {
+    await env.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore() as unknown as Firestore;
+      await setDoc(doc(db, 'sales', 'PEND2345'), sale('PEND2345', 'sakka', '2026-09-15', { status: 'pending', number: 2 }));
+    });
+
+    await assertFails(
+      updateDoc(doc(as('land1'), 'sales', 'PEND2345'), {
+        status: 'verified',
+        verifiedBy: 'land1',
+        verifiedByName: 'Kasun',
+        verifiedAt: serverTimestamp(),
+      }),
+    );
+    await assertFails(updateDoc(doc(as('land1'), 'sales', 'SAKK2345'), { quantity: 1, amount: 6500 }));
+    await assertFails(deleteDoc(doc(as('land1'), 'sales', 'SAKK2345')));
+    await assertFails(updateDoc(doc(as('land1'), 'store', 'fill-diesel'), { quantity: 100 }));
+    await assertFails(updateDoc(doc(as('land1'), 'machines', 'ex1'), { totalHours: 999 }));
+    await assertFails(addDoc(collection(as('land1'), 'bills'), bill('land1')));
+    await assertFails(addDoc(collection(as('land1'), 'storeMovements'), usage('land1')));
+  });
+
+  it('leaves the crews and staff exactly as they were', async () => {
+    // He is no member, but the rules that name a role still see everyone else.
+    await assertSucceeds(getDoc(doc(as('op1'), 'machines', 'ex1')));
+    await assertSucceeds(getDoc(doc(as('sup1'), 'machines', 'ex1')));
+    await assertSucceeds(getDoc(doc(as('legacy'), 'machines', 'ex1')));
+    await assertSucceeds(getDocs(collection(as('sup1'), 'sales')));
+    // And the crews still read none of his figures.
+    await assertFails(getDocs(collection(as('op1'), 'landownerRates')));
+    await assertFails(getDocs(collection(as('op1'), 'landownerPayments')));
+    await assertFails(
+      getDocs(query(collection(as('op1'), 'sales'), where('material', 'in', landownerMaterials))),
+    );
   });
 });

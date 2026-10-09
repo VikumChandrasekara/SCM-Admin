@@ -209,7 +209,7 @@ export function usageInStoreUnit(link: string, storeUnit: string, amount: number
 
 // ---- roles ------------------------------------------------------------------
 
-export type RoleId = 'operator' | 'compressor' | 'supervisor' | 'admin';
+export type RoleId = 'operator' | 'compressor' | 'supervisor' | 'admin' | 'landowner';
 
 export interface RoleSpec {
   id: RoleId;
@@ -225,7 +225,7 @@ export interface RoleSpec {
   isCrew: boolean;
 }
 
-export const ROLE_IDS: readonly RoleId[] = ['operator', 'compressor', 'supervisor', 'admin'];
+export const ROLE_IDS: readonly RoleId[] = ['operator', 'compressor', 'supervisor', 'admin', 'landowner'];
 
 /** Mirrors lib/models/user_role.dart. */
 export const ROLES: Record<RoleId, RoleSpec> = {
@@ -277,11 +277,25 @@ export const ROLES: Record<RoleId, RoleSpec> = {
     tracksBonus: false,
     isCrew: false,
   },
+  // The owner of the land. Signs in to the phone app to see the loads he is
+  // paid on and what they come to — no machine, no wage, nothing to record.
+  landowner: {
+    id: 'landowner',
+    label: 'ඉඩම් හිමියා',
+    english: 'Landowner',
+    fillingSlots: 0,
+    fillItems: [],
+    inspectionItems: [],
+    serviceTasks: [],
+    tracksBlasting: false,
+    tracksBonus: false,
+    isCrew: false,
+  },
 };
 
 /** Falls back to the excavator crew, exactly as UserRole.byId does. */
 export function roleById(value: unknown): RoleId {
-  return value === 'compressor' || value === 'supervisor' || value === 'admin'
+  return value === 'compressor' || value === 'supervisor' || value === 'admin' || value === 'landowner'
     ? value
     : 'operator';
 }

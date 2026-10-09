@@ -50,11 +50,12 @@ import {
   type WageBasis,
 } from '../lib/model';
 
-const roleTone: Record<RoleId, 'grape' | 'info' | 'amber' | 'ok'> = {
+const roleTone: Record<RoleId, 'grape' | 'info' | 'amber' | 'ok' | 'muted'> = {
   admin: 'grape',
   supervisor: 'info',
   operator: 'amber',
   compressor: 'ok',
+  landowner: 'muted',
 };
 
 /** The picker's value for "set up a new machine with this account". */
@@ -313,7 +314,14 @@ function UserModal({ person, onClose }: { person: Person | null; onClose: () => 
           <Field label="නම">
             <Input autoFocus required value={name} onChange={(event) => setName(event.target.value)} />
           </Field>
-          <Field label="භූමිකාව">
+          <Field
+            label="භූමිකාව"
+            hint={
+              role === 'landowner'
+                ? 'SCM යෙදුමේ පිවිසෙන ඉඩම් හිමියාට පෙනෙන්නේ 6/9, සක්කර සහ කෝරි ඩස්ට් ලෝඩ් සහ ඔහුට ලැබෙන මුදල පමණි.'
+                : undefined
+            }
+          >
             <Select value={role} onChange={(event) => changeRole(event.target.value as RoleId)} disabled={self}>
               {ROLE_IDS.map((id) => (
                 <option key={id} value={id}>
