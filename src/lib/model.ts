@@ -348,12 +348,59 @@ export function byCrewThenName(a: Person, b: Person): number {
 
 // ---- machines ---------------------------------------------------------------
 
+/**
+ * What a machine is. A crew works one kind or the other — the excavator crew
+ * an excavator, the compressor crew a compressor — so this is what decides who
+ * may be put on it. Mirrors MachineType in the operator app.
+ */
+export type MachineType = 'excavator' | 'compressor';
+
+export const MACHINE_TYPES: readonly MachineType[] = ['excavator', 'compressor'];
+
+export const MACHINE_TYPE: Record<MachineType, { label: string; english: string; role: RoleId }> = {
+  excavator: { label: 'එක්ස්කවේටර්', english: 'Excavator', role: 'operator' },
+  compressor: { label: 'කම්පසර්', english: 'Compressor', role: 'compressor' },
+};
+
+export function machineTypeById(value: unknown): MachineType | null {
+  return value === 'excavator' || value === 'compressor' ? value : null;
+}
+
+/** The kind of machine [role] works — null for staff, who work none. */
+export function machineTypeForRole(role: RoleId): MachineType | null {
+  return MACHINE_TYPES.find((type) => MACHINE_TYPE[type].role === role) ?? null;
+}
+
 export interface Machine {
   id: string;
   /** වැඩ කර ඇති මුළු පැය ගණන — the running hour meter. */
   totalHours: number;
   /** Meter reading each part is next due at. */
   serviceDueAt: Partial<Record<ServiceTask, number>>;
+  /** Null on a machine set up before its details were kept — see machineTypeOf. */
+  type: MachineType | null;
+  /** What the yard calls it, if it has a name beyond its number. */
+  name: string;
+  /** Make and model. */
+  model: string;
+  /** The plate, or the serial number for a machine that is not registered. */
+  registrationNo: string;
+  notes: string;
+  /**
+   * False once a machine is retired: it stays, with all its history, but no
+   * one new is put on it.
+   */
+  active: boolean;
+}
+
+/** What is kept about a machine besides its meter and its service. */
+export interface MachineDetails {
+  type: MachineType;
+  name: string;
+  model: string;
+  registrationNo: string;
+  notes: string;
+  active: boolean;
 }
 
 export function machineFrom(id: string, data: DocumentData): Machine {
@@ -361,7 +408,19 @@ export function machineFrom(id: string, data: DocumentData): Machine {
     id,
     totalHours: num(data.totalHours),
     serviceDueAt: amountsFrom(data.serviceDueAt, SERVICE_TASKS),
+    type: machineTypeById(data.type),
+    name: str(data.name),
+    model: str(data.model),
+    registrationNo: str(data.registrationNo),
+    notes: str(data.notes),
+    // A machine from before this was kept is in use.
+    active: data.active !== false,
   };
+}
+
+/** `CAT 320D · excavator-01`, or just the number for a machine with no name. */
+export function machineTitle(machine: Pick<Machine, 'id' | 'name'>): string {
+  return machine.name ? `${machine.name} · ${machine.id}` : machine.id;
 }
 
 export interface ServiceStatus {
@@ -767,6 +826,9 @@ export type AuditAction =
   | 'landowner.paid'
   | 'landowner.unpaid'
   | 'service.reset'
+  | 'machine.create'
+  | 'machine.update'
+  | 'machine.assign'
   | 'leave.workday'
   | 'payment.add'
   | 'figures.set'
@@ -802,6 +864,9 @@ export const AUDIT_LABEL: Record<AuditAction, string> = {
   'landowner.paid': 'ඉඩම් හිමියාට ගෙවූ බව සලකුණු කළා',
   'landowner.unpaid': 'ඉඩම් හිමියාට ගෙවූ බව ඉවත් කළා',
   'service.reset': 'සේවා කාලය යළි පිහිටෙව්වා',
+  'machine.create': 'යන්ත්‍රයක් එකතු කළා',
+  'machine.update': 'යන්ත්‍රයේ විස්තර වෙනස් කළා',
+  'machine.assign': 'කණ්ඩායම් සාමාජිකයෙක් යන්ත්‍රයකට යෙදුවා',
   'leave.workday': 'නිවාඩු දිනයක් වැඩ කළ දිනයක් ලෙස සුරැකුණා',
   'payment.add': 'ණය ගෙවීමක් එකතු කළා',
   'figures.set': 'වැටුප/ඇඩ්වාන්ස් වෙනස් කළා',

@@ -181,6 +181,71 @@ describe('accounts', () => {
     await assertFails(updateDoc(record, { receivableAmount: 100000 }));
   });
 
+  describe('which machine a crew member is on', () => {
+    beforeEach(async () => {
+      await env.withSecurityRulesDisabled(async (context) => {
+        const db = context.firestore() as unknown as Firestore;
+        await setDoc(doc(db, 'machines', 'ex2'), { totalHours: 10, serviceDueAt: {}, type: 'excavator' });
+        await setDoc(doc(db, 'machines', 'cp2'), { totalHours: 10, serviceDueAt: {}, type: 'compressor' });
+        await setDoc(doc(db, 'machines', 'ex3'), { totalHours: 10, serviceDueAt: {}, type: 'excavator', active: false });
+      });
+    });
+
+    it('is the supervisor’s to change — to a machine that exists, is in use and is the crew’s kind', async () => {
+      const operator = doc(as('sup1'), 'operators', 'op1');
+      await assertSucceeds(updateDoc(operator, { machineId: 'ex2' }));
+      // Not one that is not there, one of the other kind, or one retired.
+      await assertFails(updateDoc(operator, { machineId: 'ghost' }));
+      await assertFails(updateDoc(operator, { machineId: 'cp2' }));
+      await assertFails(updateDoc(operator, { machineId: 'ex3' }));
+      // Nor no machine at all, nor something that is not an id.
+      await assertFails(updateDoc(operator, { machineId: '' }));
+      await assertFails(updateDoc(operator, { machineId: 'ex 2/..' }));
+      await assertFails(updateDoc(operator, { machineId: 7 }));
+
+      // The compressor crew go on compressors.
+      const driller = doc(as('sup1'), 'operators', 'comp1');
+      await assertSucceeds(updateDoc(driller, { machineId: 'cp2' }));
+      await assertFails(updateDoc(driller, { machineId: 'ex2' }));
+    });
+
+    it('can go together with the figures a supervisor already sets, and with nothing else', async () => {
+      const operator = doc(as('sup1'), 'operators', 'op1');
+      await assertSucceeds(updateDoc(operator, { machineId: 'ex2', advanceAmount: 500, dailyWage: 4000 }));
+      await assertFails(updateDoc(operator, { machineId: 'ex2', name: 'Someone else' }));
+      await assertFails(updateDoc(operator, { machineId: 'ex2', role: 'compressor' }));
+    });
+
+    it('is not a supervisor’s to change for staff, and never the crew’s own', async () => {
+      await assertFails(updateDoc(doc(as('sup1'), 'operators', 'sup1'), { machineId: 'ex2' }));
+      await assertFails(updateDoc(doc(as('sup1'), 'operators', 'admin1'), { machineId: 'ex2' }));
+      await assertFails(updateDoc(doc(as('op1'), 'operators', 'op1'), { machineId: 'ex2' }));
+      await assertFails(updateDoc(doc(as('comp1'), 'operators', 'comp1'), { machineId: 'cp2' }));
+    });
+
+    it('is the admin’s to change as well', async () => {
+      await assertSucceeds(updateDoc(doc(as('admin1'), 'operators', 'op1'), { machineId: 'ex2' }));
+    });
+
+    it('may be a machine with no kind yet — the rules cannot tell, so the apps read it from the crew on it', async () => {
+      // ex1 was set up before machines had a kind.
+      await assertSucceeds(updateDoc(doc(as('sup1'), 'operators', 'comp1'), { machineId: 'ex1' }));
+    });
+
+    it('follows a machine set up in the same batch, and still has to suit the crew', async () => {
+      const db = as('sup1');
+      const fits = writeBatch(db);
+      fits.set(doc(db, 'machines', 'ex5'), { totalHours: 0, serviceDueAt: {}, type: 'excavator' });
+      fits.update(doc(db, 'operators', 'op1'), { machineId: 'ex5' });
+      await assertSucceeds(fits.commit());
+
+      const wrong = writeBatch(db);
+      wrong.set(doc(db, 'machines', 'cp5'), { totalHours: 0, serviceDueAt: {}, type: 'compressor' });
+      wrong.update(doc(db, 'operators', 'op1'), { machineId: 'cp5' });
+      await assertFails(wrong.commit());
+    });
+  });
+
   it('a supervisor cannot set the wage of a staff record, their own included', async () => {
     await assertFails(updateDoc(doc(as('sup1'), 'operators', 'sup1'), { dailyWage: 90000, wageBasis: 'month' }));
     await assertFails(updateDoc(doc(as('sup1'), 'operators', 'admin1'), { dailyWage: 1 }));
@@ -281,10 +346,71 @@ describe('machines and days', () => {
     await assertFails(updateDoc(doc(as('op1'), 'machines', 'cp1'), { totalHours: 60 }));
   });
 
-  it('only the admin sets up a machine', async () => {
+  it('staff set up a machine, with what it is — and never a crew member', async () => {
     const machine = { totalHours: 0, serviceDueAt: {} };
     await assertSucceeds(setDoc(doc(as('admin1'), 'machines', 'ex9'), machine));
-    await assertFails(setDoc(doc(as('sup1'), 'machines', 'ex8'), machine));
+    await assertSucceeds(
+      setDoc(doc(as('sup1'), 'machines', 'ex8'), {
+        ...machine,
+        type: 'excavator',
+        name: 'CAT 320D',
+        model: '320D',
+        registrationNo: 'LB-1234',
+        notes: '',
+        active: true,
+      }),
+    );
+    await assertFails(setDoc(doc(as('op1'), 'machines', 'ex7'), machine));
+  });
+
+  it('a machine is set up with only the fields a machine has, and what they say is checked', async () => {
+    const machine = { totalHours: 0, serviceDueAt: {} };
+    const create = (id: string, data: object) => setDoc(doc(as('sup1'), 'machines', id), data);
+
+    await assertFails(create('ex6', { ...machine, colour: 'yellow' }));
+    await assertFails(create('ex6', { ...machine, type: 'dozer' }));
+    await assertFails(create('ex6', { ...machine, name: 7 }));
+    await assertFails(create('ex6', { ...machine, name: 'x'.repeat(101) }));
+    await assertFails(create('ex6', { ...machine, registrationNo: 'x'.repeat(41) }));
+    await assertFails(create('ex6', { ...machine, notes: 'x'.repeat(1001) }));
+    await assertFails(create('ex6', { ...machine, active: 'yes' }));
+    // A meter that starts below nothing, or no meter at all.
+    await assertFails(create('ex6', { ...machine, totalHours: -1 }));
+    await assertFails(create('ex6', { serviceDueAt: {} }));
+    // An id that is not one.
+    await assertFails(create('bad id', machine));
+    await assertFails(create('x'.repeat(41), machine));
+    await assertSucceeds(create('ex6', { ...machine, notes: 'x'.repeat(1000) }));
+  });
+
+  it('staff keep a machine’s details; a crew member cannot, and a kind once chosen stays', async () => {
+    const machine = (uid: string) => doc(as(uid), 'machines', 'ex1');
+
+    // ex1 was set up before machines had details.
+    await assertSucceeds(
+      updateDoc(machine('sup1'), { name: 'CAT 320D', model: '320D', registrationNo: 'LB-1234', notes: 'north pit' }),
+    );
+    await assertSucceeds(updateDoc(machine('admin1'), { active: false }));
+    await assertFails(updateDoc(machine('op1'), { name: 'mine' }));
+
+    // A machine with no kind yet is given one…
+    await assertSucceeds(updateDoc(machine('sup1'), { type: 'excavator' }));
+    // …and keeps it.
+    await assertFails(updateDoc(machine('sup1'), { type: 'compressor' }));
+    await assertSucceeds(updateDoc(machine('sup1'), { type: 'excavator', name: 'again' }));
+
+    // What is written has to be what a detail is, and only details.
+    await assertFails(updateDoc(machine('sup1'), { name: 7 }));
+    await assertFails(updateDoc(machine('admin1'), { model: 'x'.repeat(101) }));
+    await assertFails(updateDoc(machine('sup1'), { owner: 'me' }));
+
+    // The meter still moves in the same write as the details.
+    await assertSucceeds(updateDoc(machine('sup1'), { totalHours: 120, name: 'CAT' }));
+  });
+
+  it('a machine’s history stays: it is never deleted', async () => {
+    await assertFails(deleteDoc(doc(as('admin1'), 'machines', 'ex1')));
+    await assertFails(deleteDoc(doc(as('sup1'), 'machines', 'ex1')));
   });
 });
 

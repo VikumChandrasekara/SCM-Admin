@@ -9,19 +9,23 @@ import { collection, doc, runTransaction, serverTimestamp, writeBatch, type Writ
 
 import { db } from '../db';
 import { emailFor, provisioningAuth } from '../firebase';
+import { newMachineSummary } from '../lib/machines';
 import {
+  MACHINE_TYPE,
   ROLES,
-  SERVICE,
   WAGE_BASIS_LABEL,
   hasWageRate,
+  machineTypeForRole,
   nameOf,
   type Machine,
+  type MachineDetails,
   type Person,
   type RoleId,
   type WageBasis,
 } from '../lib/model';
 import { auditEntry } from './audit';
 import { commit } from './commit';
+import { newMachineRecord } from './machines';
 import { binEntryData, binRef } from './recycle';
 
 /**
@@ -45,23 +49,52 @@ export interface UserFields {
   dailyWage: number;
   /** What the daily wage is paid for: a day, an hour, a foot or a load. */
   wageBasis: WageBasis;
+  /**
+   * What the machine is, for a machine that does not exist yet and is set up
+   * with this account. Its kind is always the one the role works, whatever
+   * this says.
+   */
+  newMachine?: Omit<MachineDetails, 'type'>;
 }
 
-/** A crew member's machine, set up the first time someone is put on it. */
+/**
+ * A crew member's machine, set up the first time someone is put on it — with
+ * what it is, and a line of its own in the audit log. A machine that exists
+ * already is left as it is, but must be of the kind the role works.
+ */
 function addMachineIfNew(
   batch: WriteBatch,
   fields: UserFields,
   machines: Map<string, Machine>,
   meterHours: number,
+  by: Person,
 ) {
-  if (!ROLES[fields.role].isCrew || !fields.machineId || machines.has(fields.machineId)) return;
-  batch.set(doc(db, 'machines', fields.machineId), {
-    totalHours: meterHours,
-    // Every part counts from the meter as it stands today.
-    serviceDueAt: Object.fromEntries(
-      ROLES[fields.role].serviceTasks.map((task) => [task, meterHours + SERVICE[task].interval]),
-    ),
-  });
+  if (!ROLES[fields.role].isCrew || !fields.machineId) return;
+
+  const type = machineTypeForRole(fields.role);
+  if (!type) return;
+  const existing = machines.get(fields.machineId);
+  if (existing) {
+    if (existing.type && existing.type !== type) {
+      throw new Error(`${fields.machineId} ${MACHINE_TYPE[existing.type].label} යන්ත්‍රයකි — ${ROLES[fields.role].label} කෙනෙකුට නොගැළපේ.`);
+    }
+    return;
+  }
+
+  const details: MachineDetails = {
+    name: '',
+    model: '',
+    registrationNo: '',
+    notes: '',
+    active: true,
+    ...fields.newMachine,
+    type,
+  };
+  batch.set(doc(db, 'machines', fields.machineId), newMachineRecord(details, meterHours));
+  batch.set(
+    doc(collection(db, 'auditLog')),
+    auditEntry('machine.create', 'machine', fields.machineId, fields.machineId, newMachineSummary(details, meterHours), by),
+  );
 }
 
 function recordFields(fields: UserFields) {
@@ -115,7 +148,7 @@ export async function createAccount(
       advanceAmount: 0,
       createdAt: serverTimestamp(),
     });
-    addMachineIfNew(batch, fields, machines, fields.meterHours);
+    addMachineIfNew(batch, fields, machines, fields.meterHours, by);
     batch.set(
       doc(collection(db, 'auditLog')),
       auditEntry(
@@ -153,7 +186,7 @@ export async function updateAccount(
     ...recordFields(fields),
     advanceAmount: fields.advanceAmount,
   });
-  addMachineIfNew(batch, fields, machines, fields.meterHours);
+  addMachineIfNew(batch, fields, machines, fields.meterHours, by);
   batch.set(
     doc(collection(db, 'auditLog')),
     auditEntry('account.update', 'operator', person.id, nameOf(person), accountDiff(person, fields), by),

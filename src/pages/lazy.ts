@@ -13,6 +13,7 @@ const load = {
   getApp: () => import('./GetAppPage'),
   history: () => import('./HistoryPage'),
   users: () => import('./UsersPage'),
+  machines: () => import('./MachinesPage'),
   sales: () => import('./SalesPage'),
   verify: () => import('./VerifyPage'),
   finance: () => import('./FinancePage'),
@@ -30,6 +31,7 @@ export const ExplosivesPage = lazy(() => load.explosives().then((module) => ({ d
 export const GetAppPage = lazy(() => load.getApp().then((module) => ({ default: module.GetAppPage })));
 export const HistoryPage = lazy(() => load.history().then((module) => ({ default: module.HistoryPage })));
 export const UsersPage = lazy(() => load.users().then((module) => ({ default: module.UsersPage })));
+export const MachinesPage = lazy(() => load.machines().then((module) => ({ default: module.MachinesPage })));
 export const SalesPage = lazy(() => load.sales().then((module) => ({ default: module.SalesPage })));
 export const VerifyPage = lazy(() => load.verify().then((module) => ({ default: module.VerifyPage })));
 export const FinancePage = lazy(() => load.finance().then((module) => ({ default: module.FinancePage })));
@@ -48,6 +50,7 @@ const byPath: Record<string, () => Promise<unknown>> = {
   '/get-app': load.getApp,
   '/history': load.history,
   '/users': load.users,
+  '/machines': load.machines,
   '/sales': load.sales,
   '/verify': load.verify,
   '/finance': load.finance,

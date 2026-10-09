@@ -13,16 +13,30 @@ import {
 } from 'firebase/firestore';
 
 import { db } from '../db';
-import { addDays, hours } from '../lib/format';
+import { addDays, hours, monthBounds } from '../lib/format';
 import { leaveWorkPlan, readingBounds, readingError } from '../lib/leaveWork';
 import {
+  MACHINE_ID_PATTERN,
+  assignSummary,
+  cleanDetails,
+  detailsError,
+  machineDiff,
+  machineFitsRole,
+  newMachineSummary,
+} from '../lib/machines';
+import {
+  MACHINE_TYPE,
+  ROLES,
   SERVICE,
   WAGE_BASIS_LABEL,
   dayFrom,
   dayWorked,
+  machineTypeForRole,
+  monthFrom,
   nameOf,
   type Day,
   type Machine,
+  type MachineDetails,
   type Person,
   type ServiceTask,
   type StoreItem,
@@ -30,6 +44,7 @@ import {
 } from '../lib/model';
 import { auditEntry } from './audit';
 import { commit } from './commit';
+import { useLiveQuery } from './live';
 
 export function dayRef(machineId: string, date: string) {
   return doc(db, 'machines', machineId, 'days', date);
@@ -268,6 +283,137 @@ export async function resetService(
   );
 
   await commit(batch);
+}
+
+// ---- the machine registry ------------------------------------------------------
+
+/**
+ * A machine's first record: its details, the meter it counts from, and — for
+ * the parts its crew service — each one due an interval on from that meter.
+ * Shared with the account form, which sets a machine up when its first
+ * crew member is put on it.
+ */
+export function newMachineRecord(details: MachineDetails, meterHours: number) {
+  const crewRole = ROLES[MACHINE_TYPE[details.type].role];
+  return {
+    ...cleanDetails(details),
+    totalHours: meterHours,
+    serviceDueAt: Object.fromEntries(crewRole.serviceTasks.map((task) => [task, meterHours + SERVICE[task].interval])),
+  };
+}
+
+/**
+ * Sets up a machine. In a transaction that looks first: a number already
+ * taken is refused, because writing over it would reset that machine's hour
+ * meter (the rules cannot tell the two apart — to them it is a staff update).
+ */
+export async function createMachine(
+  id: string,
+  details: MachineDetails,
+  meterHours: number,
+  by: Person,
+): Promise<void> {
+  const number = id.trim();
+  if (!MACHINE_ID_PATTERN.test(number)) {
+    throw new Error('යන්ත්‍ර අංකය අකුරු, ඉලක්කම්, - සහ _ පමණක් විය යුතුය (උදා: excavator-01).');
+  }
+  if (!Number.isFinite(meterHours) || meterHours < 0) throw new Error('මීටර් පැය ඍණ නොවන සංඛ්‍යාවක් විය යුතුය.');
+  const problem = detailsError(details);
+  if (problem) throw new Error(problem);
+
+  const ref = doc(db, 'machines', number);
+  await runTransaction(db, async (tx) => {
+    if ((await tx.get(ref)).exists()) throw new Error(`${number} යන්ත්‍ර අංකය දැනටමත් භාවිතා වේ.`);
+    tx.set(ref, newMachineRecord(details, meterHours));
+    tx.set(
+      doc(collection(db, 'auditLog')),
+      auditEntry('machine.create', 'machine', number, number, newMachineSummary(details, meterHours), by),
+    );
+  });
+}
+
+/**
+ * Puts a machine's details right. Its kind is fixed once it has one — the
+ * rules insist, as its crew, its service parts and its history were all set
+ * up for that kind — and a machine whose kind is still open takes the kind of
+ * the [crew] already on it.
+ */
+export async function updateMachine(
+  machine: Machine,
+  details: MachineDetails,
+  crew: readonly Person[],
+  by: Person,
+): Promise<void> {
+  const problem = detailsError(details);
+  if (problem) throw new Error(problem);
+  if (machine.type && details.type !== machine.type) {
+    throw new Error('යන්ත්‍රයක වර්ගය එක් වරක් තෝරා පසු වෙනස් කළ නොහැක.');
+  }
+  if (crew.some((person) => machineTypeForRole(person.role) !== details.type)) {
+    throw new Error(`මෙම යන්ත්‍රයේ ඇත්තේ ${MACHINE_TYPE[details.type].label} නොවන කණ්ඩායමකි.`);
+  }
+
+  const summary = machineDiff(machine, details);
+  if (summary === 'වෙනසක් නැත') return;
+
+  const batch = writeBatch(db);
+  batch.update(doc(db, 'machines', machine.id), { ...cleanDetails(details) });
+  batch.set(
+    doc(collection(db, 'auditLog')),
+    auditEntry('machine.update', 'machine', machine.id, machine.id, summary, by),
+  );
+  await commit(batch);
+}
+
+/**
+ * Puts a crew member on [machine]. Only a machine in use, and of their kind;
+ * the hours they work from here on go to it, while the ones already worked
+ * stay with the machine they were worked on.
+ */
+export async function assignMachine(
+  person: Person,
+  machine: Machine,
+  people: readonly Person[],
+  by: Person,
+): Promise<void> {
+  if (!ROLES[person.role].isCrew) throw new Error('යන්ත්‍රයකට යෙදිය හැක්කේ කණ්ඩායම් සාමාජිකයෙකු පමණි.');
+  if (person.machineId === machine.id) return;
+  if (!machine.active) throw new Error(`${machine.id} දැනට ක්‍රියාත්මක නොවේ.`);
+  if (!machineFitsRole(machine, person.role, people)) {
+    throw new Error(`${ROLES[person.role].label} කෙනෙකුට මෙම යන්ත්‍රයට යෙදිය නොහැක.`);
+  }
+
+  const batch = writeBatch(db);
+  batch.update(doc(db, 'operators', person.id), { machineId: machine.id });
+  batch.set(
+    doc(collection(db, 'auditLog')),
+    auditEntry('machine.assign', 'operator', person.id, nameOf(person), assignSummary(person.machineId, machine.id), by),
+  );
+  await commit(batch);
+}
+
+/** Every month a machine has a record for — the hours it worked in each, as they were closed. */
+export function useMachineMonths(machineId: string | null) {
+  return useLiveQuery(
+    machineId ? `machine-months:${machineId}` : null,
+    () => collection(db, 'machines', machineId ?? '-', 'months'),
+    (snapshot) => monthFrom(snapshot.id, snapshot.data()),
+  );
+}
+
+/** A machine's days in [month] (`yyyy-MM`), for the hours each worked. */
+export function useMachineDays(machineId: string | null, month: string) {
+  const { from, to } = monthBounds(month);
+  return useLiveQuery(
+    machineId ? `machine-days:${machineId}:${month}` : null,
+    () =>
+      query(
+        collection(db, 'machines', machineId ?? '-', 'days'),
+        where('date', '>=', from),
+        where('date', '<=', to),
+      ),
+    (snapshot) => dayFrom(snapshot.id, snapshot.data()),
+  );
 }
 
 /**

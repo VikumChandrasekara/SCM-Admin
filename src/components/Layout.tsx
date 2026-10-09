@@ -12,6 +12,7 @@ import {
   ReceiptText,
   ScanLine,
   ShoppingCart,
+  Tractor,
   Trash2,
   Users,
   WifiOff,
@@ -53,6 +54,7 @@ const NAV: NavEntry[] = [
   // so a second entry in the header would only repeat it.
   { to: '/store', label: 'ගබඩාව', icon: Package },
   { to: '/bills', label: 'බිල්පත්', icon: ReceiptText },
+  { to: '/machines', label: 'යන්ත්‍ර', icon: Tractor },
   { to: '/landowner', label: 'ඉඩම් හිමියා', icon: Mountain },
   { to: '/explosives', label: 'වෙඩි බඩු', icon: Bomb },
   { to: '/history', label: 'ඉතිහාසය', icon: History },

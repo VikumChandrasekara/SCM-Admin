@@ -29,6 +29,7 @@ type Group =
   | 'landowner'
   | 'payment'
   | 'service'
+  | 'machine'
   | 'leave'
   | 'figures'
   | 'tally'
@@ -43,6 +44,7 @@ const GROUP_LABEL: Record<Exclude<Group, 'all'>, string> = {
   landowner: 'ඉඩම් හිමියා',
   payment: 'ණය ගෙවීම්',
   service: 'සේවා',
+  machine: 'යන්ත්‍ර',
   leave: 'නිවාඩු',
   figures: 'වැටුප/ඇඩ්වාන්ස්',
   tally: 'ලෝඩ්/අඩි',
@@ -58,6 +60,7 @@ const actionTone: Record<string, 'grape' | 'info' | 'amber' | 'ok' | 'muted'> = 
   landowner: 'amber',
   payment: 'ok',
   service: 'muted',
+  machine: 'info',
   leave: 'muted',
   figures: 'muted',
   tally: 'muted',

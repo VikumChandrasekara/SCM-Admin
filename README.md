@@ -19,12 +19,37 @@ React 19 · TypeScript · Vite · Tailwind CSS 4 · Firebase JS SDK 12
 | මූල්‍ය | A month's income, expenses and profit, with every entry behind them | Not shown |
 | වෙඩි බඩු | Each compressor crew's sheet for a day, the month's totals, and the explosives left in the store | Same |
 | ඉතිහාසය | One crew member's days over a range | Same |
-| පරිශීලකයින් | Create, edit and delete accounts, and change passwords | Not shown |
+| යන්ත්‍ර | Every machine with what it is (kind, name, make and model, plate), who is on it, its hour meter, the hours it has worked this month and its service state. Set a machine up, put its details right, retire it, move a crew member onto it, and see its hours by month and by day | Same — and the same list is in the app's supervisor console |
+| පරිශීලකයින් | Create, edit and delete accounts, and change passwords. A new crew account picks its machine from the list, or sets up a new one — with its details — in the same form | Not shown |
 
 Operator and compressor crews cannot sign in here. They use the app.
 
 Supervisors also get the store and bills in the app's supervisor console.
 An admin who signs in to the app gets the supervisor console.
+
+### Machines
+
+A machine is `machines/{id}`: its meter and service (as before) plus, optionally,
+`type` (`excavator` or `compressor`), `name`, `model`, `registrationNo`, `notes`
+and `active`. A machine set up before these existed has none and is read as the
+kind of the crew on it.
+
+- A crew member can only be put on a machine of their kind: an operator on an
+  excavator, a compressor driller on a compressor. A retired machine takes no
+  one new. Both the panel and the app check this, and `firestore.rules` holds
+  the line for the app (a machine with no kind yet suits either, as far as the
+  rules can tell).
+- A machine's kind is fixed once it has one; its number never changes; it is
+  never deleted — retire it instead, and its history stays.
+- Hours belong to the machine. They are the month's `hours` (a day counts once
+  the next morning's ON has closed it) and the running meter. Moving a crew
+  member to another machine leaves the hours they worked with the machine they
+  worked them on.
+- The supervisor can do all of this from the app (යන්ත්‍ර in the console, and
+  the යන්ත්‍රය row on a crew member's screen). Creating the login itself is
+  still the admin's, here.
+- Setting a machine up, changing its details and moving a crew member are each
+  a line in the විගණන සටහන, from whichever app made the change.
 
 ### The money figures
 

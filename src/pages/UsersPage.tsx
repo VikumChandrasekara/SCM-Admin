@@ -25,14 +25,26 @@ import { useLiveData } from '../data/LiveData';
 import { USERNAME_PATTERN, changePassword, createAccount, removeAccount, updateAccount } from '../data/users';
 import { USERNAME_DOMAIN } from '../firebase';
 import { errorMessage } from '../lib/errors';
-import { money } from '../lib/format';
+import { hours, money } from '../lib/format';
 import {
+  MACHINE_ID_PATTERN,
+  assignableMachines,
+  crewOn,
+  detailsError,
+  machineFitsRole,
+  machineTypeOf,
+} from '../lib/machines';
+import {
+  MACHINE_TYPE,
   ROLES,
   ROLE_IDS,
   WAGE_BASES,
   WAGE_BASIS_LABEL,
   hasWageRate,
+  machineTitle,
+  machineTypeForRole,
   nameOf,
+  type Machine,
   type Person,
   type RoleId,
   type WageBasis,
@@ -45,11 +57,12 @@ const roleTone: Record<RoleId, 'grape' | 'info' | 'amber' | 'ok'> = {
   compressor: 'ok',
 };
 
-const MACHINE_PATTERN = /^[A-Za-z0-9_-]{1,40}$/;
+/** The picker's value for "set up a new machine with this account". */
+const NEW_MACHINE = '__new__';
 
 export function UsersPage() {
   const { profile } = useSession();
-  const { people, ready } = useLiveData();
+  const { people, machines, ready } = useLiveData();
   const [editing, setEditing] = useState<Person | 'new' | null>(null);
   const [password, setPassword] = useState<Person | null>(null);
   const [removing, setRemoving] = useState<Person | null>(null);
@@ -101,7 +114,12 @@ export function UsersPage() {
                       <td className={td}>
                         <Badge tone={roleTone[person.role]}>{ROLES[person.role].label}</Badge>
                       </td>
-                      <td className={cx(td, 'text-white/80')}>{person.machineId || '—'}</td>
+                      <td className={cx(td, 'text-white/80')}>
+                        {person.machineId || '—'}
+                        {machines.get(person.machineId)?.name && (
+                          <span className="block text-xs text-white/55">{machines.get(person.machineId)?.name}</span>
+                        )}
+                      </td>
                       <td className={cx(td, 'text-right tabular-nums')}>
                         {person.dailyWage > 0 ? (
                           <>
@@ -162,14 +180,19 @@ function number(value: string): number {
 
 function UserModal({ person, onClose }: { person: Person | null; onClose: () => void }) {
   const { profile } = useSession();
-  const { machines } = useLiveData();
+  const { machines, people } = useLiveData();
   const toast = useToast();
 
   const [name, setName] = useState(person?.name ?? '');
   const [username, setUsername] = useState(person?.username ?? '');
   const [secret, setSecret] = useState('');
   const [role, setRole] = useState<RoleId>(person?.role ?? 'operator');
-  const [machineId, setMachineId] = useState(person?.machineId ?? '');
+  /** The machine picked from the list, or NEW_MACHINE to set one up with this account. */
+  const [machineChoice, setMachineChoice] = useState(person?.machineId ?? '');
+  const [newMachineId, setNewMachineId] = useState('');
+  const [newMachineName, setNewMachineName] = useState('');
+  const [newMachineModel, setNewMachineModel] = useState('');
+  const [newMachineReg, setNewMachineReg] = useState('');
   const [meter, setMeter] = useState('');
   const [wage, setWage] = useState(person?.dailyWage ? String(person.dailyWage) : '');
   const [wageBasis, setWageBasis] = useState<WageBasis>(person?.wageBasis ?? 'day');
@@ -180,15 +203,34 @@ function UserModal({ person, onClose }: { person: Person | null; onClose: () => 
   const crew = ROLES[role].isCrew;
   const supervisor = role === 'supervisor';
   const paysWage = hasWageRate(role);
-  const machine = machineId.trim();
-  const newMachine = crew && machine !== '' && !machines.has(machine);
+  const settingUp = crew && machineChoice === NEW_MACHINE;
+  const machine = (settingUp ? newMachineId : machineChoice).trim();
+  const chosen = settingUp ? undefined : machines.get(machineChoice);
+  // A machine the person is on that has no record of its own — set up before
+  // machines were kept. Saving the form gives it one.
+  const unregistered = crew && machineChoice !== '' && !settingUp && !machines.has(machineChoice);
+  const needsMeter = settingUp || unregistered;
   const self = person?.id === profile.id;
+
+  // Only machines of the kind this role works, and in use — plus the one the
+  // person is on now, so editing them still shows where they are.
+  const current = person ? machines.get(person.machineId) : undefined;
+  const options = assignableMachines(
+    role,
+    machines.values(),
+    people,
+    current && machineFitsRole(current, role, people) ? current.id : '',
+  );
+  const newKind = machineTypeForRole(role);
 
   // A supervisor's salary is always monthly, so the basis is fixed rather than picked.
   function changeRole(next: RoleId) {
     setRole(next);
     if (next === 'supervisor') setWageBasis('month');
     else if (wageBasis === 'month') setWageBasis('day');
+    // A machine of the other kind no longer suits.
+    const picked = machines.get(machineChoice);
+    if (picked && !machineFitsRole(picked, next, people)) setMachineChoice('');
   }
 
   async function submit(event: FormEvent) {
@@ -199,7 +241,14 @@ function UserModal({ person, onClose }: { person: Person | null; onClose: () => 
       return setError('පරිශීලක නාමය අකුරු 3–32ක් විය යුතුය: a–z, 0–9, . _ - පමණි.');
     }
     if (!person && secret.length < 6) return setError('මුරපදය අවම වශයෙන් අක්ෂර 6ක් විය යුතුය.');
-    if (crew && !MACHINE_PATTERN.test(machine)) return setError('යන්ත්‍ර අංකය ඇතුළත් කරන්න (උදා: excavator-01).');
+    if (crew && machineChoice === '') return setError('යන්ත්‍රයක් තෝරන්න, නැතහොත් නව යන්ත්‍රයක් සාදන්න.');
+    if (crew && !MACHINE_ID_PATTERN.test(machine)) {
+      return setError('යන්ත්‍ර අංකය ඇතුළත් කරන්න — අකුරු, ඉලක්කම්, - සහ _ පමණි (උදා: excavator-01).');
+    }
+    if (settingUp && machines.has(machine)) return setError(`${machine} දැනටමත් ඇත — ලැයිස්තුවෙන් තෝරන්න.`);
+    const newDetails = { name: newMachineName, model: newMachineModel, registrationNo: newMachineReg, notes: '', active: true };
+    const detailsProblem = settingUp ? detailsError(newDetails) : null;
+    if (detailsProblem) return setError(detailsProblem);
     if (figures.some((value) => !Number.isFinite(value) || value < 0)) return setError('සංඛ්‍යා ඍණ නොවිය යුතුය.');
     if (self && role !== 'admin') return setError('ඔබගේම පරිපාලක අවසරය ඉවත් කළ නොහැක.');
 
@@ -210,7 +259,8 @@ function UserModal({ person, onClose }: { person: Person | null; onClose: () => 
       role,
       machineId: machine,
       dailyWage: number(wage),
-      wageBasis: supervisor ? 'month' : wageBasis,
+      wageBasis: supervisor ? ('month' as const) : wageBasis,
+      newMachine: settingUp ? newDetails : undefined,
     };
     try {
       if (person) {
@@ -293,28 +343,72 @@ function UserModal({ person, onClose }: { person: Person | null; onClose: () => 
         )}
 
         {crew && (
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field
-              label="යන්ත්‍රය"
-              hint={newMachine ? 'නව යන්ත්‍රයකි — පළමු වරට සැකසේ.' : 'පවතින යන්ත්‍රයක් හෝ නව අංකයක්.'}
-            >
-              <Input
-                required
-                list="machine-list"
-                placeholder={role === 'compressor' ? 'compressor-01' : 'excavator-01'}
-                value={machineId}
-                onChange={(event) => setMachineId(event.target.value)}
-              />
-              <datalist id="machine-list">
-                {[...machines.keys()].map((id) => (
-                  <option key={id} value={id} />
-                ))}
-              </datalist>
-            </Field>
-            {newMachine && (
-              <Field label="දැනට ඇති මීටර් පැය" hint="සේවා කාල ගණනය කරන්නේ මෙතැන් සිටයි.">
-                <Input type="number" min="0" step="any" value={meter} onChange={(event) => setMeter(event.target.value)} />
+          <div className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field
+                label="යන්ත්‍රය"
+                hint={
+                  settingUp
+                    ? 'නව යන්ත්‍රයක් — පහත විස්තර සමඟ සැකසේ.'
+                    : 'ලැයිස්තුවෙන් තෝරන්න, නැතහොත් නව යන්ත්‍රයක් සාදන්න.'
+                }
+              >
+                <Select required value={machineChoice} onChange={(event) => setMachineChoice(event.target.value)}>
+                  <option value="" disabled>
+                    — යන්ත්‍රයක් තෝරන්න —
+                  </option>
+                  {person?.machineId && !machines.has(person.machineId) && (
+                    <option value={person.machineId}>{person.machineId} (යන්ත්‍ර සටහනක් නැත)</option>
+                  )}
+                  {options.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {machineTitle(option)}
+                    </option>
+                  ))}
+                  <option value={NEW_MACHINE}>＋ නව යන්ත්‍රයක් සාදන්න…</option>
+                </Select>
               </Field>
+              {chosen && <ChosenMachine machine={chosen} />}
+            </div>
+
+            {needsMeter && (
+              <div className="space-y-4 rounded-card bg-well p-4">
+                {settingUp && newKind && (
+                  <p className="text-xs font-semibold text-white/70">
+                    නව {MACHINE_TYPE[newKind].label} යන්ත්‍රය — {ROLES[role].label} කණ්ඩායමකට ගැළපේ.
+                  </p>
+                )}
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {settingUp && (
+                    <Field label="යන්ත්‍ර අංකය" hint="උදා: excavator-01 · එක් වරක් දුන් පසු වෙනස් නොවේ.">
+                      <Input
+                        required
+                        autoCapitalize="none"
+                        spellCheck={false}
+                        placeholder={role === 'compressor' ? 'compressor-01' : 'excavator-01'}
+                        value={newMachineId}
+                        onChange={(event) => setNewMachineId(event.target.value)}
+                      />
+                    </Field>
+                  )}
+                  <Field label="දැනට ඇති මීටර් පැය" hint="සේවා කාල ගණනය කරන්නේ මෙතැන් සිටයි.">
+                    <Input type="number" min="0" step="any" value={meter} onChange={(event) => setMeter(event.target.value)} />
+                  </Field>
+                  {settingUp && (
+                    <>
+                      <Field label="නම" hint="විකල්ප.">
+                        <Input value={newMachineName} maxLength={100} onChange={(event) => setNewMachineName(event.target.value)} />
+                      </Field>
+                      <Field label="මාදිලිය" hint="උදා: CAT 320D.">
+                        <Input value={newMachineModel} maxLength={100} onChange={(event) => setNewMachineModel(event.target.value)} />
+                      </Field>
+                      <Field label="ලියාපදිංචි / සීරීස් අංකය">
+                        <Input value={newMachineReg} maxLength={40} onChange={(event) => setNewMachineReg(event.target.value)} />
+                      </Field>
+                    </>
+                  )}
+                </div>
+              </div>
             )}
           </div>
         )}
@@ -355,6 +449,24 @@ function UserModal({ person, onClose }: { person: Person | null; onClose: () => 
         {error && <ErrorNote>{error}</ErrorNote>}
       </form>
     </Modal>
+  );
+}
+
+/** A line about the machine picked: what it is, its meter, and who is on it already. */
+function ChosenMachine({ machine }: { machine: Machine }) {
+  const { people } = useLiveData();
+  const type = machineTypeOf(machine, people);
+  const onIt = crewOn(machine.id, people);
+  return (
+    <div className="space-y-1 self-end rounded-control bg-well px-3 py-2.5 text-xs text-white/75 ring-1 ring-hairline">
+      <p>
+        {type ? MACHINE_TYPE[type].label : '—'}
+        {machine.model && ` · ${machine.model}`} · මීටරය පැය {hours(machine.totalHours)}
+      </p>
+      <p className="text-white/60">
+        {onIt.length === 0 ? 'දැනට කිසිවෙකු නැත' : `දැන් සිටින්නේ: ${onIt.map(nameOf).join(', ')}`}
+      </p>
+    </div>
   );
 }
 
