@@ -34,6 +34,7 @@ import {
   machineTypeForRole,
   monthFrom,
   nameOf,
+  serviceNextLabel,
   type Day,
   type Machine,
   type MachineDetails,
@@ -282,6 +283,33 @@ export async function resetService(
     ),
   );
 
+  await commit(batch);
+}
+
+/**
+ * Puts the meter reading a service next falls due at where staff say. A
+ * machine whose 10,000 hour service was never set up has nothing to count down
+ * to until this is done; and a machine whose last service was at some other
+ * reading than the cycle assumes is put right the same way.
+ */
+export async function setServiceDue(machine: Machine, task: ServiceTask, dueAt: number, by: Person): Promise<void> {
+  if (!Number.isFinite(dueAt) || dueAt < 0) throw new Error('මීටර් පැය ඍණ නොවන සංඛ්‍යාවක් විය යුතුය.');
+  const before = machine.serviceDueAt[task];
+  if (before === dueAt) return;
+
+  const batch = writeBatch(db);
+  batch.update(doc(db, 'machines', machine.id), { [`serviceDueAt.${task}`]: dueAt });
+  batch.set(
+    doc(collection(db, 'auditLog')),
+    auditEntry(
+      'service.set',
+      'machine',
+      machine.id,
+      machine.id,
+      `${SERVICE[task].short}: ${serviceNextLabel(task)} ${before == null ? '—' : hours(before)} → ${hours(dueAt)}`,
+      by,
+    ),
+  );
   await commit(batch);
 }
 

@@ -3,7 +3,6 @@ import { dateKey, monthBounds, quantity } from './format';
 import { landownerChargeOf, paysLandowner, saleLoads, type LandownerRate } from './landowner';
 import {
   BILL,
-  MOVEMENT_LABEL,
   SALE_MATERIAL,
   SALE_TYPE,
   saleNumber,
@@ -11,13 +10,18 @@ import {
   awaitsPrepaidLoad,
   isSaleIncome,
   saleStatus,
+  sourceLabel,
   type Bill,
   type BillCategory,
+  type MachineType,
   type Movement,
   type Payment,
   type Person,
+  type RoleId,
   type Sale,
+  type SaleMaterial,
   type SaleType,
+  type StockLink,
   type StoreItem,
 } from './model';
 import { payFor, type PayFigures } from './pay';
@@ -25,19 +29,26 @@ import { payFor, type PayFigures } from './pay';
 /**
  * A month's money, as the admin's finance page lays it out.
  *
- * Income is verified sales only. Expenses are what actually left the
- * business, each counted once:
+ * Income is verified sales only, and is shown by material. Expenses are what
+ * the work cost, each counted once and grouped by the work it was for:
  *
- *   - crew pay, in full — advances and food charged to a crew member are
- *     part of it, paid early, so they are not counted again as bills;
- *   - every other bill (water, other, food charged to nobody);
- *   - store purchases — new stock and restocks, at what it cost then;
- *   - what goes to the machine for each hour the excavator worked;
- *   - what goes to the landowner for each load of 6/9, සක්කර or කෝරි ඩස්ට් sold.
+ *   - loading (the excavator): its crew's pay, what the machine is charged for
+ *     each hour it worked, and the fuel, oil and parts it used;
+ *   - drilling and blasting (the compressor): its crew's pay, the explosives,
+ *     and the fuel, oil and parts it used;
+ *   - the site in general: bills that are nobody's pay (water, other, food
+ *     charged to nobody) and anything drawn from the store with no machine;
+ *   - the landowner, for each load of 6/9, සක්කර or කෝරි ඩස්ට් sold — taken
+ *     off each material before its profit is shown.
  *
- * What the machines drew out of the store is reported too, but beside the
- * total rather than in it: that fuel and those parts were paid for when
- * they were bought.
+ * Crew pay counts in full — advances and food charged to a crew member are
+ * part of it, paid early, so they are not counted again as bills.
+ *
+ * Fuel, oil, explosives and parts count in the month they were *used*, at what
+ * they cost when they were drawn from the store. The store cannot say which
+ * work a purchase was for, but a use always names its machine — so this is the
+ * only way to give each kind of work its own cost. What was bought is reported
+ * beside the total, not in it.
  */
 
 export interface SalesTotal {
@@ -66,7 +77,81 @@ export interface StockRow {
   estimated: boolean;
 }
 
-export type LedgerKind = 'sale' | 'payment' | 'machine' | 'landowner' | 'bill' | 'purchase' | 'salary';
+/** The work an expense was for. */
+export type WorkArea = 'loading' | 'drilling' | 'site';
+
+export const WORK_AREAS: readonly WorkArea[] = ['loading', 'drilling', 'site'];
+
+export const WORK_AREA_LABEL: Record<WorkArea, { label: string; detail: string }> = {
+  loading: { label: 'ලෝඩ් කිරීම', detail: 'එක්ස්කවේටර්' },
+  drilling: { label: 'විදීම සහ පුපුරවීම', detail: 'කම්පසර්' },
+  site: { label: 'අඩවි පොදු', detail: 'බිල්පත් සහ යන්ත්‍රයක් නැති භාවිතය' },
+};
+
+/** What a store item was used for, as the page groups it. */
+export type StockGroup = 'fuel' | 'explosives' | 'parts' | 'other';
+
+export const STOCK_GROUPS: readonly StockGroup[] = ['fuel', 'explosives', 'parts', 'other'];
+
+export const STOCK_GROUP_LABEL: Record<StockGroup, string> = {
+  fuel: 'ඩීසල් සහ ඔයිල්',
+  explosives: 'වෙඩි බඩු',
+  parts: 'කොටස් සහ ෆිල්ටර්',
+  other: 'වෙනත් ගබඩා භාවිතය',
+};
+
+/**
+ * Which group a store item belongs to. A linked item lives at a fixed id (see
+ * linkDocId), so it still groups after the item itself has been deleted.
+ */
+export function stockGroupOf(itemId: string, link: StockLink | null | undefined): StockGroup {
+  const key = link ?? itemId.replace('-', ':');
+  if (key.startsWith('fill:')) return 'fuel';
+  if (key.startsWith('blast:')) return 'explosives';
+  if (key.startsWith('service:')) return 'parts';
+  return 'other';
+}
+
+/** The work a machine's costs belong to. A machine of no known kind, and no machine at all, is the site's. */
+export function areaOfMachine(machineId: string | null, kinds: ReadonlyMap<string, MachineType>): WorkArea {
+  const kind = machineId ? kinds.get(machineId) : undefined;
+  return kind === 'excavator' ? 'loading' : kind === 'compressor' ? 'drilling' : 'site';
+}
+
+/** The work a crew member's pay belongs to. */
+function areaOfRole(role: RoleId): WorkArea {
+  return role === 'operator' ? 'loading' : role === 'compressor' ? 'drilling' : 'site';
+}
+
+/** One line of what a kind of work cost. */
+export interface ExpenseLine {
+  key: string;
+  label: string;
+  value: number;
+  detail: string;
+}
+
+export interface AreaCosts {
+  area: WorkArea;
+  lines: ExpenseLine[];
+  total: number;
+}
+
+/** One material's verified sales, and what is left of them after the landowner. */
+export interface MaterialRow {
+  /** Null on a sale from before the material was recorded. */
+  material: SaleMaterial | null;
+  count: number;
+  /** Loads the bills count for — a tipper bill is one trip, a tractor bill its loads. */
+  loads: number;
+  amount: number;
+  /** What the landowner is paid on these loads; nothing for a material that earns no share. */
+  landownerShare: number;
+  /** [amount] less [landownerShare] — before the work it took to get them out. */
+  gross: number;
+}
+
+export type LedgerKind = 'sale' | 'payment' | 'machine' | 'landowner' | 'bill' | 'usage' | 'salary';
 
 export interface LedgerEntry {
   date: string;
@@ -79,6 +164,8 @@ export interface LedgerEntry {
 export interface Finance {
   income: number;
   incomeByType: Record<SaleType, SalesTotal>;
+  /** Income by material, biggest first, each with the landowner's share taken off. */
+  byMaterial: MaterialRow[];
   pending: SalesTotal;
   cancelled: SalesTotal;
   /**
@@ -94,8 +181,20 @@ export interface Finance {
   /** Bills that are nobody's pay, by category. */
   siteBills: Record<BillCategory, number>;
   siteBillTotal: number;
+  /**
+   * What was bought for the store this month — reported beside the total, not
+   * in it: that stock counts when it is used, see [usageTotal].
+   */
   purchases: StockRow[];
   purchaseTotal: number;
+  /** What the work cost, by the work it was for. Adds up to the expenses less the landowner's share. */
+  areas: AreaCosts[];
+  /**
+   * Uses recorded this month that had no store item to draw from — or whose
+   * shelf had been counted since. They carry no value, so the figures above
+   * may be low by that much.
+   */
+  unmatchedUsage: number;
   /** Hours the loading excavator crews worked this month. */
   machineHours: number;
   /** What those hours sent to the machine. */
@@ -158,6 +257,7 @@ export function financeFor({
   store,
   machineHourly,
   landownerRates = [],
+  machineKinds = new Map(),
   now,
   today,
 }: {
@@ -173,6 +273,11 @@ export function financeFor({
   machineHourly: number;
   /** Every setting of the landowner's per-load figure — each sale is worked out at the one in force when it was written. */
   landownerRates?: readonly LandownerRate[];
+  /**
+   * What kind of machine each machine is, by number — what decides which work
+   * a use of fuel or parts belongs to. A machine left out is the site's.
+   */
+  machineKinds?: ReadonlyMap<string, MachineType>;
   now: number;
   /** `yyyy-MM-dd` — only feeds payFor's leaveDays, which this report never shows. */
   today: string;
@@ -186,6 +291,7 @@ export function financeFor({
   const prepaidOpen = noSales();
   let landownerLoads = 0;
   let landownerTotal = 0;
+  const materials = new Map<SaleMaterial | null, MaterialRow>();
   for (const sale of sales) {
     const status = saleStatus(sale, now);
     // A prepaid bill is income from the day it was paid, in that month, so a
@@ -209,6 +315,20 @@ export function financeFor({
       const share = landownerChargeOf(sale, landownerRates);
       if (paysLandowner(sale)) landownerLoads += saleLoads(sale);
       landownerTotal += share;
+
+      const row = materials.get(sale.material) ?? {
+        material: sale.material,
+        count: 0,
+        loads: 0,
+        amount: 0,
+        landownerShare: 0,
+        gross: 0,
+      };
+      row.count += 1;
+      row.loads += saleLoads(sale);
+      row.amount += sale.amount;
+      row.landownerShare += share;
+      materials.set(sale.material, row);
       if (share > 0) {
         ledger.push({
           date: sale.date,
@@ -301,29 +421,30 @@ export function financeFor({
 
   // ---- the store ----
   const priceNow = new Map(store.map((item) => [item.id, item.unitPrice]));
+  const linkOf = new Map(store.map((item) => [item.id, item.link]));
   const purchases = new Map<string, StockRow>();
   const usageByMachine = new Map<string, StockRow>();
   const usageByItem = new Map<string, StockRow>();
+  /** What was used, by the work it was for and what kind of thing it was. */
+  const usedByArea = new Map<WorkArea, Map<StockGroup, { value: number; estimated: boolean }>>();
+  let unmatchedUsage = 0;
 
   for (const movement of movements) {
     const bought = movement.type === 'create' || movement.type === 'restock';
     const used = movement.type === 'usage' || movement.type === 'use';
     if (!bought && !used) continue;
+    if (used) unmatchedUsage += movement.unmatched.length;
+
+    const area = areaOfMachine(movement.machineId, machineKinds);
+    const drawn: string[] = [];
+    let drawnValue = 0;
 
     for (const line of movement.items) {
       const price = line.unitPrice ?? priceNow.get(line.itemId) ?? 0;
       const estimated = line.unitPrice == null;
 
       if (bought && line.delta > 0) {
-        const value = line.delta * price;
-        addStock(purchases, line.itemId, line.name, line.unit, line.delta, value, estimated);
-        ledger.push({
-          date: movement.createdAt ? dateKey(movement.createdAt) : monthEnd,
-          kind: 'purchase',
-          description: `${MOVEMENT_LABEL[movement.type]} · ${line.name} ${quantity(line.delta, line.unit)}`,
-          income: 0,
-          expense: value,
-        });
+        addStock(purchases, line.itemId, line.name, line.unit, line.delta, line.delta * price, estimated);
       } else if (used && line.delta < 0) {
         const amount = -line.delta;
         const value = amount * price;
@@ -338,22 +459,109 @@ export function financeFor({
           estimated,
         );
         addStock(usageByItem, line.itemId, line.name, line.unit, amount, value, estimated);
+
+        const group = stockGroupOf(line.itemId, linkOf.get(line.itemId));
+        const groups = usedByArea.get(area) ?? new Map<StockGroup, { value: number; estimated: boolean }>();
+        const total = groups.get(group) ?? { value: 0, estimated: false };
+        total.value += value;
+        total.estimated ||= estimated;
+        groups.set(group, total);
+        usedByArea.set(area, groups);
+
+        drawn.push(`${line.name} ${quantity(amount, line.unit)}`);
+        drawnValue += value;
       }
+    }
+
+    // One entry for each time the store was drawn down, not for each item.
+    if (drawn.length > 0) {
+      ledger.push({
+        date: movement.date ?? (movement.createdAt ? dateKey(movement.createdAt) : monthEnd),
+        kind: 'usage',
+        description: [movement.machineId ?? 'අතින්', movement.source ? sourceLabel(movement.source) : '', drawn.join(', ')]
+          .filter(Boolean)
+          .join(' · '),
+        income: 0,
+        expense: drawnValue,
+      });
     }
   }
 
   const purchaseRows = [...purchases.values()].sort(byValue);
   const purchaseTotal = sum(purchaseRows.map((row) => row.value));
   const usageItems = [...usageByItem.values()].sort(byValue);
+  const usageTotal = sum(usageItems.map((row) => row.value));
 
-  const expenses = salaryTotal + siteBillTotal + purchaseTotal + machineTotal + landownerTotal;
+  // ---- what each kind of work cost ----
+  const wages = new Map<WorkArea, { value: number; people: number; days: number }>();
+  for (const row of salaries) {
+    const area = areaOfRole(row.person.role);
+    const entry = wages.get(area) ?? { value: 0, people: 0, days: 0 };
+    entry.value += row.pay.gross;
+    entry.people += 1;
+    entry.days += row.pay.workedDays;
+    wages.set(area, entry);
+  }
+
+  const areas: AreaCosts[] = WORK_AREAS.map((area) => {
+    const lines: ExpenseLine[] = [];
+    const add = (line: ExpenseLine) => {
+      if (line.value > 0) lines.push(line);
+    };
+
+    const paid = wages.get(area);
+    if (paid) {
+      add({
+        key: 'wages',
+        label: 'කණ්ඩායම් වැටුප්',
+        value: paid.value,
+        detail: `${paid.people} දෙනෙක් · වැඩ කළ දින ${paid.days} — ඇඩ්වාන්ස් සහ කෑම ඇතුළුව`,
+      });
+    }
+    if (area === 'loading') {
+      add({
+        key: 'machine',
+        label: 'යන්ත්‍රයට කපන ගණන',
+        value: machineTotal,
+        detail: `එක්ස්කවේටර් වැඩ කළ පැය ${quantity(machineHours)}`,
+      });
+    }
+    for (const group of STOCK_GROUPS) {
+      const used = usedByArea.get(area)?.get(group);
+      if (!used) continue;
+      add({
+        key: `stock-${group}`,
+        label: STOCK_GROUP_LABEL[group],
+        value: used.value,
+        detail: used.estimated ? 'භාවිත කළ දවසේ මිලට — සමහර සටහන් වත්මන් මිලට' : 'භාවිත කළ දවසේ මිලට',
+      });
+    }
+    if (area === 'site') {
+      for (const category of Object.keys(siteBills) as BillCategory[]) {
+        add({
+          key: `bill-${category}`,
+          label: `${BILL[category].label} බිල්පත්`,
+          value: siteBills[category],
+          detail: BILL[category].deduction ? 'කිසිවෙකුගේ පඩියට අය නොකළ' : 'අඩවි වියදම්',
+        });
+      }
+    }
+    return { area, lines, total: sum(lines.map((line) => line.value)) };
+  });
+
+  // Fuel, explosives and parts count as they are used; what was bought is
+  // reported beside — see the note at the top.
+  const expenses = salaryTotal + siteBillTotal + usageTotal + machineTotal + landownerTotal;
+  const byMaterial = [...materials.values()]
+    .map((row) => ({ ...row, gross: row.amount - row.landownerShare }))
+    .sort((a, b) => b.amount - a.amount);
   const order: Record<LedgerKind, number> = {
     sale: 0,
     payment: 1,
     landowner: 2,
     machine: 3,
     bill: 4,
-    purchase: 5,
+    usage: 5,
     salary: 6,
   };
   ledger.sort((a, b) => a.date.localeCompare(b.date) || order[a.kind] - order[b.kind]);
@@ -361,6 +569,7 @@ export function financeFor({
   return {
     income,
     incomeByType,
+    byMaterial,
     pending,
     cancelled,
     creditPayments,
@@ -371,13 +580,15 @@ export function financeFor({
     siteBillTotal,
     purchases: purchaseRows,
     purchaseTotal,
+    areas,
+    unmatchedUsage,
     machineHours,
     machineTotal,
     landownerLoads,
     landownerTotal,
     usageByMachine: [...usageByMachine.values()].sort(byValue),
     usageByItem: usageItems,
-    usageTotal: sum(usageItems.map((row) => row.value)),
+    usageTotal,
     expenses,
     profit: income - expenses,
     ledger,

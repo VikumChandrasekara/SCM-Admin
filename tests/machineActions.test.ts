@@ -5,7 +5,7 @@ import { initializeTestEnvironment, type RulesTestEnvironment } from '@firebase/
 import { collection, doc, getDoc, getDocs, setDoc, type Firestore } from 'firebase/firestore';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { assignMachine, createMachine, updateMachine } from '../src/data/machines';
+import { assignMachine, createMachine, resetService, setServiceDue, updateMachine } from '../src/data/machines';
 import { machineFrom, type MachineDetails, type Person } from '../src/lib/model';
 
 // The panel's own `db`, swapped for a connection that goes through
@@ -114,8 +114,9 @@ describe('setting up a machine', () => {
     expect(await data('machines/ex9')).toMatchObject({
       ...excavator,
       totalHours: 1200,
-      // An excavator crew service three parts, each due one interval on.
-      serviceDueAt: { engineOil: 1450, dieselFilter: 1450, hydraulicFilter: 3200 },
+      // An excavator crew service three parts, each due one interval on — and
+      // the machine itself is due its 10,000 hour service.
+      serviceDueAt: { engineOil: 1450, dieselFilter: 1450, hydraulicFilter: 3200, majorService: 11200 },
     });
     const [entry] = await auditLog();
     expect(entry).toMatchObject({
@@ -132,7 +133,11 @@ describe('setting up a machine', () => {
   it('gives a compressor only the parts a compressor has', async () => {
     signIn('sup1');
     await createMachine('cp9', { ...excavator, type: 'compressor', name: 'Atlas' }, 0, supervisor);
-    expect((await data('machines/cp9'))?.serviceDueAt).toEqual({ engineOil: 250, dieselFilter: 250 });
+    expect((await data('machines/cp9'))?.serviceDueAt).toEqual({
+      engineOil: 250,
+      dieselFilter: 250,
+      majorService: 10000,
+    });
   });
 
   it('is the supervisor’s to do as well, and never the crew’s', async () => {
@@ -159,6 +164,59 @@ describe('setting up a machine', () => {
     await expect(createMachine('ex9', { ...excavator, name: 'x'.repeat(101) }, 0, admin)).rejects.toThrow();
     expect(await data('machines/ex9')).toBeUndefined();
     expect(await data('machines/ex 9')).toBeUndefined();
+  });
+});
+
+describe('the 10,000 hour service', () => {
+  it('is given a meter reading by staff — how a machine already running gets one — and logged', async () => {
+    signIn('sup1');
+    await setServiceDue(await machineNow('ex1'), 'majorService', 10000, supervisor);
+
+    // The meter and the other services are left as they were.
+    expect(await data('machines/ex1')).toMatchObject({
+      totalHours: 6789.7,
+      serviceDueAt: { engineOil: 7000, majorService: 10000 },
+    });
+    const [entry] = await auditLog();
+    expect(entry).toMatchObject({ action: 'service.set', entityType: 'machine', entityId: 'ex1', createdBy: 'sup1' });
+    expect(entry.summary).toBe('10,000 පැය සේවාව: ඊළඟ සේවාව — → 10000');
+  });
+
+  it('can be put right, and logs nothing when the reading is the one it already has', async () => {
+    signIn('admin1');
+    await setServiceDue(await machineNow('ex1'), 'majorService', 10000, admin);
+    await setServiceDue(await machineNow('ex1'), 'majorService', 10000, admin);
+    expect(await auditLog()).toHaveLength(1);
+
+    await setServiceDue(await machineNow('ex1'), 'majorService', 9800, admin);
+    expect((await data('machines/ex1'))?.serviceDueAt.majorService).toBe(9800);
+    expect((await auditLog()).map((entry) => entry.summary)).toContain('10,000 පැය සේවාව: ඊළඟ සේවාව 10000 → 9800');
+  });
+
+  it('refuses a reading that cannot be right before anything is written', async () => {
+    signIn('admin1');
+    await expect(setServiceDue(await machineNow('ex1'), 'majorService', -1, admin)).rejects.toThrow();
+    await expect(setServiceDue(await machineNow('ex1'), 'majorService', Number.NaN, admin)).rejects.toThrow();
+    expect((await data('machines/ex1'))?.serviceDueAt).toEqual({ engineOil: 7000 });
+    expect(await auditLog()).toHaveLength(0);
+  });
+
+  it('is not the crew’s to set', async () => {
+    signIn('op1');
+    await expect(setServiceDue(await machineNow('ex1'), 'majorService', 10000, operator)).rejects.toThrow();
+    expect((await data('machines/ex1'))?.serviceDueAt).toEqual({ engineOil: 7000 });
+  });
+
+  it('once done, falls due a whole interval on from the meter — and takes nothing from the store', async () => {
+    signIn('admin1');
+    await setServiceDue(await machineNow('ex1'), 'majorService', 6800, admin);
+    await resetService(await machineNow('ex1'), 'majorService', null, operator, admin);
+
+    const { serviceDueAt } = (await data('machines/ex1')) ?? {};
+    expect(serviceDueAt.majorService).toBeCloseTo(6789.7 + 10000, 5);
+    expect(serviceDueAt.engineOil).toBe(7000);
+    expect((await auditLog()).map((entry) => entry.action).sort()).toEqual(['service.reset', 'service.set']);
+    expect(await direct(async (db) => (await getDocs(collection(db, 'storeMovements'))).size)).toBe(0);
   });
 });
 

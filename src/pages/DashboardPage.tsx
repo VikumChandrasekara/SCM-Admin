@@ -125,7 +125,7 @@ export function DashboardPage() {
           ))}
           {service.slice(0, 3).map(({ person, status }) => (
             <span
-              key={person.id}
+              key={`${person.id}:${status.task}`}
               className="rounded-full bg-white/[0.07] px-3 py-1 text-[11.5px] font-semibold ring-1 ring-hairline"
             >
               {nameOf(person)}: {serviceMessage(status)}

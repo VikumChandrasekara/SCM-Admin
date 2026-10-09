@@ -298,7 +298,10 @@ function AlertsBell({ stock, service }: { stock: StockAlert[]; service: ServiceA
             ) : (
               <ul className="space-y-2">
                 {service.map(({ person, machine, status }) => (
-                  <li key={machine.id} className="rounded-control bg-white/[0.05] px-3 py-2 ring-1 ring-hairline">
+                  <li
+                    key={`${machine.id}:${status.task}`}
+                    className="rounded-control bg-white/[0.05] px-3 py-2 ring-1 ring-hairline"
+                  >
                     <p className="text-sm font-semibold">
                       {nameOf(person)} <span className="font-normal text-white/60">· {machine.id}</span>
                     </p>

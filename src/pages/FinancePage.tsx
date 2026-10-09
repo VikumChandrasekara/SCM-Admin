@@ -10,9 +10,18 @@ import { useLiveData } from '../data/LiveData';
 import { usePayments } from '../data/payments';
 import { useMonthSales, useNow, useSalesPrices } from '../data/sales';
 import { errorMessage } from '../lib/errors';
-import { crewSummaryFor, financeFor, type Finance, type LedgerKind, type StockRow } from '../lib/finance';
+import {
+  WORK_AREA_LABEL,
+  crewSummaryFor,
+  financeFor,
+  type AreaCosts,
+  type Finance,
+  type LedgerKind,
+  type StockRow,
+} from '../lib/finance';
 import { addMonths, money, monthKey, monthLabel, quantity, rupees } from '../lib/format';
-import { BILL, BILL_CATEGORIES, ROLES, SALE_TYPE, SALE_TYPES, nameOf } from '../lib/model';
+import { machineTypeOf } from '../lib/machines';
+import { ROLES, SALE_MATERIAL, SALE_TYPE, SALE_TYPES, nameOf, type MachineType } from '../lib/model';
 import { payFor } from '../lib/pay';
 import { useToday } from '../lib/useToday';
 
@@ -21,7 +30,7 @@ import { useToday } from '../lib/useToday';
  * entries behind every figure. Admin only.
  */
 export function FinancePage() {
-  const { crew, store } = useLiveData();
+  const { crew, store, machines, people } = useLiveData();
   const now = useNow();
   const today = useToday();
   const current = monthKey(new Date());
@@ -45,6 +54,17 @@ export function FinancePage() {
       )
     : null;
 
+  // What a use of fuel or parts belongs to is decided by the machine's kind: an
+  // excavator's is loading, a compressor's is drilling and blasting.
+  const machineKinds = useMemo(() => {
+    const kinds = new Map<string, MachineType>();
+    for (const machine of machines.values()) {
+      const kind = machineTypeOf(machine, people);
+      if (kind) kinds.set(machine.id, kind);
+    }
+    return kinds;
+  }, [machines, people]);
+
   const finance = useMemo(
     () =>
       sales.data && bills.data && movements.data && crewMonths.data && prices.data && payments.data && landowner.data
@@ -58,6 +78,7 @@ export function FinancePage() {
             store,
             machineHourly: prices.data.machineHourly,
             landownerRates: landowner.data,
+            machineKinds,
             now,
             today,
           })
@@ -72,6 +93,7 @@ export function FinancePage() {
       payments.data,
       landowner.data,
       store,
+      machineKinds,
       now,
       today,
     ],
@@ -120,24 +142,18 @@ function FinanceReport({ finance, previousGross }: { finance: Finance; previousG
   const crew = crewSummaryFor(finance.salaries);
   const change = previousGross ? finance.salaryTotal - previousGross : null;
 
+  // Each kind of work, then the landowner — which together are every expense.
   const expenseLines: { label: string; value: number; detail: string }[] = [
-    { label: 'කණ්ඩායම් වැටුප්', value: finance.salaryTotal, detail: 'දවසේ පඩිය, බෝනස් සහ අඩි — ඇඩ්වාන්ස් සහ කෑම ඇතුළුව' },
-    { label: 'ගබඩා මිලදී ගැනීම්', value: finance.purchaseTotal, detail: 'නව අයිතම සහ තොග එකතු කිරීම්' },
-    {
-      label: 'යන්ත්‍රයට කපන ගණන',
-      value: finance.machineTotal,
-      detail: `එක්ස්කැවේටර් වැඩ කළ පැය ${quantity(finance.machineHours)}`,
-    },
+    ...finance.areas.map((area) => ({
+      label: WORK_AREA_LABEL[area.area].label,
+      value: area.total,
+      detail: WORK_AREA_LABEL[area.area].detail,
+    })),
     {
       label: 'ඉඩම් හිමියාට කපන ගණන',
       value: finance.landownerTotal,
       detail: `6/9, සක්කර, කෝරි ඩස්ට් ලෝඩ් ${quantity(finance.landownerLoads)} — බිල්පත සෑදූ වේලාවේ ගාස්තුවෙන්`,
     },
-    ...BILL_CATEGORIES.filter((category) => finance.siteBills[category] > 0).map((category) => ({
-      label: `${BILL[category].label} බිල්පත්`,
-      value: finance.siteBills[category],
-      detail: BILL[category].deduction ? 'කිසිවෙකුගේ පඩියට අය නොකළ' : 'අඩවි වියදම්',
-    })),
   ];
 
   return (
@@ -158,6 +174,75 @@ function FinanceReport({ finance, previousGross }: { finance: Finance; previousG
           caption={`බිල්පත් ${finance.pending.count} — තහවුරු කළ පසු ආදායමට එකතු වේ`}
         />
       </div>
+
+      <p className="mb-8 max-w-4xl text-xs leading-relaxed text-white/60">
+        ඩීසල්, ඔයිල්, වෙඩි බඩු සහ කොටස් වියදමට ගණන් ගන්නේ ඒවා <b className="text-white/80">භාවිත කළ</b> මාසයේ, භාවිත කළ දවසේ
+        මිලට — මිලදී ගත් මාසයේ නොවේ. එවිට එක් එක් වැඩයට (ලෝඩ් කිරීම, විදීම සහ පුපුරවීම) තමන්ගේම වියදම පෙන්විය හැක.
+        {finance.unmatchedUsage > 0 && (
+          <span className="mt-1 block font-semibold text-signal">
+            ගබඩා අයිතමයක් නැතිව සටහන් වූ භාවිත {finance.unmatchedUsage}ක් ඇත — ඒවායේ වටිනාකම ගණන් නොගනී, එබැවින් වියදම මෙයට
+            වඩා තරමක් වැඩි විය හැක.
+          </span>
+        )}
+      </p>
+
+      <section className="mb-8">
+        <SectionLabel>ආදායම සහ ලාභය — ද්‍රව්‍ය අනුව</SectionLabel>
+        <Panel className="p-4 sm:p-5">
+          {finance.byMaterial.length === 0 ? (
+            <p className="py-4 text-center text-sm text-white/60">මෙම මාසයේ තහවුරු කළ විකුණුම් නැත.</p>
+          ) : (
+            <>
+              <TableFrame>
+                <table className="w-full min-w-[640px] border-collapse text-sm">
+                  <thead>
+                    <tr className="border-b border-hairline">
+                      <th className={th}>ද්‍රව්‍යය</th>
+                      <th className={cx(th, 'text-right')}>බිල්පත්</th>
+                      <th className={cx(th, 'text-right')}>ලෝඩ්</th>
+                      <th className={cx(th, 'text-right')}>ආදායම</th>
+                      <th className={cx(th, 'text-right')}>ඉඩම් හිමියාට</th>
+                      <th className={cx(th, 'text-right')}>ඉඩම් හිමියාට පසු</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {finance.byMaterial.map((row) => (
+                      <tr key={row.material ?? 'none'} className="border-b border-hairline/60">
+                        <td className={cx(td, 'font-bold')}>
+                          {row.material ? SALE_MATERIAL[row.material] : <span className="text-white/60">ද්‍රව්‍යය සටහන් නොකළ</span>}
+                        </td>
+                        <td className={cx(td, 'text-right tabular-nums')}>{row.count}</td>
+                        <td className={cx(td, 'text-right tabular-nums')}>{quantity(row.loads)}</td>
+                        <td className={cx(td, 'text-right font-bold text-lime-hi tabular-nums')}>{money(row.amount)}</td>
+                        <td className={cx(td, 'text-right text-white/75 tabular-nums')}>
+                          {row.landownerShare > 0 ? money(row.landownerShare) : '—'}
+                        </td>
+                        <td className={cx(td, 'text-right font-extrabold tabular-nums')}>{money(row.gross)}</td>
+                      </tr>
+                    ))}
+                    <tr className="border-t border-hairline font-extrabold">
+                      <td className={td}>එකතුව</td>
+                      <td className={cx(td, 'text-right tabular-nums')}>
+                        {finance.byMaterial.reduce((total, row) => total + row.count, 0)}
+                      </td>
+                      <td className={cx(td, 'text-right tabular-nums')}>
+                        {quantity(finance.byMaterial.reduce((total, row) => total + row.loads, 0))}
+                      </td>
+                      <td className={cx(td, 'text-right text-lime-hi tabular-nums')}>{money(finance.income)}</td>
+                      <td className={cx(td, 'text-right tabular-nums')}>{money(finance.landownerTotal)}</td>
+                      <td className={cx(td, 'text-right tabular-nums')}>{money(finance.income - finance.landownerTotal)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </TableFrame>
+              <p className="mt-3 text-[11px] text-white/55">
+                "ඉඩම් හිමියාට පසු" = ආදායම − ඉඩම් හිමියාට කපන ගණන. කණ්ඩායම් වැටුප්, යන්ත්‍ර ගාස්තුව, ඩීසල් සහ අනෙක් වියදම් පහත
+                වැඩ අනුව පෙන්වයි — ඒවා එක් ද්‍රව්‍යයකට පමණක් අයත් නොවේ.
+              </p>
+            </>
+          )}
+        </Panel>
+      </section>
 
       <div className="mb-8 grid gap-5 xl:grid-cols-2">
         <section>
@@ -243,13 +328,32 @@ function FinanceReport({ finance, previousGross }: { finance: Finance; previousG
                 </li>
               ))}
             </ul>
-            <p className="mt-4 flex justify-between border-t border-hairline pt-3 text-sm font-extrabold">
-              <span>මුළු වියදම</span>
-              <span className="tabular-nums">{rupees(finance.expenses)}</span>
-            </p>
+            <div className="mt-4 space-y-1.5 border-t border-hairline pt-3 text-sm font-extrabold">
+              <p className="flex justify-between text-white/75">
+                <span>මුළු ආදායම</span>
+                <span className="tabular-nums text-lime-hi">{rupees(finance.income)}</span>
+              </p>
+              <p className="flex justify-between">
+                <span>මුළු වියදම</span>
+                <span className="tabular-nums">− {rupees(finance.expenses)}</span>
+              </p>
+              <p className={cx('flex justify-between border-t border-hairline pt-1.5', finance.profit < 0 && 'text-red-300')}>
+                <span>{finance.profit >= 0 ? 'ශුද්ධ ලාභය' : 'අලාභය'}</span>
+                <span className="tabular-nums">{rupees(Math.abs(finance.profit))}</span>
+              </p>
+            </div>
           </Panel>
         </section>
       </div>
+
+      <section className="mb-8">
+        <SectionLabel>වියදම් — වැඩ අනුව</SectionLabel>
+        <div className="grid gap-5 lg:grid-cols-3">
+          {finance.areas.map((area) => (
+            <AreaPanel key={area.area} area={area} expenses={finance.expenses} />
+          ))}
+        </div>
+      </section>
 
       <section className="mb-8">
         <SectionLabel>කණ්ඩායම් වැටුප්</SectionLabel>
@@ -369,18 +473,22 @@ function FinanceReport({ finance, previousGross }: { finance: Finance; previousG
 
       <div className="mb-8 grid gap-5 xl:grid-cols-2">
         <section>
-          <SectionLabel>ගබඩා මිලදී ගැනීම්</SectionLabel>
-          <Panel className="p-4 sm:p-5">
+          <SectionLabel>මිලදී ගත් තොග</SectionLabel>
+          <Panel tone="deep" className="p-4 sm:p-5">
+            <p className="mb-3 text-xs text-white/60">
+              නව අයිතම සහ තොග එකතු කිරීම්. මේවා මිලදී ගත් මාසයේ වියදමට ගණන් නොගනී — ගබඩාවෙන් භාවිත කළ විට එම මාසයේ වියදමට
+              එකතු වේ.
+            </p>
             <StockTable rows={finance.purchases} total={finance.purchaseTotal} empty="මෙම මාසයේ මිලදී ගැනීම් නැත." />
           </Panel>
         </section>
 
         <section>
           <SectionLabel>යන්ත්‍ර සඳහා භාවිත වූ බඩු</SectionLabel>
-          <Panel tone="deep" className="p-4 sm:p-5">
+          <Panel className="p-4 sm:p-5">
             <p className="mb-3 text-xs text-white/60">
-              ඩීසල්, ඔයිල්, වෙඩි බඩු සහ කොටස් — ගබඩාවෙන් ගිය දේ, එවකට මිලට. මේවා මිලදී ගත් විට දැනටමත් වියදමට එකතු වී
-              ඇති නිසා මුළු වියදමට නැවත එකතු නොකරයි.
+              ඩීසල්, ඔයිල්, වෙඩි බඩු සහ කොටස් — ගබඩාවෙන් ගිය දේ, එවකට මිලට. මේවා භාවිත කළ මාසයේ වියදමට ගණන් ගනී; ඉහත වැඩ
+              අනුව වියදම් මෙයින් ගොඩනැගේ.
             </p>
             <StockTable rows={finance.usageByMachine} total={finance.usageTotal} empty="මෙම මාසයේ භාවිතයක් නැත." heading="යන්ත්‍රය" />
             {finance.usageByItem.length > 0 && (
@@ -444,9 +552,49 @@ const KIND_LABEL: Record<LedgerKind, string> = {
   machine: 'යන්ත්‍රයට',
   landowner: 'ඉඩම් හිමියාට',
   bill: 'බිල්පත',
-  purchase: 'ගබඩා මිලදී ගැනීම',
+  usage: 'ගබඩා භාවිතය',
   salary: 'වැටුප් ශේෂය',
 };
+
+/** One kind of work, with what it cost line by line — and its share of everything spent. */
+function AreaPanel({ area, expenses }: { area: AreaCosts; expenses: number }) {
+  const { label, detail } = WORK_AREA_LABEL[area.area];
+  return (
+    <Panel className="p-4 sm:p-5">
+      <div className="mb-3 flex items-start gap-2">
+        <div className="min-w-0 flex-1">
+          <p className="text-[15px] font-extrabold">{label}</p>
+          <p className="text-[11px] text-white/55">{detail}</p>
+        </div>
+        <div className="text-right">
+          <p className="text-lg font-extrabold tabular-nums">{rupees(area.total)}</p>
+          <p className="text-[11px] text-white/55">
+            {expenses > 0 ? `මුළු වියදමෙන් ${Math.round((area.total / expenses) * 100)}%` : ''}
+          </p>
+        </div>
+      </div>
+      {area.lines.length === 0 ? (
+        <p className="rounded-control bg-well px-3 py-3 text-center text-xs text-white/55">මෙම මාසයේ වියදමක් නැත.</p>
+      ) : (
+        <ul className="space-y-3">
+          {area.lines.map((line) => (
+            <li key={line.key}>
+              <div className="flex items-baseline gap-2">
+                <span className="flex-1 text-sm font-bold">{line.label}</span>
+                <span className="text-xs text-white/55">{`${Math.round((line.value / area.total) * 100)}%`}</span>
+                <span className="w-24 text-right font-extrabold tabular-nums">{money(line.value)}</span>
+              </div>
+              <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-well">
+                <div className="h-full rounded-full bg-amber-hi" style={{ width: `${(line.value / area.total) * 100}%` }} />
+              </div>
+              <p className="mt-0.5 text-[11px] text-white/55">{line.detail}</p>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Panel>
+  );
+}
 
 function StockTable({
   rows,

@@ -1,5 +1,5 @@
 import { collection, query, where } from 'firebase/firestore';
-import { RotateCcw, Save, Wrench } from 'lucide-react';
+import { Pencil, RotateCcw, Save, Wrench } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router';
 
@@ -8,7 +8,7 @@ import { permissionsFor } from '../auth/permissions';
 import { useMonthBills } from '../data/bills';
 import { useLiveDoc, useLiveQuery } from '../data/live';
 import { useLiveData } from '../data/LiveData';
-import { dayRef, markLeaveWorked, monthRef, resetService, saveFigures, saveTally } from '../data/machines';
+import { dayRef, markLeaveWorked, monthRef, resetService, saveFigures, saveTally, setServiceDue } from '../data/machines';
 import { db } from '../db';
 import { errorMessage } from '../lib/errors';
 import { hours, monthBounds, quantity, rupees, signedHours } from '../lib/format';
@@ -19,8 +19,11 @@ import {
   WAGE_BASIS_LABEL,
   dayFrom,
   dayWorked,
+  isPartTask,
   monthFrom,
   nameOf,
+  serviceDoneLabel,
+  serviceNextLabel,
   serviceStatus,
   tallyField,
   type Person,
@@ -31,7 +34,7 @@ import { payFor } from '../lib/pay';
 import { leaveDatesFor } from '../lib/target';
 import { useToday } from '../lib/useToday';
 import { useToast } from './Toasts';
-import { Button, Field, Input, Modal, SectionLabel, Select, ValueChip, cx } from './ui';
+import { Button, Field, IconButton, Input, Modal, SectionLabel, Select, ValueChip, cx } from './ui';
 
 /** තොරතුරු — one crew member's figures, and what staff may set on them. */
 export function CrewInfoModal({ person, date, onClose }: { person: Person; date: string; onClose: () => void }) {
@@ -77,6 +80,8 @@ export function CrewInfoModal({ person, date, onClose }: { person: Person; date:
   const [wageBasis, setWageBasis] = useState<WageBasis>(live.wageBasis);
   const [tally, setTally] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<ServiceTask | null>(null);
+  /** The service whose next due meter is being typed in, and what is typed so far. */
+  const [dueDraft, setDueDraft] = useState<{ task: ServiceTask; reading: string } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   /** The leave day being marked worked, and the ON meter typed for it so far. */
   const [leaveDraft, setLeaveDraft] = useState<{ date: string; reading: string } | null>(null);
@@ -159,9 +164,26 @@ export function CrewInfoModal({ person, date, onClose }: { person: Person; date:
     void run(
       task,
       () => resetService(machine, task, part, live, profile),
-      `${SERVICE[task].short} — ඊළඟ මාරුව පැය ${hours(machine.totalHours + SERVICE[task].interval)} දී.` +
+      `${SERVICE[task].short} — ${serviceNextLabel(task)} පැය ${hours(machine.totalHours + SERVICE[task].interval)} දී.` +
         (part ? ` ගබඩාවෙන් ${part.name} 1ක් අඩු කළා.` : ''),
     ).then(() => setConfirming(null));
+  }
+
+  // The meter reading a service next falls due at, typed in by hand: how a
+  // machine whose 10,000 hour service was never set up gets one, and how one
+  // whose real last service was at another reading is put right.
+  function saveDue(task: ServiceTask, reading: string) {
+    if (!machine) return;
+    const dueAt = Number(reading);
+    if (reading.trim() === '' || !Number.isFinite(dueAt) || dueAt < 0) {
+      toast.error('මීටර් පැය ඍණ නොවන සංඛ්‍යාවක් විය යුතුය.');
+      return;
+    }
+    void run(
+      `due:${task}`,
+      () => setServiceDue(machine, task, dueAt, profile),
+      `${SERVICE[task].short} — ${serviceNextLabel(task)} පැය ${hours(dueAt)} දී.`,
+    ).then((saved) => saved && setDueDraft(null));
   }
 
   return (
@@ -307,35 +329,90 @@ export function CrewInfoModal({ person, date, onClose }: { person: Person; date:
               const status = serviceStatus(machine, task);
               const alert = !!status && (status.isDue || status.isDueSoon);
               return (
-                <li key={task} className="flex items-center gap-2">
-                  <Wrench className={cx('size-4 shrink-0', alert ? 'text-signal' : 'text-white/55')} />
-                  <span className="flex-1 text-sm">{SERVICE[task].short}</span>
-                  <ValueChip tone={alert ? 'signal' : 'amber'} className="text-xs">
-                    {status ? signedHours(status.remaining) : '—'}
-                  </ValueChip>
-                  {machine &&
-                    (confirming === task ? (
-                      <Button size="sm" variant="success" busy={busy === task} onClick={() => confirmService(task)}>
-                        තහවුරු කරන්න
-                      </Button>
-                    ) : (
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        icon={<RotateCcw className="size-3.5" />}
-                        onClick={() => setConfirming(task)}
+                <li key={task} className="space-y-2">
+                  {/* Wraps rather than squeezing the name: with the pencil, the chip and the
+                      button this row is wider than the column. */}
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+                    <Wrench className={cx('size-4 shrink-0', alert ? 'text-signal' : 'text-white/55')} />
+                    <span className="min-w-[7rem] flex-1 text-sm">{SERVICE[task].short}</span>
+                    <ValueChip tone={alert ? 'signal' : 'amber'} className="text-xs">
+                      {status ? signedHours(status.remaining) : '—'}
+                    </ValueChip>
+                    {machine && (
+                      <IconButton
+                        label={`${serviceNextLabel(task)} මීටරය සකසන්න`}
+                        className="size-7"
+                        onClick={() =>
+                          setDueDraft({ task, reading: String(machine.serviceDueAt[task] ?? '') })
+                        }
                       >
-                        මාරු කළා
-                      </Button>
-                    ))}
+                        <Pencil className="size-3.5" />
+                      </IconButton>
+                    )}
+                    {machine &&
+                      (confirming === task ? (
+                        <Button
+                          size="sm"
+                          variant="success"
+                          className="ml-auto"
+                          busy={busy === task}
+                          onClick={() => confirmService(task)}
+                        >
+                          තහවුරු කරන්න
+                        </Button>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          className="ml-auto"
+                          icon={<RotateCcw className="size-3.5" />}
+                          onClick={() => setConfirming(task)}
+                        >
+                          {serviceDoneLabel(task)}
+                        </Button>
+                      ))}
+                  </div>
+                  {machine && dueDraft?.task === task && (
+                    <div className="space-y-2 rounded-xl bg-black/20 p-3">
+                      <Field
+                        label={`${serviceNextLabel(task)} කළ යුතු මීටරය (පැය)`}
+                        hint={`යන්ත්‍රයේ මීටරය දැනට ${hours(machine.totalHours)}. අවසන් වරට කළ මීටරයට පැය ${SERVICE[task].interval} ක් එකතු කර ඇතුළත් කරන්න.`}
+                      >
+                        <Input
+                          type="number"
+                          inputMode="decimal"
+                          min="0"
+                          step="any"
+                          autoFocus
+                          value={dueDraft.reading}
+                          onChange={(event) => setDueDraft({ task, reading: event.target.value })}
+                        />
+                      </Field>
+                      <div className="flex justify-end gap-2">
+                        <Button size="sm" variant="secondary" onClick={() => setDueDraft(null)}>
+                          අවලංගු
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="success"
+                          busy={busy === `due:${task}`}
+                          onClick={() => saveDue(task, dueDraft.reading)}
+                        >
+                          සුරකින්න
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </li>
               );
             })}
             {confirming && (
               <li className="rounded-xl bg-black/20 px-3 py-2 text-xs text-white/80">
-                {confirmingPart
-                  ? `තහවුරු කළ විට ගබඩාවෙන් ${confirmingPart.name} 1ක් අඩු වේ (දැනට ${quantity(confirmingPart.quantity, confirmingPart.unit)}).`
-                  : 'ගබඩාවේ මෙම කොටසට සම්බන්ධ අයිතමයක් නැත — තොගය අඩු නොවේ.'}{' '}
+                {!isPartTask(confirming)
+                  ? `තහවුරු කළ විට ${serviceNextLabel(confirming)} පැය ${hours((machine?.totalHours ?? 0) + SERVICE[confirming].interval)} දී යොදයි.`
+                  : confirmingPart
+                    ? `තහවුරු කළ විට ගබඩාවෙන් ${confirmingPart.name} 1ක් අඩු වේ (දැනට ${quantity(confirmingPart.quantity, confirmingPart.unit)}).`
+                    : 'ගබඩාවේ මෙම කොටසට සම්බන්ධ අයිතමයක් නැත — තොගය අඩු නොවේ.'}{' '}
                 <button type="button" className="font-bold text-amber-hi hover:underline" onClick={() => setConfirming(null)}>
                   අවලංගු
                 </button>
@@ -343,8 +420,9 @@ export function CrewInfoModal({ person, date, onClose }: { person: Person; date:
             )}
             {role.serviceTasks.length > 0 && (
               <li className="pt-1 text-xs text-white/55">
-                "මාරු කළා" එබූ විට, ඊළඟ මාරුව දැනට ඇති මීටරයට පැය {SERVICE.engineOil.interval} /{' '}
-                {SERVICE.hydraulicFilter.interval} කට පසු යොදයි.
+                "මාරු කළා" / "සේවාව කළා" එබූ විට, ඊළඟ වාරය දැනට ඇති මීටරයට පැය {SERVICE.engineOil.interval} /{' '}
+                {SERVICE.hydraulicFilter.interval} / {SERVICE.majorService.interval} කට පසු යොදයි. පැන්සල් අයිකනයෙන්
+                ඊළඟ වාරයේ මීටරය අතින් සකසන්න.
               </li>
             )}
           </ul>

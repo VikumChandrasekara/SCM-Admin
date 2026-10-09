@@ -20,8 +20,9 @@ function stateOf(status: ServiceStatus | null): ServiceState {
 }
 
 /**
- * Speaks up the moment a part on a crew's machine comes within its 50 hour
- * warning, or goes past due, while the panel is open — as a toast, and as a
+ * Speaks up the moment a part, or the 10,000 hour service, on a crew's machine
+ * comes within its warning (SERVICE[task].remindWithin) or goes past due,
+ * while the panel is open — as a toast, and as a
  * browser notification when the person has allowed them. The same moments the
  * push worker sends to the phones (tool/push-worker in the SCM project).
  *

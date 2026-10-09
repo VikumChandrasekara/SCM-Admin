@@ -48,7 +48,10 @@ function amountsFrom<K extends string>(
 
 export type FillItem = 'diesel' | 'hydraulic' | 'compressorOil' | 'engineOil' | 'coolant';
 export type InspectionItem = FillItem | 'surroundings';
-export type ServiceTask = 'engineOil' | 'dieselFilter' | 'hydraulicFilter';
+/** The parts changed on a cycle, and the whole-machine service done every 10,000 hours. */
+export type ServiceTask = 'engineOil' | 'dieselFilter' | 'hydraulicFilter' | 'majorService';
+/** The tasks that swap a part out — the ones the store can give the part for. */
+export type PartTask = Exclude<ServiceTask, 'majorService'>;
 export type BlastItem =
   | 'shells'
   | 'caps'
@@ -81,27 +84,53 @@ export const INSPECTION_LABEL: Record<InspectionItem, string> = {
   surroundings: 'වටපිට',
 };
 
-export const SERVICE_TASKS: readonly ServiceTask[] = ['engineOil', 'dieselFilter', 'hydraulicFilter'];
+export const SERVICE_TASKS: readonly ServiceTask[] = ['engineOil', 'dieselFilter', 'hydraulicFilter', 'majorService'];
 
-export const SERVICE: Record<ServiceTask, { label: string; short: string; interval: number }> = {
-  engineOil: { label: 'එන්ජින් ඔයිල් මාරු කිරීමට ඇති පැය', short: 'එන්ජින් ඔයිල්', interval: 250 },
-  dieselFilter: { label: 'ඩීසල් ෆිල්ටර් මාරු කිරීමට ඇති පැය', short: 'ඩීසල් ෆිල්ටර්', interval: 250 },
+export const PART_TASKS: readonly PartTask[] = ['engineOil', 'dieselFilter', 'hydraulicFilter'];
+
+export function isPartTask(task: ServiceTask): task is PartTask {
+  return task !== 'majorService';
+}
+
+/**
+ * [interval] is the hours between two services; [remindWithin] how many hours
+ * before one falls due it is flagged. A part change is flagged 50 hours out —
+ * a week's work. The 10,000 hour service takes booking and a machine off the
+ * job, so it is flagged 500 hours out.
+ */
+export const SERVICE: Record<ServiceTask, { label: string; short: string; interval: number; remindWithin: number }> = {
+  engineOil: { label: 'එන්ජින් ඔයිල් මාරු කිරීමට ඇති පැය', short: 'එන්ජින් ඔයිල්', interval: 250, remindWithin: 50 },
+  dieselFilter: { label: 'ඩීසල් ෆිල්ටර් මාරු කිරීමට ඇති පැය', short: 'ඩීසල් ෆිල්ටර්', interval: 250, remindWithin: 50 },
   hydraulicFilter: {
     label: 'හයිඩ්‍රොලික් ෆිල්ටර් මාරු කිරීමට ඇති පැය',
     short: 'හයිඩ්‍රොලික් ෆිල්ටර්',
     interval: 2000,
+    remindWithin: 50,
+  },
+  majorService: {
+    label: '10,000 පැය සේවාවට ඇති පැය',
+    short: '10,000 පැය සේවාව',
+    interval: 10000,
+    remindWithin: 500,
   },
 };
 
 /** The part fitted when each service is done — what the store gives out. */
-export const SERVICE_PART: Record<ServiceTask, string> = {
+export const SERVICE_PART: Record<PartTask, string> = {
   engineOil: 'එන්ජින් ඔයිල් ෆිල්ටර්',
   dieselFilter: 'ඩීසල් ෆිල්ටර්',
   hydraulicFilter: 'හයිඩ්‍රොලික් ෆිල්ටර්',
 };
 
-/** A change is flagged this many hours before it falls due. */
-export const REMIND_WITHIN_HOURS = 50;
+/** What the button that records [task] as done says. */
+export function serviceDoneLabel(task: ServiceTask): string {
+  return isPartTask(task) ? 'මාරු කළා' : 'සේවාව කළා';
+}
+
+/** `ඊළඟ මාරුව` or `ඊළඟ සේවාව` — the next time [task] falls due. */
+export function serviceNextLabel(task: ServiceTask): string {
+  return isPartTask(task) ? 'ඊළඟ මාරුව' : 'ඊළඟ සේවාව';
+}
 
 export const BLAST_ITEMS: readonly BlastItem[] = [
   'shells',
@@ -207,7 +236,7 @@ export const ROLES: Record<RoleId, RoleSpec> = {
     fillingSlots: 3,
     fillItems: ['diesel', 'hydraulic', 'engineOil', 'coolant'],
     inspectionItems: ['diesel', 'hydraulic', 'engineOil', 'coolant', 'surroundings'],
-    serviceTasks: ['engineOil', 'dieselFilter', 'hydraulicFilter'],
+    serviceTasks: ['engineOil', 'dieselFilter', 'hydraulicFilter', 'majorService'],
     tracksBlasting: false,
     tracksBonus: true,
     isCrew: true,
@@ -219,7 +248,7 @@ export const ROLES: Record<RoleId, RoleSpec> = {
     fillingSlots: 2,
     fillItems: ['diesel', 'compressorOil', 'engineOil', 'coolant'],
     inspectionItems: ['diesel', 'compressorOil', 'engineOil', 'coolant', 'surroundings'],
-    serviceTasks: ['engineOil', 'dieselFilter'],
+    serviceTasks: ['engineOil', 'dieselFilter', 'majorService'],
     tracksBlasting: true,
     tracksBonus: false,
     isCrew: true,
@@ -440,7 +469,7 @@ export function serviceStatus(machine: Machine | undefined, task: ServiceTask): 
     task,
     remaining,
     isDue: remaining <= 0,
-    isDueSoon: remaining > 0 && remaining <= REMIND_WITHIN_HOURS,
+    isDueSoon: remaining > 0 && remaining <= SERVICE[task].remindWithin,
   };
 }
 
@@ -458,10 +487,13 @@ export function serviceAlerts(
 export function serviceMessage(status: ServiceStatus): string {
   const shown = Math.abs(status.remaining);
   const amount = Number.isInteger(shown) ? shown.toFixed(0) : shown.toFixed(1);
-  const part = SERVICE[status.task].short;
+  const name = SERVICE[status.task].short;
+  if (!isPartTask(status.task)) {
+    return status.isDue ? `${name} පැය ${amount} කින් ප්‍රමාද වී ඇත` : `${name}ට තව පැය ${amount} යි`;
+  }
   return status.isDue
-    ? `${part} මාරු කිරීම පැය ${amount} කින් ප්‍රමාද වී ඇත`
-    : `${part} මාරු කිරීමට තව පැය ${amount} යි`;
+    ? `${name} මාරු කිරීම පැය ${amount} කින් ප්‍රමාද වී ඇත`
+    : `${name} මාරු කිරීමට තව පැය ${amount} යි`;
 }
 
 // ---- days -------------------------------------------------------------------
@@ -626,7 +658,7 @@ export function monthFrom(month: string, data: DocumentData | undefined): MonthT
  * down: a fluid on a පිරවීම, an explosive on a වෙඩි බඩු sheet, or the part
  * fitted when a service is marked done.
  */
-export type StockLink = `fill:${FillItem}` | `blast:${BlastItem}` | `service:${ServiceTask}`;
+export type StockLink = `fill:${FillItem}` | `blast:${BlastItem}` | `service:${PartTask}`;
 
 export interface LinkOption {
   link: StockLink;
@@ -648,7 +680,7 @@ export const LINK_OPTIONS: readonly LinkOption[] = [
     group: 'වෙඩි බඩු',
     unit: BLAST[item].unit || 'ගණන',
   })),
-  ...SERVICE_TASKS.map((task) => ({
+  ...PART_TASKS.map((task) => ({
     link: `service:${task}` as StockLink,
     label: SERVICE_PART[task],
     group: 'සේවා (මාරු කළා)',
@@ -826,6 +858,7 @@ export type AuditAction =
   | 'landowner.paid'
   | 'landowner.unpaid'
   | 'service.reset'
+  | 'service.set'
   | 'machine.create'
   | 'machine.update'
   | 'machine.assign'
@@ -864,6 +897,7 @@ export const AUDIT_LABEL: Record<AuditAction, string> = {
   'landowner.paid': 'ඉඩම් හිමියාට ගෙවූ බව සලකුණු කළා',
   'landowner.unpaid': 'ඉඩම් හිමියාට ගෙවූ බව ඉවත් කළා',
   'service.reset': 'සේවා කාලය යළි පිහිටෙව්වා',
+  'service.set': 'ඊළඟ සේවා මීටරය සකස් කළා',
   'machine.create': 'යන්ත්‍රයක් එකතු කළා',
   'machine.update': 'යන්ත්‍රයේ විස්තර වෙනස් කළා',
   'machine.assign': 'කණ්ඩායම් සාමාජිකයෙක් යන්ත්‍රයකට යෙදුවා',

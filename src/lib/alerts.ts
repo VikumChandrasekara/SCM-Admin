@@ -17,7 +17,7 @@ export interface StockAlert {
 export interface ServiceAlert {
   person: Person;
   machine: Machine;
-  /** The machine's most urgent part. */
+  /** The part or service that needs attention. */
   status: ServiceStatus;
 }
 
@@ -33,7 +33,11 @@ export function stockAlerts(store: readonly StoreItem[]): StockAlert[] {
     );
 }
 
-/** One line per crew machine: its most urgent part, most urgent machine first. */
+/**
+ * One line for every part or service on a crew machine that needs attention,
+ * most urgent first. Every one, not just the machine's most urgent: an overdue
+ * oil change must not hide that the 10,000 hour service is coming up.
+ */
 export function serviceAlertsFor(
   crew: readonly Person[],
   machines: Map<string, Machine>,
@@ -45,8 +49,9 @@ export function serviceAlertsFor(
     if (!machine || seen.has(machine.id)) continue;
     seen.add(machine.id);
     // A compressor has no hydraulic filter, so only the crew's own parts count.
-    const [first] = serviceAlerts(machine, ROLES[person.role].serviceTasks);
-    if (first) alerts.push({ person, machine, status: first });
+    for (const status of serviceAlerts(machine, ROLES[person.role].serviceTasks)) {
+      alerts.push({ person, machine, status });
+    }
   }
   return alerts.sort((a, b) => a.status.remaining - b.status.remaining);
 }

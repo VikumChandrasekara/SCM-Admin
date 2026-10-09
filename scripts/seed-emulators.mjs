@@ -192,12 +192,19 @@ for (const person of crews) {
 }
 
 // Kamal's engine oil is nearly due, Sunil's is overdue — the alerts have
-// something to say.
+// something to say. Excavator-01's 10,000 hour service is 420 hours off, inside
+// its 500 hour warning; excavator-02's was never set up, so its row shows "—"
+// until someone sets it from the crew's තොරතුරු.
 const serviceFrom = (hours, offsets) =>
   Object.fromEntries(Object.entries(offsets).map(([task, offset]) => [task, hours + offset]));
 await db.doc('machines/excavator-01').set({
   totalHours: machineHours['excavator-01'],
-  serviceDueAt: serviceFrom(machineHours['excavator-01'], { engineOil: 32, dieselFilter: 140, hydraulicFilter: 910 }),
+  serviceDueAt: serviceFrom(machineHours['excavator-01'], {
+    engineOil: 32,
+    dieselFilter: 140,
+    hydraulicFilter: 910,
+    majorService: 420,
+  }),
 });
 await db.doc('machines/excavator-02').set({
   totalHours: machineHours['excavator-02'],
