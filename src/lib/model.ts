@@ -964,9 +964,17 @@ export function auditEntryFrom(id: string, data: DocumentData): AuditEntry {
 
 // ---- bills ------------------------------------------------------------------
 
-export type BillCategory = 'advance' | 'food' | 'water' | 'other';
+/**
+ * What a bill is for. Advances and food come out of a crew member's pay; the
+ * rest are the site's own costs, and the finance page lists each as an expense
+ * of its own. Diesel, oil, explosives and parts are not bills — they are
+ * counted from what is drawn from the store. `water` is stored as it always
+ * was and now covers the electricity bill too. Mirrors BillCategory in the app
+ * and `validBill()` in firestore.rules.
+ */
+export type BillCategory = 'advance' | 'food' | 'royalty' | 'repair' | 'water' | 'loan' | 'other';
 
-export const BILL_CATEGORIES: readonly BillCategory[] = ['advance', 'food', 'water', 'other'];
+export const BILL_CATEGORIES: readonly BillCategory[] = ['advance', 'food', 'royalty', 'repair', 'water', 'loan', 'other'];
 
 export const BILL: Record<
   BillCategory,
@@ -974,7 +982,10 @@ export const BILL: Record<
 > = {
   advance: { label: 'ඇඩ්වාන්ස්', english: 'Advance', deduction: true },
   food: { label: 'කෑම', english: 'Food', deduction: true },
-  water: { label: 'වතුර බිල', english: 'Water bill', deduction: false },
+  royalty: { label: 'රාජ භාගය', english: 'Royalty', deduction: false },
+  repair: { label: 'අලුත්වැඩියා', english: 'Repairs', deduction: false },
+  water: { label: 'වතුර / විදුලි බිල', english: 'Water / electricity bill', deduction: false },
+  loan: { label: 'ණය වාරික', english: 'Loan instalment', deduction: false },
   other: { label: 'වෙනත්', english: 'Other', deduction: false },
 };
 
@@ -1128,13 +1139,19 @@ export function pricesFrom(data: DocumentData | undefined): SalesPrices {
   };
 }
 
-/** The material a load was made of — a label only, the price is the same. */
-export type SaleMaterial = 'sakka' | 'six_nine' | 'boldas' | 'kory_dust';
+/**
+ * The material a load was made of — a label only, the price is the same.
+ * 6/9, බෝල්දාස් and C1 are the main materials, which the month's costs go on;
+ * සක්කර and කෝරි ඩස්ට් are side materials that carry only their share of the
+ * diesel — see MAIN_MATERIALS in finance.ts. Mirrors SaleMaterial in the app.
+ */
+export type SaleMaterial = 'sakka' | 'six_nine' | 'boldas' | 'c1' | 'kory_dust';
 
 export const SALE_MATERIAL: Record<SaleMaterial, string> = {
   sakka: 'සක්කර',
   six_nine: '6/9',
   boldas: 'බෝල්දාස්',
+  c1: 'C1',
   kory_dust: 'කෝරි ඩස්ට්',
 };
 

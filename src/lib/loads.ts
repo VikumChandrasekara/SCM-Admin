@@ -9,8 +9,8 @@ import { saleStatus, type Sale, type SaleMaterial } from './model';
  * not left.
  */
 
-/** In the order the sales page lists them. */
-export const LOAD_MATERIALS: readonly SaleMaterial[] = ['six_nine', 'sakka', 'kory_dust', 'boldas'];
+/** In the order the sales page lists them: the main materials, then the side ones. */
+export const LOAD_MATERIALS: readonly SaleMaterial[] = ['six_nine', 'boldas', 'c1', 'sakka', 'kory_dust'];
 
 /** A bill from before materials were recorded has none. */
 export type LoadKind = SaleMaterial | 'unknown';

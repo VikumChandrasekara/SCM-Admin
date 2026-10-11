@@ -578,6 +578,15 @@ describe('bills', () => {
     await assertFails(setDoc(doc(collection(db, 'bills')), bill('admin1')));
   });
 
+  it('accepts every category the finance page lists as an expense', async () => {
+    const db = as('sup1');
+    for (const category of ['advance', 'food', 'royalty', 'repair', 'water', 'loan', 'other']) {
+      await assertSucceeds(setDoc(doc(collection(db, 'bills')), bill('sup1', { category })));
+    }
+    // Diesel and the like are drawn from the store, not billed.
+    await assertFails(setDoc(doc(collection(db, 'bills')), bill('sup1', { category: 'diesel' })));
+  });
+
   it('a supervisor corrects and deletes only their own bills', async () => {
     const db = as('sup1');
     await assertSucceeds(updateDoc(doc(db, 'bills', 'b-sup'), { amount: 600 }));
@@ -1198,6 +1207,8 @@ describe('sales', () => {
     await assertFails(updateDoc(doc(db, 'sales', 'SUMA2345'), correction({ quantity: 0, amount: 0 })));
     await assertFails(updateDoc(doc(db, 'sales', 'SUMA2345'), correction({ quantity: 'two' })));
     await assertFails(updateDoc(doc(db, 'sales', 'SUMA2345'), correction({ material: 'gold' })));
+    // C1 is a material like the others.
+    await assertSucceeds(updateDoc(doc(db, 'sales', 'SUMA2345'), correction({ material: 'c1' })));
     await assertFails(updateDoc(doc(db, 'sales', 'SUMA2345'), correction({ paymentType: 'cheque' })));
     await assertFails(updateDoc(doc(db, 'sales', 'SUMA2345'), correction({ customerName: 7 })));
     // A fractional load, as the tipper takes.
@@ -1615,6 +1626,21 @@ describe('the landowner’s own login', () => {
     await assertFails(month('2026-09-01', '2026-09-30', ['boldas']));
     await assertFails(month('2026-09-01', '2026-09-30', [...landownerMaterials, 'boldas']));
     await assertFails(getDocs(query(collection(as('land1'), 'sales'), where('createdBy', '==', 'sup1'))));
+  });
+
+  it('is shown no C1 bills either: C1 earns him nothing', async () => {
+    await env.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore() as unknown as Firestore;
+      await setDoc(doc(db, 'sales', 'CONE2345'), sale('CONE2345', 'c1', '2026-09-15'));
+    });
+    await assertFails(
+      getDocs(query(collection(as('land1'), 'sales'), where('material', 'in', [...landownerMaterials, 'c1']))),
+    );
+    // What he is shown does not change, whatever C1 was sold.
+    const seen = await assertSucceeds(
+      getDocs(query(collection(as('land1'), 'sales'), where('material', 'in', landownerMaterials))),
+    );
+    expect(seen.docs.map((entry) => entry.id)).not.toContain('CONE2345');
   });
 
   it('cannot open a bill by its code, nor find one by its number', async () => {

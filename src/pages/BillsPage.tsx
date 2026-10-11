@@ -30,7 +30,10 @@ import { BILL, BILL_CATEGORIES, nameOf, type Bill, type BillCategory } from '../
 const categoryTone: Record<BillCategory, 'info' | 'ok' | 'amber' | 'muted'> = {
   advance: 'info',
   food: 'ok',
+  royalty: 'amber',
+  repair: 'info',
   water: 'amber',
+  loan: 'amber',
   other: 'muted',
 };
 
@@ -72,7 +75,7 @@ export function BillsPage() {
     <>
       <PageHeader
         title="බිල්පත්"
-        subtitle="ඇඩ්වාන්ස්, කෑම, වතුර බිල සහ වෙනත් වියදම්. ඇඩ්වාන්ස් සහ කෑම කණ්ඩායම් සාමාජිකයාගේ පඩියෙන් අඩු වේ."
+        subtitle="ඇඩ්වාන්ස්, කෑම, රාජ භාගය, අලුත්වැඩියා, වතුර / විදුලි බිල, ණය වාරික සහ වෙනත් වියදම්. ඇඩ්වාන්ස් සහ කෑම කණ්ඩායම් සාමාජිකයාගේ පඩියෙන් අඩු වේ."
         actions={
           <>
             <div className="flex items-center gap-1 rounded-card bg-well p-1">
@@ -93,7 +96,7 @@ export function BillsPage() {
         }
       />
 
-      <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-5">
+      <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
         {BILL_CATEGORIES.map((value) => (
           <button
             key={value}

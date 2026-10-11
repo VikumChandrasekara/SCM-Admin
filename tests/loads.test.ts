@@ -44,6 +44,7 @@ describe('the loads that have gone', () => {
     sale('SIX22345', { ...tractor, material: 'six_nine' }),
     sale('DUST2345', { material: 'kory_dust', quantity: 4, amount: 26000 }),
     sale('BOLD2345', { material: 'boldas' }),
+    sale('CONE2345', { material: 'c1' }),
     // An old bill with no material still went.
     sale('OLDX2345', { material: null }),
   ];
@@ -56,20 +57,22 @@ describe('the loads that have gone', () => {
     expect(row('six_nine')).toMatchObject({ bills: 2, tipperLoads: 1, cubes: 3, tractorLoads: 2, loads: 3 });
     expect(row('kory_dust')).toMatchObject({ bills: 1, tipperLoads: 1, cubes: 4, loads: 1 });
     expect(row('boldas')).toMatchObject({ bills: 1, loads: 1 });
+    expect(row('c1')).toMatchObject({ bills: 1, loads: 1 });
     expect(row('unknown')).toMatchObject({ bills: 1, loads: 1 });
-    expect(total).toMatchObject({ bills: 8, loads: 4 + 3 + 1 + 1 + 1, tractorLoads: 4 });
+    expect(total).toMatchObject({ bills: 9, loads: 4 + 3 + 1 + 1 + 1 + 1, tractorLoads: 4 });
   });
 
-  it('lists every material in order, and bills with none only when there are some', () => {
+  it('lists the main materials, then the side ones, and bills with none only when there are some', () => {
     expect(loadAnalysis(sales, now).rows.map((row) => row.kind)).toEqual([
       'six_nine',
+      'boldas',
+      'c1',
       'sakka',
       'kory_dust',
-      'boldas',
       'unknown',
     ]);
     const without = loadAnalysis([sale('SAK12345')], now);
-    expect(without.rows.map((row) => row.kind)).toEqual(['six_nine', 'sakka', 'kory_dust', 'boldas']);
+    expect(without.rows.map((row) => row.kind)).toEqual(['six_nine', 'boldas', 'c1', 'sakka', 'kory_dust']);
     expect(without.rows[0]).toMatchObject({ bills: 0, loads: 0 });
   });
 

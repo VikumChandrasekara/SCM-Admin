@@ -130,23 +130,44 @@ or cancelled, with who wrote it, who verified it and when.
 
 ### The finance page
 
-The admin's **මූල්‍ය** page shows a month's money.
+The admin's **මූල්‍ය** page shows a month's money: income, expenses, and what
+each material cost.
 
-- **Income** is verified sales, split into cubes and tractor loads. Pending
-  and cancelled sales are listed, but not counted.
-- **Expenses** count each rupee once:
-  - Crew pay in full: worked days × daily wage, plus the bonus or අඩි pay.
-    Advances and food charged to a crew member are part of that pay, paid
-    early, so they appear in the pay table rather than again as bills.
-  - Every other bill: water, other, and food charged to nobody.
-  - Store purchases: new items and restocks, at the price they were bought
-    at. Store movements now record the unit price. Older ones are valued at
-    the item's current price and marked ≈.
-- **Machine use** is the fuel, oil, explosives and parts drawn from the
-  store, by machine and by item. It is shown beside the total rather than
-  added to it, because it was already counted when it was bought.
-- **Profit** is income minus expenses. The ledger lists every entry behind
-  the totals.
+- **Income** is verified sales, by material — 6/9, බෝල්දාස්, C1, සක්කර and
+  කෝරි ඩස්ට් — and by tipper or tractor. Pending and cancelled sales are
+  listed, but not counted.
+- **Expenses** count each rupee once, each on a line of its own (tap a line
+  to see the entries behind it):
+
+  | Expense | Where it comes from |
+  |---|---|
+  | ඩීසල් | the store, as it is drawn for a පිරවීම |
+  | ඔයිල් සහ කූලන්ට් | the store, the other fluids a පිරවීම draws |
+  | කරල් | the store, වෙඩි කරල් drawn for a blast |
+  | වෙඩි බඩු — අනෙක් | the store, the rest of a blast's items |
+  | කොටස් සහ සර්විස් | the store, service parts and filters |
+  | පඩි | crew pay in full, less the food charged to it |
+  | කෑම | food bills, charged to the crew's pay or not |
+  | යන්ත්‍රයට පැයකට | the excavator's hours × the hourly figure |
+  | බදු හිමියා | the landowner's per-load figure on 6/9, සක්කර, කෝරි ඩස්ට් |
+  | රාජ භාගය, අලුත්වැඩියා, වතුර / විදුලි බිල, ණය වාරික, වෙනත් | bills of that category |
+  | වෙනත් ගබඩා භාවිතය | store items with no machine or link |
+
+  Crew pay counts in full: advances and food charged to a crew member are
+  part of it, paid early, so they appear in the pay table rather than again
+  as bills. Stock counts when it is **used**, at what it cost then — what was
+  bought is reported beside, not in the total. Store movements record the
+  unit price; older ones are valued at the item's current price and marked ≈.
+- **What each material cost** is worked out by load (a tipper bill is one
+  trip, a tractor bill its loads). The **diesel** is shared by every load
+  that left. **Everything else** is shared by the loads of the main
+  materials — 6/9, බෝල්දාස්, C1 — alone, so සක්කර and කෝරි ඩස්ට් carry
+  diesel only. Each material shows its profit, and the cost and profit of one
+  load; the cost of a load is the least it must sell for. Costs that no
+  load could carry (no main material left that month) are shown as not shared.
+  C1, like බෝල්දාස්, earns the landowner nothing.
+- **Profit** is income minus expenses, and the materials' profits add up to
+  it. The ledger lists every entry behind the totals, with its category.
 
 ## Built for weak connections
 

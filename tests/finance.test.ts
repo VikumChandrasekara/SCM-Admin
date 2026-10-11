@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
 import type { CrewMonth } from '../src/data/finance';
-import { areaOfMachine, financeFor, stockGroupOf } from '../src/lib/finance';
+import { financeFor, stockGroupOf } from '../src/lib/finance';
 import type { LandownerRate } from '../src/lib/landowner';
-import { billFrom, movementFrom, type MachineType, type Movement, type Person, type Sale } from '../src/lib/model';
+import { billFrom, movementFrom, type Movement, type Person, type Sale } from '../src/lib/model';
 
 const now = new Date('2026-10-06T12:00:00Z').getTime();
 
@@ -137,11 +137,6 @@ const ratesSetOn1st: LandownerRate[] = [
   },
 ];
 
-const kinds = new Map<string, MachineType>([
-  ['m-op1', 'excavator'],
-  ['m-dr1', 'compressor'],
-]);
-
 /** A store movement as the panel reads it. */
 const movement = (id: string, data: object): Movement =>
   movementFrom(id, { createdAt: '2026-10-03T08:00:00.000Z', unmatched: [], ...data });
@@ -177,6 +172,12 @@ const monthOf = (options: Partial<Parameters<typeof financeFor>[0]> = {}) =>
     ...options,
   });
 
+const sum = (values: number[]) => values.reduce((total, value) => total + value, 0);
+
+/** What each expense came to, by category. */
+const byCategory = (month: ReturnType<typeof monthOf>) =>
+  Object.fromEntries(month.expenseRows.map((row) => [row.key, row.value]));
+
 describe('income by material', () => {
   const sales = [
     sale('SAK12345', {}),
@@ -188,28 +189,45 @@ describe('income by material', () => {
     sale('LAPS2345', { status: 'pending', verifiedBy: null, verifiedAt: null }),
   ];
 
-  it('adds each material up, with what the landowner is paid on it taken off', () => {
-    const { byMaterial } = monthOf({ sales, landownerRates: ratesSetOn1st });
-    // Biggest first; a material tied keeps the order its bills came in.
-    expect(byMaterial.map((row) => row.material)).toEqual(['sakka', 'six_nine', 'boldas', null]);
+  it('adds each material up — the main ones first, then the side ones', () => {
+    const { byMaterial } = monthOf({ sales });
+    expect(byMaterial.map((row) => row.material)).toEqual(['six_nine', 'boldas', 'sakka', null]);
 
-    // A tipper bill is one trip, a tractor bill its loads: 1 + 2 loads at 400.
-    expect(byMaterial[0]).toEqual({ material: 'sakka', count: 2, loads: 3, amount: 32500, landownerShare: 1200, gross: 31300 });
-    expect(byMaterial[1]).toMatchObject({ material: 'six_nine', amount: 6500, landownerShare: 500, gross: 6000 });
-    // බෝල්දාස් earns the landowner nothing, and neither does a bill with no material recorded.
-    expect(byMaterial[2]).toMatchObject({ material: 'boldas', landownerShare: 0, gross: 6500 });
-    expect(byMaterial[3]).toMatchObject({ material: null, landownerShare: 0, gross: 1000 });
+    // A tipper bill is one trip, a tractor bill its loads: 1 + 2 loads.
+    expect(byMaterial[2]).toMatchObject({ material: 'sakka', count: 2, loads: 3, amount: 32500 });
+    expect(byMaterial[0]).toMatchObject({ material: 'six_nine', count: 1, loads: 1, amount: 6500 });
+    expect(byMaterial[1]).toMatchObject({ material: 'boldas', amount: 6500 });
+    expect(byMaterial[3]).toMatchObject({ material: null, amount: 1000 });
   });
 
-  it('adds up to the income and to what the landowner is paid', () => {
-    const month = monthOf({ sales, landownerRates: ratesSetOn1st });
-    expect(month.byMaterial.reduce((total, row) => total + row.amount, 0)).toBe(month.income);
-    expect(month.byMaterial.reduce((total, row) => total + row.landownerShare, 0)).toBe(month.landownerTotal);
+  it('adds up to the income', () => {
+    const month = monthOf({ sales });
+    expect(sum(month.byMaterial.map((row) => row.amount))).toBe(month.income);
     expect(month.income).toBe(46500);
   });
 
   it('has nothing to show for a month with no verified sales', () => {
     expect(monthOf({ sales: [sales[5]] }).byMaterial).toEqual([]);
+  });
+
+  it('counts C1 as a material of its own, which earns the landowner nothing', () => {
+    const month = monthOf({
+      sales: [sale('CONE2345', { material: 'c1', quantity: 2, amount: 13000 })],
+      landownerRates: ratesSetOn1st,
+    });
+    expect(month.byMaterial).toHaveLength(1);
+    expect(month.byMaterial[0]).toMatchObject({ material: 'c1', loads: 1, amount: 13000 });
+    expect(month.landownerTotal).toBe(0);
+  });
+
+  it('sends the landowner his share of 6/9, සක්කර and කෝරි ඩස්ට් as an expense of his own', () => {
+    const month = monthOf({ sales, landownerRates: ratesSetOn1st });
+    // 3 loads of සක්කර at 400, 1 load of 6/9 at 500; බෝල්දාස් and a bill with no material earn nothing.
+    expect(month.landownerTotal).toBe(1700);
+    expect(month.landownerLoads).toBe(4);
+    expect(byCategory(month)).toEqual({ landowner: 1700 });
+    // One line for each bill that sent him a share: two සක්කර bills and the 6/9.
+    expect(month.ledger.filter((entry) => entry.category === 'landowner')).toHaveLength(3);
   });
 });
 
@@ -245,30 +263,41 @@ describe('what the work cost', () => {
     billFrom('f1', { category: 'food', amount: 500, date: '2026-10-04', operatorId: 'op1', operatorName: 'op1' }),
   ];
 
-  const month = monthOf({ crewMonths, movements, bills, machineKinds: kinds });
-  const area = (name: 'loading' | 'drilling' | 'site') => month.areas.find((entry) => entry.area === name)!;
-  const lines = (name: 'loading' | 'drilling' | 'site') =>
-    Object.fromEntries(area(name).lines.map((line) => [line.key, line.value]));
+  const month = monthOf({ crewMonths, movements, bills });
 
-  it('gives the excavator its crew, its machine charge and what it used', () => {
-    expect(lines('loading')).toEqual({
-      wages: 10000,
+  it('lists each cost on a line of its own, in the order the page shows them', () => {
+    expect(byCategory(month)).toEqual({
+      // 40 L and 30 L at 360.
+      diesel: 70 * 360,
+      oil: 5 * 1000,
+      shells: 20 * 500,
+      parts: 2500,
+      // Both crews' pay, less the food charged to it.
+      wages: 14000 - 500,
+      food: 500,
       machine: 60000,
-      'stock-fuel': 40 * 360 + 5 * 1000,
-      'stock-parts': 2500,
+      utilities: 1500,
+      storeOther: 2 * 1200,
     });
-    expect(area('loading').total).toBe(10000 + 60000 + 19400 + 2500);
+    expect(month.expenseRows.map((row) => row.key)).toEqual([
+      'diesel',
+      'oil',
+      'shells',
+      'parts',
+      'wages',
+      'food',
+      'machine',
+      'utilities',
+      'storeOther',
+    ]);
   });
 
-  it('gives the compressor its crew, its explosives and what it used', () => {
-    expect(lines('drilling')).toEqual({ wages: 4000, 'stock-fuel': 10800, 'stock-explosives': 10000 });
-    expect(area('drilling').total).toBe(24800);
-  });
-
-  it('gives the site the bills nobody’s pay holds, and what was drawn with no machine', () => {
-    expect(lines('site')).toEqual({ 'stock-other': 2400, 'bill-water': 1500 });
-    // The food is in the operator's pay, so it is not counted twice.
-    expect(area('site').total).toBe(3900);
+  it('tells the food apart from the pay it was charged to, and counts it once', () => {
+    const rows = byCategory(month);
+    expect(rows.food).toBe(500);
+    expect(rows.wages + rows.food).toBe(month.salaryTotal);
+    // Only the diesel is shared by every load.
+    expect(month.expenseRows.filter((row) => row.shared).map((row) => row.key)).toEqual(['diesel']);
   });
 
   it('counts fuel and parts as they are used, and reports what was bought beside', () => {
@@ -278,9 +307,13 @@ describe('what the work cost', () => {
     expect(month.profit).toBe(-month.expenses);
   });
 
-  it('adds up: the work’s costs and the landowner’s share are the expenses', () => {
-    const byWork = month.areas.reduce((total, entry) => total + entry.total, 0);
-    expect(byWork + month.landownerTotal).toBe(month.expenses);
+  it('adds up: the lines are the expenses, and each line is its own ledger entries', () => {
+    expect(sum(month.expenseRows.map((row) => row.value))).toBe(month.expenses);
+    expect(sum(month.ledger.map((entry) => entry.expense))).toBeCloseTo(month.expenses);
+    for (const row of month.expenseRows) {
+      const entries = month.ledger.filter((entry) => entry.category === row.key);
+      expect(sum(entries.map((entry) => entry.expense)), row.key).toBeCloseTo(row.value);
+    }
 
     const withSales = monthOf({
       sales: [sale('SAK12345', {})],
@@ -288,48 +321,49 @@ describe('what the work cost', () => {
       crewMonths,
       movements,
       bills,
-      machineKinds: kinds,
     });
-    expect(withSales.areas.reduce((total, entry) => total + entry.total, 0) + withSales.landownerTotal).toBe(
-      withSales.expenses,
-    );
     expect(withSales.landownerTotal).toBe(400);
+    expect(sum(withSales.expenseRows.map((row) => row.value))).toBe(withSales.expenses);
+    expect(withSales.expenses).toBe(month.expenses + 400);
   });
 
-  it('lists each time the store was drawn from once, not each item', () => {
+  it('lists each kind of thing drawn from the store on a line of its own each time', () => {
     const usage = month.ledger.filter((entry) => entry.kind === 'usage');
-    expect(usage).toHaveLength(5);
+    // The first fill drew diesel and oil, so it is two lines; the rest are one each.
+    expect(usage).toHaveLength(6);
     expect(usage.reduce((total, entry) => total + entry.expense, 0)).toBe(month.usageTotal);
     // The restock is not an expense, so it is not a ledger line either.
     expect(month.ledger.filter((entry) => entry.expense === 3600)).toEqual([]);
   });
 
-  it('gives a machine of no known kind, and no machine at all, to the site', () => {
+  it('counts a machine nobody knows, and no machine at all, all the same', () => {
     const stray = monthOf({
-      movements: [drawn('u6', 'mystery', 'fill1', [['fill-diesel', 'ඩීසල්', 'L', 10, 360]])],
-      machineKinds: kinds,
+      movements: [
+        drawn('u6', 'mystery', 'fill1', [['fill-diesel', 'ඩීසල්', 'L', 10, 360]]),
+        drawn('u7', null, null, [['fill-diesel', 'ඩීසල්', 'L', 5, 360]]),
+      ],
     });
-    expect(stray.areas.find((entry) => entry.area === 'site')!.lines.map((line) => line.key)).toEqual(['stock-fuel']);
-    expect(stray.areas.find((entry) => entry.area === 'loading')!.lines).toEqual([]);
+    expect(byCategory(stray)).toEqual({ diesel: 15 * 360 });
   });
 
   it('says how many uses had no store item to draw from, as they carry no value', () => {
     const partial = monthOf({
       movements: [
-        drawn('u7', 'm-op1', 'fill1', [['fill-diesel', 'ඩීසල්', 'L', 10, 360]], { unmatched: ['fill:coolant', 'fill:hydraulic'] }),
-        drawn('u8', 'm-dr1', 'blast', [['blast-caps', 'කැප්', '', 4, 100]], { unmatched: ['blast:shells'] }),
+        drawn('u8', 'm-op1', 'fill1', [['fill-diesel', 'ඩීසල්', 'L', 10, 360]], { unmatched: ['fill:coolant', 'fill:hydraulic'] }),
+        drawn('u9', 'm-dr1', 'blast', [['blast-caps', 'කැප්', '', 4, 100]], { unmatched: ['blast:shells'] }),
       ],
-      machineKinds: kinds,
     });
     expect(partial.unmatchedUsage).toBe(3);
     expect(partial.usageTotal).toBe(3600 + 400);
+    // The caps are not the shells: they are the other explosives.
+    expect(byCategory(partial)).toEqual({ diesel: 3600, explosives: 400 });
     expect(month.unmatchedUsage).toBe(0);
   });
 
   it('prices a line written without a price at the item’s price today, and says so', () => {
     const old = monthOf({
       movements: [
-        movement('u9', {
+        movement('u10', {
           type: 'usage',
           machineId: 'm-op1',
           source: 'fill1',
@@ -352,29 +386,138 @@ describe('what the work cost', () => {
           updatedAt: null,
         },
       ],
-      machineKinds: kinds,
     });
-    const fuel = old.areas[0].lines.find((line) => line.key === 'stock-fuel')!;
+    const fuel = old.expenseRows.find((row) => row.key === 'diesel')!;
     expect(fuel.value).toBe(4000);
     expect(fuel.detail).toContain('වත්මන් මිලට');
   });
 });
 
+describe('bills as expenses', () => {
+  it('lists each kind of bill as the expense it is', () => {
+    const month = monthOf({
+      bills: [
+        billFrom('r1', { category: 'royalty', amount: 30000, date: '2026-10-05' }),
+        billFrom('p1', { category: 'repair', amount: 8000, date: '2026-10-06' }),
+        billFrom('l1', { category: 'loan', amount: 25000, date: '2026-10-07' }),
+        billFrom('w1', { category: 'water', amount: 1500, date: '2026-10-04' }),
+        billFrom('o1', { category: 'other', amount: 700, date: '2026-10-04' }),
+        // Food nobody's pay holds is still food.
+        billFrom('f2', { category: 'food', amount: 900, date: '2026-10-04' }),
+        // An advance to someone not on this month's pay is still pay.
+        billFrom('a1', { category: 'advance', amount: 2000, date: '2026-10-04', operatorId: 'gone', operatorName: 'gone' }),
+      ],
+    });
+    expect(byCategory(month)).toEqual({
+      royalty: 30000,
+      repair: 8000,
+      loan: 25000,
+      utilities: 1500,
+      other: 700,
+      food: 900,
+      wages: 2000,
+    });
+    expect(month.ledger.filter((entry) => entry.category === 'royalty')).toHaveLength(1);
+  });
+
+  it('knows every category the app and the rules write', () => {
+    for (const category of ['advance', 'food', 'royalty', 'repair', 'water', 'loan', 'other']) {
+      expect(billFrom('x', { category, amount: 1, date: '2026-10-01' }).category).toBe(category);
+    }
+    // Anything else is read as the rest.
+    expect(billFrom('x', { category: 'nonsense', amount: 1, date: '2026-10-01' }).category).toBe('other');
+  });
+});
+
+describe('what each material cost', () => {
+  // 8 loads: 6/9 one trip, බෝල්දාස් two tractor loads, C1 one trip, සක්කර one
+  // trip, කෝරි ඩස්ට් three tractor loads. The main materials have 4 of them.
+  const sales = [
+    sale('SIX12345', { material: 'six_nine' }),
+    sale('BOLD2345', { material: 'boldas', type: 'tractor', quantity: 2, amount: 13000 }),
+    sale('CONE2345', { material: 'c1' }),
+    sale('SAK12345', { material: 'sakka' }),
+    sale('DUST2345', { material: 'kory_dust', type: 'tractor', quantity: 3, amount: 19500 }),
+  ];
+  // 100 L of diesel at 360, and 48,000 of other costs.
+  const movements = [drawn('d1', 'm-op1', 'fill1', [['fill-diesel', 'ඩීසල්', 'L', 100, 360]])];
+  const bills = [
+    billFrom('r1', { category: 'royalty', amount: 40000, date: '2026-10-05' }),
+    billFrom('p1', { category: 'repair', amount: 8000, date: '2026-10-06' }),
+  ];
+  const month = monthOf({ sales, movements, bills });
+  const row = (material: string | null) => month.byMaterial.find((entry) => entry.material === material)!;
+
+  it('shares the diesel over every load, and everything else over the main materials’ loads alone', () => {
+    expect(month.allocation).toMatchObject({
+      sharedTotal: 36000,
+      otherTotal: 48000,
+      allLoads: 8,
+      mainLoads: 4,
+      sharedPerLoad: 4500,
+      otherPerMainLoad: 12000,
+      unallocated: 0,
+    });
+    expect(row('six_nine')).toMatchObject({ loads: 1, dieselShare: 4500, otherShare: 12000, cost: 16500, profit: 3000 });
+    expect(row('boldas')).toMatchObject({ loads: 2, dieselShare: 9000, otherShare: 24000, cost: 33000, profit: 13000 - 33000 });
+    expect(row('c1')).toMatchObject({ loads: 1, dieselShare: 4500, otherShare: 12000, cost: 16500, profit: 3000 });
+  });
+
+  it('gives සක්කර and කෝරි ඩස්ට් the diesel only', () => {
+    expect(row('sakka')).toMatchObject({ loads: 1, dieselShare: 4500, otherShare: 0, cost: 4500, profit: 15000 });
+    expect(row('kory_dust')).toMatchObject({ loads: 3, dieselShare: 13500, otherShare: 0, cost: 13500, profit: 6000 });
+  });
+
+  it('works out a load’s income, cost and profit — the cost is the least it must sell for', () => {
+    expect(row('six_nine')).toMatchObject({ incomePerLoad: 19500, costPerLoad: 16500, profitPerLoad: 3000 });
+    expect(row('boldas')).toMatchObject({ incomePerLoad: 6500, costPerLoad: 16500, profitPerLoad: -10000 });
+    expect(row('kory_dust')).toMatchObject({ costPerLoad: 4500, profitPerLoad: 2000 });
+  });
+
+  it('lists the main materials, then the side ones', () => {
+    expect(month.byMaterial.map((entry) => entry.material)).toEqual(['six_nine', 'boldas', 'c1', 'sakka', 'kory_dust']);
+  });
+
+  it('adds up: what the materials made is the month’s profit', () => {
+    expect(sum(month.byMaterial.map((entry) => entry.cost))).toBeCloseTo(month.expenses);
+    expect(sum(month.byMaterial.map((entry) => entry.profit))).toBeCloseTo(month.profit);
+    expect(month.profit).toBe(91000 - 84000);
+  });
+
+  it('says what could not be shared when no load of the right kind left', () => {
+    const sideOnly = monthOf({ sales: [sale('SAK12345', { material: 'sakka' })], bills, movements });
+    expect(sideOnly.allocation.mainLoads).toBe(0);
+    expect(sideOnly.allocation.otherPerMainLoad).toBeNull();
+    // The repairs and the royalty have no main load to go on; the diesel goes on සක්කර.
+    expect(sideOnly.allocation.unallocated).toBe(48000);
+    expect(sideOnly.byMaterial[0]).toMatchObject({ dieselShare: 36000, otherShare: 0 });
+    expect(sum(sideOnly.byMaterial.map((entry) => entry.profit)) - sideOnly.allocation.unallocated).toBeCloseTo(
+      sideOnly.profit,
+    );
+
+    const nothingSold = monthOf({ bills, movements });
+    expect(nothingSold.byMaterial).toEqual([]);
+    expect(nothingSold.allocation.unallocated).toBe(nothingSold.expenses);
+  });
+
+  it('gives a bill with no material its load of the diesel and none of the rest', () => {
+    const old = monthOf({ sales: [...sales, sale('OLD12345', { material: null })], movements, bills });
+    expect(old.allocation.allLoads).toBe(9);
+    expect(old.allocation.mainLoads).toBe(4);
+    expect(old.byMaterial.at(-1)).toMatchObject({ material: null, dieselShare: 4000, otherShare: 0 });
+  });
+});
+
 describe('grouping what the store gives out', () => {
   it('sorts a linked item by what uses it up, and still can once the item is gone', () => {
-    expect(stockGroupOf('fill-diesel', 'fill:diesel')).toBe('fuel');
-    expect(stockGroupOf('fill-coolant', null)).toBe('fuel');
+    expect(stockGroupOf('fill-diesel', 'fill:diesel')).toBe('diesel');
+    expect(stockGroupOf('fill-engineOil', 'fill:engineOil')).toBe('oil');
+    expect(stockGroupOf('fill-coolant', null)).toBe('oil');
+    expect(stockGroupOf('blast-shells', null)).toBe('shells');
     expect(stockGroupOf('blast-caps', undefined)).toBe('explosives');
     expect(stockGroupOf('service-dieselFilter', null)).toBe('parts');
     // An item the store keeps for itself, with no link, is just stock.
-    expect(stockGroupOf('Zx81AbCd', null)).toBe('other');
+    expect(stockGroupOf('Zx81AbCd', null)).toBe('storeOther');
     expect(stockGroupOf('Zx81AbCd', 'service:engineOil')).toBe('parts');
-  });
-
-  it('puts a machine’s costs with the work its kind does', () => {
-    expect(areaOfMachine('m-op1', kinds)).toBe('loading');
-    expect(areaOfMachine('m-dr1', kinds)).toBe('drilling');
-    expect(areaOfMachine('mystery', kinds)).toBe('site');
-    expect(areaOfMachine(null, kinds)).toBe('site');
   });
 });
