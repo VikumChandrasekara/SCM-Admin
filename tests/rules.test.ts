@@ -415,6 +415,32 @@ describe('machines and days', () => {
   });
 });
 
+describe('the royalty settings', () => {
+  const rates = { cubesPerKg: 3.5, cubeValue: 700, percent: 18 };
+  const stamped = { updatedAt: serverTimestamp(), updatedBy: 'admin1' };
+
+  it('are set and read by the admin alone', async () => {
+    await assertSucceeds(setDoc(doc(as('admin1'), 'settings', 'royalty'), { ...rates, ...stamped }));
+    await assertSucceeds(getDoc(doc(as('admin1'), 'settings', 'royalty')));
+
+    // Supervisors and crews never see the finance page, so they have no business with these.
+    await assertFails(getDoc(doc(as('sup1'), 'settings', 'royalty')));
+    await assertFails(getDoc(doc(as('op1'), 'settings', 'royalty')));
+    await assertFails(setDoc(doc(as('sup1'), 'settings', 'royalty'), rates));
+    await assertFails(setDoc(doc(as('op1'), 'settings', 'royalty'), rates));
+  });
+
+  it('want all three figures as non-negative numbers, and nothing else', async () => {
+    const db = as('admin1');
+    await assertSucceeds(setDoc(doc(db, 'settings', 'royalty'), { ...rates, percent: 0 }));
+    await assertFails(setDoc(doc(db, 'settings', 'royalty'), { ...rates, percent: -1 }));
+    await assertFails(setDoc(doc(db, 'settings', 'royalty'), { ...rates, cubeValue: '700' }));
+    await assertFails(setDoc(doc(db, 'settings', 'royalty'), { cubesPerKg: 3.5, cubeValue: 700 }));
+    await assertFails(setDoc(doc(db, 'settings', 'royalty'), { ...rates, cubesPerKg: -3.5 }));
+    await assertFails(setDoc(doc(db, 'settings', 'royalty'), { ...rates, extra: 1 }));
+  });
+});
+
 describe('store', () => {
   it('crews read a linked item by id but cannot list the store', async () => {
     await assertSucceeds(getDoc(doc(as('op1'), 'store', 'fill-diesel')));
@@ -470,6 +496,22 @@ describe('store', () => {
     await assertSucceeds(setDoc(doc(db, 'store', 'service-dieselFilter'), item({ link: 'service:dieselFilter' })));
     await assertFails(setDoc(doc(db, 'store', 'diesel-filter'), item({ link: 'service:dieselFilter' })));
     await assertFails(setDoc(doc(db, 'store', 'other-thing'), item({ link: 'other:thing' })));
+  });
+
+  it('an item counted in pieces but delivered by weight carries how many make a kilo — a positive number', async () => {
+    const db = as('admin1');
+    await assertSucceeds(
+      setDoc(doc(db, 'store', 'blast-shells'), item({ unit: 'ගණන', link: 'blast:shells', piecesPerKg: 8 })),
+    );
+    await assertSucceeds(setDoc(doc(db, 'store', 'blast-caps'), item({ link: 'blast:caps', piecesPerKg: null })));
+    await assertFails(setDoc(doc(db, 'store', 'blast-ammonia'), item({ link: 'blast:ammonia', piecesPerKg: 0 })));
+    await assertFails(setDoc(doc(db, 'store', 'blast-blastingWire'), item({ link: 'blast:blastingWire', piecesPerKg: -2 })));
+    await assertFails(setDoc(doc(db, 'store', 'blast-yaramila'), item({ link: 'blast:yaramila', piecesPerKg: '8' })));
+
+    // Supervisors set it too; an item without it stays valid.
+    await assertSucceeds(setDoc(doc(as('sup1'), 'store', 'grease'), item({ piecesPerKg: 4 })));
+    await assertFails(updateDoc(doc(as('sup1'), 'store', 'grease'), { piecesPerKg: 0 }));
+    await assertSucceeds(updateDoc(doc(as('sup1'), 'store', 'grease'), { piecesPerKg: 6 }));
   });
 
   it('staff take the fitted part off the shelf with the service reset', async () => {

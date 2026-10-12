@@ -1,14 +1,16 @@
 import type { CrewMonth } from '../data/finance';
-import { dateKey, monthBounds, quantity } from './format';
+import { dateKey, money, monthBounds, quantity } from './format';
 import { landownerChargeOf, paysLandowner, saleLoads, type LandownerRate } from './landowner';
 import {
   BILL,
+  DEFAULT_SHELLS_PER_KG,
   SALE_MATERIAL,
   SALE_TYPE,
   saleNumber,
   nameOf,
   awaitsPrepaidLoad,
   isSaleIncome,
+  piecesPerKgOf,
   saleStatus,
   sourceLabel,
   type Bill,
@@ -23,6 +25,7 @@ import {
   type StoreItem,
 } from './model';
 import { payFor, type PayFigures } from './pay';
+import { DEFAULT_ROYALTY_RATES, monthRoyaltyOf, type MonthRoyalty, type RoyaltyRates } from './royalty';
 
 /**
  * A month's money, as the admin's finance page lays it out.
@@ -38,8 +41,11 @@ import { payFor, type PayFigures } from './pay';
  *   - crew pay (පඩි) and the food (කෑම) charged to it, which are told apart;
  *   - what the machine is charged for each hour it worked;
  *   - the landowner (බදු හිමියා), for each load of 6/9, සක්කර or කෝරි ඩස්ට්;
- *   - the bills: රාජ භාගය, repairs, the water / electricity bill, loan
- *     instalments and the rest.
+ *   - the රාජ භාගය, worked out from the gel and ammonia the drillers signed off
+ *     (see royalty.ts) — the royalty bills entered are what was paid, reported
+ *     beside it rather than counted again;
+ *   - the bills: repairs, the water / electricity bill, loan instalments and
+ *     the rest.
  *
  * Crew pay counts in full — advances and food charged to a crew member are
  * part of it, paid early, so they are not counted again as bills.
@@ -144,7 +150,7 @@ export const EXPENSE_LABEL: Record<ExpenseCategory, { label: string; detail: str
   food: { label: 'කෑම', detail: 'කෑම බිල්පත් — පඩියෙන් අඩු කළ සහ අඩු නොකළ' },
   machine: { label: 'යන්ත්‍රයට පැයකට', detail: 'එක්ස්කවේටර් වැඩ කළ පැය × පැයක ගාස්තුව' },
   landowner: { label: 'බදු හිමියා', detail: 'ලෝඩ් එකකට ගාස්තුව' },
-  royalty: { label: 'රාජ භාගය', detail: 'බිල්පත් වලින්' },
+  royalty: { label: 'රාජ භාගය', detail: 'ජෙල් සහ ඇමෝනියා භාවිතයෙන් ගණනය කළ' },
   repair: { label: 'අලුත්වැඩියා', detail: 'බිල්පත් වලින්' },
   utilities: { label: 'වතුර / විදුලි බිල', detail: 'බිල්පත් වලින්' },
   loan: { label: 'ණය වාරික', detail: 'බිල්පත් වලින්' },
@@ -213,6 +219,15 @@ export interface MaterialRow {
   profitPerLoad: number | null;
 }
 
+/** The month's රාජ භාගය, and the royalty bills entered against it. */
+export interface RoyaltyReport extends MonthRoyalty {
+  /**
+   * Royalty bills entered this month — what was paid. Not an expense of its
+   * own: the royalty above is what the month counts.
+   */
+  paid: number;
+}
+
 /** How the month's expenses were shared out over the loads that left. */
 export interface Allocation {
   /** Expenses shared by every load. */
@@ -229,7 +244,7 @@ export interface Allocation {
   unallocated: number;
 }
 
-export type LedgerKind = 'sale' | 'payment' | 'machine' | 'landowner' | 'bill' | 'usage' | 'salary';
+export type LedgerKind = 'sale' | 'payment' | 'machine' | 'landowner' | 'royalty' | 'bill' | 'usage' | 'salary';
 
 export interface LedgerEntry {
   date: string;
@@ -281,6 +296,7 @@ export interface Finance {
   landownerLoads: number;
   /** What those loads sent to the landowner. */
   landownerTotal: number;
+  royalty: RoyaltyReport;
 
   usageByMachine: StockRow[];
   usageByItem: StockRow[];
@@ -335,6 +351,7 @@ export function financeFor({
   store,
   machineHourly,
   landownerRates = [],
+  royaltyRates = DEFAULT_ROYALTY_RATES,
   now,
   today,
 }: {
@@ -350,6 +367,8 @@ export function financeFor({
   machineHourly: number;
   /** Every setting of the landowner's per-load figure — each sale is worked out at the one in force when it was written. */
   landownerRates?: readonly LandownerRate[];
+  /** What the රාජ භාගය is worked out at — see royalty.ts. */
+  royaltyRates?: RoyaltyRates;
   now: number;
   /** `yyyy-MM-dd` — only feeds payFor's leaveDays, which this report never shows. */
   today: string;
@@ -496,8 +515,30 @@ export function financeFor({
 
   // ---- bills ----
   const paidCrew = new Set(crewMonths.map(({ person }) => person.id));
+  let royaltyPaid = 0;
   for (const bill of bills) {
     const category = EXPENSE_OF_BILL[bill.category];
+    // The royalty is worked out from the explosives used (below), so a bill for
+    // it is what was paid against that — listed, but not counted a second time.
+    if (bill.category === 'royalty') {
+      royaltyPaid += bill.amount;
+      ledger.push({
+        date: bill.date,
+        kind: 'bill',
+        category,
+        description: [
+          BILL.royalty.label,
+          bill.operatorName,
+          bill.note,
+          `ගෙවූ රු. ${money(bill.amount)} — ගණනය කළ රාජ භාගයට ඇතුළත්, නැවත ගණන් නොගනී`,
+        ]
+          .filter(Boolean)
+          .join(' · '),
+        income: 0,
+        expense: 0,
+      });
+      continue;
+    }
     ledger.push({
       date: bill.date,
       kind: 'bill',
@@ -509,6 +550,33 @@ export function financeFor({
     // Charged to someone on this month's pay: counted there, in full.
     const partOfPay = BILL[bill.category].deduction && bill.operatorId != null && paidCrew.has(bill.operatorId);
     if (!partOfPay) spend(category, bill.amount);
+  }
+
+  // ---- the royalty ----
+  // Worked out from what the drillers signed off, not from the store: it is owed
+  // on the rock brought down whether or not a store item was there to draw from.
+  const shellsPerKg = piecesPerKgOf(store.find((item) => item.link === 'blast:shells')) ?? DEFAULT_SHELLS_PER_KG;
+  const royalty = monthRoyaltyOf(crewMonths, shellsPerKg, royaltyRates);
+  spend('royalty', royalty.royalty);
+  if (royalty.days.length > 0) {
+    details.set(
+      'royalty',
+      `ජෙල් ${quantity(royalty.gelKg)} kg + ඇමෝනියා ${quantity(royalty.ammoniaKg)} kg = ${quantity(royalty.kg)} kg ` +
+        `× ${quantity(royaltyRates.cubesPerKg)} × රු. ${money(royaltyRates.cubeValue)} × ${quantity(royaltyRates.percent)}%` +
+        (royaltyPaid > 0 ? ` · ගෙවූ බිල්පත් රු. ${money(royaltyPaid)}` : ''),
+    );
+  }
+  for (const day of royalty.days) {
+    ledger.push({
+      date: day.date,
+      kind: 'royalty',
+      category: 'royalty',
+      description:
+        `${day.machineId} · ජෙල් කරල් ${quantity(day.shells)} (${quantity(day.gelKg)} kg)` +
+        ` + ඇමෝනියා ${quantity(day.ammoniaKg)} kg = ${quantity(day.kg)} kg`,
+      income: 0,
+      expense: day.royalty,
+    });
   }
 
   // ---- the store ----
@@ -666,9 +734,10 @@ export function financeFor({
     payment: 1,
     landowner: 2,
     machine: 3,
-    bill: 4,
-    usage: 5,
-    salary: 6,
+    royalty: 4,
+    bill: 5,
+    usage: 6,
+    salary: 7,
   };
   ledger.sort((a, b) => a.date.localeCompare(b.date) || ledgerOrder[a.kind] - ledgerOrder[b.kind]);
 
@@ -691,6 +760,7 @@ export function financeFor({
     machineTotal,
     landownerLoads,
     landownerTotal,
+    royalty: { ...royalty, paid: royaltyPaid },
     usageByMachine: [...usageByMachine.values()].sort(byValue),
     usageByItem: usageItems,
     usageTotal,

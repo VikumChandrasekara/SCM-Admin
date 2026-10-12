@@ -3,7 +3,8 @@ import { describe, expect, it } from 'vitest';
 import type { CrewMonth } from '../src/data/finance';
 import { financeFor, stockGroupOf } from '../src/lib/finance';
 import type { LandownerRate } from '../src/lib/landowner';
-import { billFrom, movementFrom, type Movement, type Person, type Sale } from '../src/lib/model';
+import { billFrom, dayFrom, movementFrom, type Movement, type Person, type Sale, type StoreItem } from '../src/lib/model';
+import { DEFAULT_ROYALTY_RATES } from '../src/lib/royalty';
 
 const now = new Date('2026-10-06T12:00:00Z').getTime();
 
@@ -379,6 +380,7 @@ describe('what the work cost', () => {
           quantity: 100,
           minQuantity: 10,
           unitPrice: 400,
+          piecesPerKg: null,
           link: 'fill:diesel',
           note: '',
           createdAt: null,
@@ -397,7 +399,6 @@ describe('bills as expenses', () => {
   it('lists each kind of bill as the expense it is', () => {
     const month = monthOf({
       bills: [
-        billFrom('r1', { category: 'royalty', amount: 30000, date: '2026-10-05' }),
         billFrom('p1', { category: 'repair', amount: 8000, date: '2026-10-06' }),
         billFrom('l1', { category: 'loan', amount: 25000, date: '2026-10-07' }),
         billFrom('w1', { category: 'water', amount: 1500, date: '2026-10-04' }),
@@ -409,7 +410,6 @@ describe('bills as expenses', () => {
       ],
     });
     expect(byCategory(month)).toEqual({
-      royalty: 30000,
       repair: 8000,
       loan: 25000,
       utilities: 1500,
@@ -417,7 +417,6 @@ describe('bills as expenses', () => {
       food: 900,
       wages: 2000,
     });
-    expect(month.ledger.filter((entry) => entry.category === 'royalty')).toHaveLength(1);
   });
 
   it('knows every category the app and the rules write', () => {
@@ -442,7 +441,7 @@ describe('what each material cost', () => {
   // 100 L of diesel at 360, and 48,000 of other costs.
   const movements = [drawn('d1', 'm-op1', 'fill1', [['fill-diesel', 'ඩීසල්', 'L', 100, 360]])];
   const bills = [
-    billFrom('r1', { category: 'royalty', amount: 40000, date: '2026-10-05' }),
+    billFrom('l1', { category: 'loan', amount: 40000, date: '2026-10-05' }),
     billFrom('p1', { category: 'repair', amount: 8000, date: '2026-10-06' }),
   ];
   const month = monthOf({ sales, movements, bills });
@@ -488,7 +487,7 @@ describe('what each material cost', () => {
     const sideOnly = monthOf({ sales: [sale('SAK12345', { material: 'sakka' })], bills, movements });
     expect(sideOnly.allocation.mainLoads).toBe(0);
     expect(sideOnly.allocation.otherPerMainLoad).toBeNull();
-    // The repairs and the royalty have no main load to go on; the diesel goes on සක්කර.
+    // The repairs and the loan have no main load to go on; the diesel goes on සක්කර.
     expect(sideOnly.allocation.unallocated).toBe(48000);
     expect(sideOnly.byMaterial[0]).toMatchObject({ dieselShare: 36000, otherShare: 0 });
     expect(sum(sideOnly.byMaterial.map((entry) => entry.profit)) - sideOnly.allocation.unallocated).toBeCloseTo(
@@ -519,5 +518,137 @@ describe('grouping what the store gives out', () => {
     // An item the store keeps for itself, with no link, is just stock.
     expect(stockGroupOf('Zx81AbCd', null)).toBe('storeOther');
     expect(stockGroupOf('Zx81AbCd', 'service:engineOil')).toBe('parts');
+  });
+});
+
+describe('the royalty', () => {
+  const driller = person('dr1', 'compressor');
+  const lockedAt = '2026-10-03T10:00:00.000Z';
+
+  /** A day with a වෙඩි බඩු sheet, OK'd unless said otherwise. */
+  const sheetDay = (date: string, amounts: object, locked: string | null = lockedAt) =>
+    dayFrom(date, { blasting: { amounts, lockedAt: locked } });
+  const withDays = (days: ReturnType<typeof sheetDay>[], who: Person = driller): CrewMonth => ({
+    ...crewMonth(who, 0),
+    days,
+  });
+  const shellsItem = (piecesPerKg: number | null): StoreItem => ({
+    id: 'blast-shells',
+    name: 'වෙඩි කරල්',
+    unit: 'ගණන',
+    quantity: 100,
+    minQuantity: 10,
+    unitPrice: 450,
+    piecesPerKg,
+    link: 'blast:shells',
+    note: '',
+    createdAt: null,
+    countedAt: null,
+    updatedAt: null,
+  });
+
+  // 15 kg of gel is 120 කරල්; with 75 kg of ammonia that is one delivery's worth.
+  const delivery = sheetDay('2026-10-03', { shells: 120, ammonia: 75 });
+
+  it('is (gel kg + ammonia kg) × 3.5 × 700 × 18%', () => {
+    const month = monthOf({ crewMonths: [withDays([delivery])] });
+    expect(month.royalty).toMatchObject({
+      shells: 120,
+      gelKg: 15,
+      ammoniaKg: 75,
+      kg: 90,
+      cubes: 315,
+      worth: 220500,
+      royalty: 39690,
+    });
+    expect(byCategory(month)).toEqual({ royalty: 39690 });
+    expect(month.expenses).toBe(39690);
+  });
+
+  it('starts at 3.5 cubes a kilo, රු. 700 a cube and 18%', () => {
+    expect(DEFAULT_ROYALTY_RATES).toEqual({ cubesPerKg: 3.5, cubeValue: 700, percent: 18 });
+  });
+
+  it('turns කරල් into kilos at the shells item’s own figure, and at 8 to the kilo without one', () => {
+    const crewMonths = [withDays([sheetDay('2026-10-03', { shells: 120 })])];
+    // 120 කරල් at 10 to the kilo is 12 kg of gel.
+    expect(monthOf({ crewMonths, store: [shellsItem(10)] }).royalty.gelKg).toBe(12);
+    // The item has no figure, or there is no item at all: 120 ÷ 8.
+    expect(monthOf({ crewMonths, store: [shellsItem(null)] }).royalty.gelKg).toBe(15);
+    expect(monthOf({ crewMonths }).royalty.gelKg).toBe(15);
+  });
+
+  it('is worked out at the rates staff set', () => {
+    const month = monthOf({
+      crewMonths: [withDays([delivery])],
+      royaltyRates: { cubesPerKg: 4, cubeValue: 1000, percent: 10 },
+    });
+    // 90 kg × 4 × 1000 × 10%
+    expect(month.royalty.royalty).toBe(36000);
+  });
+
+  it('counts the gel and the ammonia only — not the caps, the wire or the rest', () => {
+    const month = monthOf({
+      crewMonths: [withDays([sheetDay('2026-10-03', { caps: 190, blastingWire: 262, yaramila: 40, blastPowder: 10 })])],
+    });
+    expect(month.royalty.royalty).toBe(0);
+    expect(month.royalty.days).toEqual([]);
+    expect(month.expenseRows).toEqual([]);
+  });
+
+  it('counts a sheet once it is OK’d, not while it is still a draft', () => {
+    const month = monthOf({
+      crewMonths: [withDays([delivery, sheetDay('2026-10-04', { shells: 80, ammonia: 50 }, null)])],
+    });
+    expect(month.royalty.days.map((day) => day.date)).toEqual(['2026-10-03']);
+    expect(month.royalty.royalty).toBe(39690);
+  });
+
+  it('counts a machine’s sheet once, however many crew share it', () => {
+    const twin = person('dr2', 'compressor', { machineId: driller.machineId });
+    const month = monthOf({ crewMonths: [withDays([delivery]), withDays([delivery], twin)] });
+    expect(month.royalty.days).toHaveLength(1);
+    expect(month.royalty.royalty).toBe(39690);
+  });
+
+  it('ignores the sheet of anyone who is not a driller', () => {
+    const month = monthOf({ crewMonths: [withDays([delivery], person('op1', 'operator'))] });
+    expect(month.royalty.royalty).toBe(0);
+  });
+
+  it('adds up over the days, and the ledger has a line for each that adds up to it', () => {
+    const month = monthOf({
+      crewMonths: [
+        withDays([delivery, sheetDay('2026-10-10', { shells: 60, ammonia: 30 }), sheetDay('2026-10-12', { ammonia: 10 })]),
+      ],
+    });
+    // (15 + 75) + (7.5 + 30) + 10 = 137.5 kg
+    expect(month.royalty.kg).toBe(137.5);
+    expect(month.royalty.royalty).toBeCloseTo(60637.5);
+    const entries = month.ledger.filter((entry) => entry.kind === 'royalty');
+    expect(entries.map((entry) => entry.date)).toEqual(['2026-10-03', '2026-10-10', '2026-10-12']);
+    expect(sum(entries.map((entry) => entry.expense))).toBeCloseTo(month.royalty.royalty);
+    expect(byCategory(month).royalty).toBeCloseTo(month.royalty.royalty);
+  });
+
+  it('does not count a royalty bill a second time — it is what was paid against the figure', () => {
+    const month = monthOf({
+      crewMonths: [withDays([delivery])],
+      bills: [billFrom('r1', { category: 'royalty', amount: 30000, date: '2026-10-05' })],
+    });
+    expect(byCategory(month)).toEqual({ royalty: 39690 });
+    expect(month.royalty.paid).toBe(30000);
+    // Still listed, but carrying no expense, so the entries behind royalty still add up to it.
+    const entries = month.ledger.filter((entry) => entry.category === 'royalty');
+    expect(entries).toHaveLength(2);
+    expect(sum(entries.map((entry) => entry.expense))).toBe(39690);
+    expect(month.expenseRows.find((row) => row.key === 'royalty')!.detail).toContain('ගෙවූ බිල්පත්');
+  });
+
+  it('shows a royalty bill with nothing yet worked out as paid, and costs nothing', () => {
+    const month = monthOf({ bills: [billFrom('r1', { category: 'royalty', amount: 30000, date: '2026-10-05' })] });
+    expect(month.royalty.paid).toBe(30000);
+    expect(month.royalty.royalty).toBe(0);
+    expect(month.expenses).toBe(0);
   });
 });

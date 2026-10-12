@@ -33,6 +33,8 @@ export interface ItemInput {
   unit: string;
   minQuantity: number;
   unitPrice: number;
+  /** How many make a kilo, for an item delivered by weight but counted in pieces; null for any other. */
+  piecesPerKg: number | null;
   note: string;
 }
 
@@ -55,6 +57,7 @@ export async function createItem(
     quantity: input.quantity,
     minQuantity: input.minQuantity,
     unitPrice: input.unitPrice,
+    piecesPerKg: input.piecesPerKg,
     link: input.link,
     note: input.note.trim(),
     createdAt: serverTimestamp(),
@@ -83,6 +86,9 @@ function itemDiff(before: StoreItem, input: ItemInput): string {
   if (unit !== before.unit) lines.push(`ඒකකය: ${before.unit || '—'} → ${unit || '—'}`);
   if (input.minQuantity !== before.minQuantity) lines.push(`අවම ප්‍රමාණය: ${before.minQuantity} → ${input.minQuantity}`);
   if (input.unitPrice !== before.unitPrice) lines.push(`ඒකක මිල: රු.${before.unitPrice} → රු.${input.unitPrice}`);
+  if (input.piecesPerKg !== before.piecesPerKg) {
+    lines.push(`kg එකක ගණන: ${before.piecesPerKg ?? '—'} → ${input.piecesPerKg ?? '—'}`);
+  }
   return lines.length > 0 ? lines.join(' · ') : 'වෙනසක් නැත';
 }
 
@@ -94,6 +100,7 @@ export async function updateItem(item: StoreItem, input: ItemInput, by: Person):
     unit: input.unit.trim(),
     minQuantity: input.minQuantity,
     unitPrice: input.unitPrice,
+    piecesPerKg: input.piecesPerKg,
     note: input.note.trim(),
     updatedAt: serverTimestamp(),
     updatedBy: by.id,

@@ -2,12 +2,14 @@ import { ChevronDown, ChevronLeft, ChevronRight, RefreshCw, TrendingDown, Trendi
 import { useMemo, useState, type ReactNode } from 'react';
 
 import { DataError } from '../components/DataError';
-import { IconButton, Loading, PageHeader, Panel, SectionLabel, TableFrame, cx, td, th } from '../components/ui';
+import { RoyaltyModal } from '../components/RoyaltyModal';
+import { Button, IconButton, Loading, PageHeader, Panel, SectionLabel, TableFrame, cx, td, th } from '../components/ui';
 import { useMonthBills } from '../data/bills';
 import { useCrewMonths, useMonthMovements } from '../data/finance';
 import { useLandownerRates } from '../data/landowner';
 import { useLiveData } from '../data/LiveData';
 import { usePayments } from '../data/payments';
+import { useRoyaltyRates } from '../data/royalty';
 import { useMonthSales, useNow, useSalesPrices } from '../data/sales';
 import { errorMessage } from '../lib/errors';
 import {
@@ -19,6 +21,7 @@ import {
   type Finance,
   type LedgerKind,
   type MaterialRow,
+  type RoyaltyReport,
   type StockRow,
 } from '../lib/finance';
 import { addMonths, money, monthKey, monthLabel, quantity, rupees } from '../lib/format';
@@ -49,6 +52,7 @@ export function FinancePage() {
   const prices = useSalesPrices();
   const payments = usePayments();
   const landowner = useLandownerRates();
+  const royaltyRates = useRoyaltyRates();
 
   // Last month's gross, from the same days and loads — no bills, as gross never takes them off.
   const previousGross = previousCrew.data
@@ -60,7 +64,14 @@ export function FinancePage() {
 
   const finance = useMemo(
     () =>
-      sales.data && bills.data && movements.data && crewMonths.data && prices.data && payments.data && landowner.data
+      sales.data &&
+      bills.data &&
+      movements.data &&
+      crewMonths.data &&
+      prices.data &&
+      payments.data &&
+      landowner.data &&
+      royaltyRates.data
         ? financeFor({
             month,
             sales: sales.data,
@@ -71,6 +82,7 @@ export function FinancePage() {
             store,
             machineHourly: prices.data.machineHourly,
             landownerRates: landowner.data,
+            royaltyRates: royaltyRates.data,
             now,
             today,
           })
@@ -84,6 +96,7 @@ export function FinancePage() {
       prices.data,
       payments.data,
       landowner.data,
+      royaltyRates.data,
       store,
       now,
       today,
@@ -91,7 +104,7 @@ export function FinancePage() {
   );
 
   const failure =
-    sales.error ?? bills.error ?? movements.error ?? prices.error ?? payments.error ?? landowner.error;
+    sales.error ?? bills.error ?? movements.error ?? prices.error ?? payments.error ?? landowner.error ?? royaltyRates.error;
 
   return (
     <>
@@ -355,6 +368,8 @@ function FinanceReport({ finance, previousGross }: { finance: Finance; previousG
           </div>
         </Panel>
       </section>
+
+      <RoyaltySection royalty={finance.royalty} />
 
       {/* ---- what each material cost ---- */}
       <section className="mb-8">
@@ -634,12 +649,82 @@ function FinanceReport({ finance, previousGross }: { finance: Finance; previousG
   );
 }
 
+/**
+ * රාජ භාගය, with the working: the gel and the ammonia the drillers signed off,
+ * and each step from there to the rupees. The rates are the admin's to change.
+ */
+function RoyaltySection({ royalty }: { royalty: RoyaltyReport }) {
+  const [editing, setEditing] = useState(false);
+  const { rates } = royalty;
+  const steps: { label: string; working: string; value: string; strong?: boolean }[] = [
+    {
+      label: 'ජෙල් කරල්',
+      working: `කරල් ${quantity(royalty.shells)} ÷ ${quantity(royalty.shellsPerKg)} (kg 1කට කරල්)`,
+      value: `${quantity(royalty.gelKg)} kg`,
+    },
+    { label: 'ඇමෝනියා', working: '', value: `${quantity(royalty.ammoniaKg)} kg` },
+    { label: 'ජෙල් + ඇමෝනියා', working: '', value: `${quantity(royalty.kg)} kg` },
+    {
+      label: 'කියුබ්',
+      working: `× ${quantity(rates.cubesPerKg)} (kg එකකට)`,
+      value: quantity(royalty.cubes),
+    },
+    { label: 'වටිනාකම', working: `× රු. ${money(rates.cubeValue)} (කියුබ් එකකට)`, value: rupees(royalty.worth) },
+    { label: 'රාජ භාගය', working: `× ${quantity(rates.percent)}%`, value: rupees(royalty.royalty), strong: true },
+  ];
+
+  return (
+    <section className="mb-8">
+      <SectionLabel
+        trailing={
+          <Button variant="secondary" onClick={() => setEditing(true)}>
+            අනුපාත වෙනස් කරන්න
+          </Button>
+        }
+      >
+        රාජ භාගය — ගණනය
+      </SectionLabel>
+      <Panel className="p-4 sm:p-5">
+        <p className="mb-3 text-xs leading-relaxed text-white/60">
+          (ජෙල් kg + ඇමෝනියා kg) × {quantity(rates.cubesPerKg)} × රු. {money(rates.cubeValue)} × {quantity(rates.percent)}% —
+          කම්පසර් කණ්ඩායම් OK කළ වෙඩි බඩු වාර්තා වලින්. ජෙල් කරල් kg වලට හරවන්නේ ගබඩා අයිතමයේ "kg 1කට කරල් ගණන" අනුවයි.
+        </p>
+        {royalty.days.length === 0 ? (
+          <p className="py-4 text-center text-sm text-white/60">මෙම මාසයේ OK කළ ජෙල් / ඇමෝනියා භාවිතයක් නැත.</p>
+        ) : (
+          <TableFrame>
+            <table className="w-full min-w-[420px] border-collapse text-sm">
+              <tbody>
+                {steps.map((step) => (
+                  <tr key={step.label} className={cx('border-b border-hairline/60 last:border-0', step.strong && 'font-extrabold')}>
+                    <td className={td}>{step.label}</td>
+                    <td className={cx(td, 'text-xs text-white/60')}>{step.working}</td>
+                    <td className={cx(td, 'text-right tabular-nums', step.strong && 'text-amber-hi')}>{step.value}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </TableFrame>
+        )}
+        {royalty.paid > 0 && (
+          <p className="mt-3 text-xs text-white/60">
+            මෙම මාසයේ රාජ භාගය ලෙස ඇතුළත් කළ බිල්පත් රු. {money(royalty.paid)} — ගෙවූ මුදල පෙන්වයි; වියදමට ගණන් ගන්නේ ඉහත ගණනය
+            කළ රාජ භාගයයි.
+          </p>
+        )}
+      </Panel>
+      {editing && <RoyaltyModal rates={rates} onClose={() => setEditing(false)} />}
+    </section>
+  );
+}
+
 /** What the ledger calls an entry that is not an expense of any category. */
 const KIND_LABEL: Record<LedgerKind, string> = {
   sale: 'විකුණුම',
   payment: 'ණය ගෙවීම',
   machine: 'යන්ත්‍රයට',
   landowner: 'බදු හිමියාට',
+  royalty: 'රාජ භාගය',
   bill: 'බිල්පත',
   usage: 'ගබඩා භාවිතය',
   salary: 'වැටුප් ශේෂය',

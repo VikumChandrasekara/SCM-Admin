@@ -150,7 +150,8 @@ each material cost.
   | කෑම | food bills, charged to the crew's pay or not |
   | යන්ත්‍රයට පැයකට | the excavator's hours × the hourly figure |
   | බදු හිමියා | the landowner's per-load figure on 6/9, සක්කර, කෝරි ඩස්ට් |
-  | රාජ භාගය, අලුත්වැඩියා, වතුර / විදුලි බිල, ණය වාරික, වෙනත් | bills of that category |
+  | රාජ භාගය | worked out from the gel and ammonia the drillers signed off (below) |
+  | අලුත්වැඩියා, වතුර / විදුලි බිල, ණය වාරික, වෙනත් | bills of that category |
   | වෙනත් ගබඩා භාවිතය | store items with no machine or link |
 
   Crew pay counts in full: advances and food charged to a crew member are
@@ -158,6 +159,29 @@ each material cost.
   as bills. Stock counts when it is **used**, at what it cost then — what was
   bought is reported beside, not in the total. Store movements record the
   unit price; older ones are valued at the item's current price and marked ≈.
+- **රාජ භාගය (royalty)** is worked out, not typed in:
+
+  ```
+  ( ජෙල් kg + ඇමෝනියා kg ) × 3.5 × රු. 700 × 18%
+  ```
+
+  from every වෙඩි බඩු sheet the drillers have OK'd that month — one delivery of
+  15 kg gel and 75 kg ammonia comes to (15 + 75) × 3.5 × 700 × 18% = රු. 39,690.
+  The 3.5 (cubes a kilo brings down), the 700 (what a cube is worth) and the 18
+  are the admin's to change from the **අනුපාත වෙනස් කරන්න** button on the page
+  (`settings/royalty`). The page shows the working step by step, and the
+  ledger a line for each day. Royalty **bills** are what was paid: they are
+  listed and totalled beside the figure, but not counted a second time.
+
+  The crews record gel as a count of කරල්, so it is turned into kilos at the
+  store item's **kg 1කට කරල් ගණන** (`piecesPerKg` on the item — 8 until set:
+  15 kg = 120 කරල්).
+- **Gel by the kilo.** The gel store item (වෙඩි කරල්) is counted in කරල්,
+  because that is how the crews use it and how the store is drawn down, but it
+  is delivered by weight. Restocking it — in the panel or in the app — offers
+  **kg වලින්**: enter the 15 kg that arrived and 120 කරල් are added, with
+  `15 kg × 8 = 120` kept in the movement's note. The item must be counted in
+  කරල් (unit `ගණන`), not kg; the item form warns if it is still in kg.
 - **What each material cost** is worked out by load (a tipper bill is one
   trip, a tractor bill its loads). The **diesel** is shared by every load
   that left. **Everything else** is shared by the loads of the main

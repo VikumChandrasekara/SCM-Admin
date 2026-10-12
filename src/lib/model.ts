@@ -725,6 +725,11 @@ export interface StoreItem {
   minQuantity: number;
   /** Rupees per unit — prices the fuel on the dashboard. */
   unitPrice: number;
+  /**
+   * How many of the item make a kilo, for one counted in pieces but delivered
+   * by weight — the gel cartridges. Null when the item has no such figure.
+   */
+  piecesPerKg: number | null;
   link: StockLink | null;
   note: string;
   createdAt: Date | null;
@@ -733,7 +738,30 @@ export interface StoreItem {
   updatedAt: Date | null;
 }
 
+/**
+ * Gel cartridges (කරල්) to the kilo: a 15 kg delivery is 120 of them. Used for
+ * the shells item until staff set a figure of their own. Mirrors
+ * StoreItem.defaultShellsPerKg in the operator app.
+ */
+export const DEFAULT_SHELLS_PER_KG = 8;
+
+/**
+ * How many of [item] make a kilo — the figure set on it, or for the shells item
+ * the usual one. Null for any other item without one.
+ */
+export function piecesPerKgOf(item: Pick<StoreItem, 'piecesPerKg' | 'link'> | undefined): number | null {
+  if (!item) return null;
+  if (item.piecesPerKg != null && item.piecesPerKg > 0) return item.piecesPerKg;
+  return item.link === 'blast:shells' ? DEFAULT_SHELLS_PER_KG : null;
+}
+
+/** [kg] as a count of pieces, at [piecesPerKg] to the kilo — rounded so 0.1 × 3 stays 0.3. */
+export function piecesFromKg(kg: number, piecesPerKg: number): number {
+  return Math.round(kg * piecesPerKg * 1000) / 1000;
+}
+
 export function storeItemFrom(id: string, data: DocumentData): StoreItem {
+  const perKg = numOrNull(data.piecesPerKg);
   return {
     id,
     name: str(data.name),
@@ -741,6 +769,7 @@ export function storeItemFrom(id: string, data: DocumentData): StoreItem {
     quantity: num(data.quantity),
     minQuantity: num(data.minQuantity),
     unitPrice: num(data.unitPrice),
+    piecesPerKg: perKg != null && perKg > 0 ? perKg : null,
     link: isStockLink(data.link) ? data.link : null,
     note: str(data.note),
     createdAt: toDate(data.createdAt),
@@ -868,6 +897,7 @@ export type AuditAction =
   | 'sales.restore'
   | 'sales.verify'
   | 'sales.prices'
+  | 'royalty.rates'
   | 'landowner.rate'
   | 'landowner.paid'
   | 'landowner.unpaid'
@@ -907,6 +937,7 @@ export const AUDIT_LABEL: Record<AuditAction, string> = {
   'sales.restore': 'විකුණුම් බිල්පතක් ආපසු ගත්තා',
   'sales.verify': 'විකුණුම් බිල්පතක් තහවුරු කළා',
   'sales.prices': 'විකුණුම් මිල වෙනස් කළා',
+  'royalty.rates': 'රාජ භාග අනුපාත වෙනස් කළා',
   'landowner.rate': 'ඉඩම් හිමියාගේ ගාස්තු වෙනස් කළා',
   'landowner.paid': 'ඉඩම් හිමියාට ගෙවූ බව සලකුණු කළා',
   'landowner.unpaid': 'ඉඩම් හිමියාට ගෙවූ බව ඉවත් කළා',

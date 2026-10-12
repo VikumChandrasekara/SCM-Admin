@@ -5,10 +5,13 @@ import { useSession } from '../auth/AuthContext';
 import { useLiveData } from '../data/LiveData';
 import { changeStock, createItem, deleteItem, updateItem, type StockChange } from '../data/store';
 import { errorMessage } from '../lib/errors';
-import { quantity } from '../lib/format';
+import { money, quantity } from '../lib/format';
 import {
+  DEFAULT_SHELLS_PER_KG,
   LINK_OPTIONS,
   STOCK_LABEL,
+  piecesFromKg,
+  piecesPerKgOf,
   stockStatus,
   type StockLink,
   type StoreItem,
@@ -37,11 +40,17 @@ export function StockChangeModal({
   const toast = useToast();
   const [mode, setMode] = useState<StockChange>(initial);
   const [amount, setAmount] = useState('');
+  // Gel arrives by weight, so a delivery of it is entered in kg unless said otherwise.
+  const [entry, setEntry] = useState<'kg' | 'unit'>('kg');
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const value = parse(amount);
+  const perKg = item.unit === 'kg' ? null : piecesPerKgOf(item);
+  /** Pieces to the kilo while a delivery is being entered by weight; otherwise null. */
+  const kgFactor = mode === 'restock' && entry === 'kg' ? perKg : null;
+  const typed = parse(amount);
+  const value = typed != null && kgFactor != null ? piecesFromKg(typed, kgFactor) : typed;
   const valid = value != null && (mode === 'adjust' ? value >= 0 : value > 0);
   const after = !valid ? null : mode === 'adjust' ? value : mode === 'restock' ? item.quantity + value : item.quantity - value;
 
@@ -57,7 +66,10 @@ export function StockChangeModal({
     setBusy(true);
     setError(null);
     try {
-      await changeStock(item, mode, value, note, profile);
+      // A delivery entered in kg says how it was turned into pieces, so the log can be checked.
+      const worked =
+        kgFactor != null && typed != null ? `${quantity(typed)} kg × ${quantity(kgFactor)} = ${quantity(value, item.unit)}` : '';
+      await changeStock(item, mode, value, [worked, note.trim()].filter(Boolean).join(' · '), profile);
       toast.success(`${item.name} යාවත්කාලීන කළා.`);
       onClose();
     } catch (failure) {
@@ -93,9 +105,25 @@ export function StockChangeModal({
             { value: 'adjust', label: <span className="inline-flex items-center gap-1.5"><Equal className="size-4" />ගණන් කළා</span> },
           ]}
         />
+        {mode === 'restock' && perKg != null && (
+          <Segmented
+            value={entry}
+            onChange={setEntry}
+            options={[
+              { value: 'kg', label: 'kg වලින්' },
+              { value: 'unit', label: `${item.unit || 'ගණන'} වලින්` },
+            ]}
+          />
+        )}
         <Field
-          label={`${label}${item.unit ? ` (${item.unit})` : ''}`}
-          hint={mode === 'adjust' ? 'ගබඩාව ගණන් කළ විට — මෙතෙක් සටහන් වූ භාවිතය මෙම ගණනට ඇතුළත් යැයි සැලකේ.' : undefined}
+          label={`${label}${kgFactor != null ? ' (kg)' : item.unit ? ` (${item.unit})` : ''}`}
+          hint={
+            mode === 'adjust'
+              ? 'ගබඩාව ගණන් කළ විට — මෙතෙක් සටහන් වූ භාවිතය මෙම ගණනට ඇතුළත් යැයි සැලකේ.'
+              : kgFactor != null
+                ? `kg 1 = ${quantity(kgFactor)} ${item.unit}`
+                : undefined
+          }
         >
           <Input
             type="number"
@@ -107,6 +135,12 @@ export function StockChangeModal({
             onChange={(event) => setAmount(event.target.value)}
           />
         </Field>
+
+        {kgFactor != null && typed != null && typed > 0 && value != null && (
+          <p className="rounded-xl bg-well px-4 py-3 text-sm text-white/80">
+            {quantity(typed)} kg × {quantity(kgFactor)} = <b className="tabular-nums">{quantity(value, item.unit)}</b> ගබඩාවට එකතු වේ
+          </p>
+        )}
 
         {after != null && (
           <div className="flex items-center gap-3 rounded-xl bg-well px-4 py-3">
@@ -147,11 +181,15 @@ export function ItemModal({ item, onClose }: { item: StoreItem | null; onClose: 
   const [opening, setOpening] = useState(item ? String(item.quantity) : '');
   const [minimum, setMinimum] = useState(item ? String(item.minQuantity) : '');
   const [price, setPrice] = useState(item ? String(item.unitPrice) : '');
+  const [perKg, setPerKg] = useState(String(item?.piecesPerKg ?? DEFAULT_SHELLS_PER_KG));
   const [note, setNote] = useState(item?.note ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const taken = new Set(store.map((entry) => entry.link).filter(Boolean));
+  // The gel comes in by the kilo and goes out by the cartridge, so this item needs the rate between them.
+  const isShells = link === 'blast:shells';
+  const perKgValue = parse(perKg);
 
   function chooseLink(value: StockLink | '') {
     setLink(value);
@@ -171,11 +209,19 @@ export function ItemModal({ item, onClose }: { item: StoreItem | null; onClose: 
     if (!unit.trim()) return setError('ඒකකය තෝරන්න (උදා: L, kg, ගණන).');
     if (!item && (quantityValue == null || quantityValue < 0)) return setError('දැනට ඇති ප්‍රමාණය ඇතුළත් කරන්න.');
     if (minValue < 0 || priceValue < 0) return setError('අගයන් ඍණ විය නොහැක.');
+    if (isShells && (perKgValue == null || perKgValue <= 0)) return setError('kg 1කට කරල් ගණන ශුන්‍යයට වඩා වැඩි විය යුතුය.');
 
     setBusy(true);
     setError(null);
     try {
-      const details = { name, unit, minQuantity: minValue, unitPrice: priceValue, note };
+      const details = {
+        name,
+        unit,
+        minQuantity: minValue,
+        unitPrice: priceValue,
+        piecesPerKg: isShells ? perKgValue : (item?.piecesPerKg ?? null),
+        note,
+      };
       if (item) {
         await updateItem(item, details, profile);
       } else {
@@ -257,10 +303,33 @@ export function ItemModal({ item, onClose }: { item: StoreItem | null; onClose: 
           <Field label="අවම මට්ටම" hint="මෙයට අඩු වූ විට අනතුරු ඇඟවේ.">
             <Input type="number" min="0" step="any" value={minimum} onChange={(event) => setMinimum(event.target.value)} />
           </Field>
-          <Field label="ඒකක මිල (රු.)">
+          <Field
+            label="ඒකක මිල (රු.)"
+            hint={
+              isShells && perKgValue != null && perKgValue > 0 && (parse(price) ?? 0) > 0
+                ? `කරලක මිල · kg එකක් රු. ${money((parse(price) ?? 0) * perKgValue)}`
+                : undefined
+            }
+          >
             <Input type="number" min="0" step="any" value={price} onChange={(event) => setPrice(event.target.value)} />
           </Field>
         </div>
+
+        {isShells && (
+          <>
+            <Field
+              label="kg 1කට කරල් ගණන"
+              hint="ජෙල් kg වලින් ලැබී කරල් ගණනින් භාවිත වේ. උදා: kg 15 = කරල් 120 නම් 8. තොගය එකතු කිරීම kg වලින් කළ හැකි අතර, රාජ භාගය ගණනයටද මෙය භාවිත වේ."
+            >
+              <Input type="number" min="0" step="any" required value={perKg} onChange={(event) => setPerKg(event.target.value)} />
+            </Field>
+            {unit.trim() === 'kg' && (
+              <p className="rounded-xl bg-alarm/30 px-4 py-3 text-sm font-semibold">
+                ඒකකය kg ලෙස ඇත. කරල් ගණනින් තබා ගැනීමට ඒකකය "ගණන" කර, ගබඩාව නැවත ගණන් කරන්න (kg ගණන × {perKgValue ?? DEFAULT_SHELLS_PER_KG}).
+              </p>
+            )}
+          </>
+        )}
 
         <Field label="සටහන">
           <Textarea value={note} onChange={(event) => setNote(event.target.value)} />
