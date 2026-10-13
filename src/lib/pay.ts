@@ -1,4 +1,16 @@
-import { BILL, ROLES, dayWorked, workedHours, type Bill, type Day, type MonthTally, type Person } from './model';
+import { drillerLoads, type DrillerLoads } from './loads';
+import {
+  BILL,
+  ROLES,
+  dayWorked,
+  paidPerLoad,
+  workedHours,
+  type Bill,
+  type Day,
+  type MonthTally,
+  type Person,
+  type Sale,
+} from './model';
 import { bonusEarned, leaveDaysFor } from './target';
 
 /**
@@ -17,10 +29,14 @@ export interface PayFigures {
   dailyWage: number;
   /** What the wage counts this month: worked days, machine hours, feet or loads, per the person's basis. */
   wageUnits: number;
-  /** [wageUnits] × the wage rate. */
+  /** [wageUnits] × the wage rate — for a driller paid per load, see [loadPay]. */
   wagePay: number;
-  /** The excavator crew's bonus ladder for the month's loads. */
+  /** A driller paid per load: the month's loads from the sales bills and what each rate comes to. Null for anyone else. */
+  loadPay: LoadPay | null;
+  /** The bonus ladder for the month: the excavator crew's loads, or the drillers' loads of 6/9 alone. */
   bonusPay: number;
+  /** The loads [bonusPay] is counted on, or null for someone with no bonus. */
+  bonusLoads: number | null;
   /** මුදල් ප්‍රමාණය — everything earned this month: [wagePay] + [bonusPay]. */
   gross: number;
   /** ණය මුදල් ප්‍රමාණය — advances and food charged to them this month. */
@@ -29,6 +45,29 @@ export interface PayFigures {
   net: number;
   /** දවසේ මුදල් ප්‍රමාණය — what the selected day earned. */
   dayEarnings: number;
+}
+
+/**
+ * What a driller paid per load earns. Loads of 6/9 and සක්කර are paid at the
+ * wage rate, and loads of anything else at [Person.otherLoadWage].
+ */
+export interface LoadPay {
+  /** Loads of 6/9 and සක්කර. */
+  mainLoads: number;
+  mainPay: number;
+  /** Loads of anything else. */
+  otherLoads: number;
+  otherPay: number;
+}
+
+function loadPayOf(person: Person, loads: DrillerLoads): LoadPay {
+  const mainLoads = loads.sixNine + loads.sakka;
+  return {
+    mainLoads,
+    mainPay: mainLoads * person.dailyWage,
+    otherLoads: loads.other,
+    otherPay: loads.other * person.otherLoadWage,
+  };
 }
 
 /** [wageBasis]'s count for the month: worked days, machine hours, feet or loads. */
@@ -47,6 +86,11 @@ function wageUnitsOf(basis: Person['wageBasis'], month: MonthTally, workedDays: 
   }
 }
 
+/**
+ * [sales] are the month's sales bills. A driller's loads and bonus come from
+ * them rather than from the crew's own tally: what the yard sold is what the
+ * driller's work came to. Without them a driller has no loads yet.
+ */
 export function payFor(
   person: Person,
   monthDays: readonly Day[],
@@ -54,14 +98,21 @@ export function payFor(
   bills: readonly Bill[],
   day: Day | null,
   today: string,
+  sales: readonly Sale[] = [],
+  now = Date.now(),
 ): PayFigures {
   const role = ROLES[person.role];
 
   const workedDays = monthDays.filter(dayWorked).length;
   const leaveDays = leaveDaysFor(month.month, today, workedDays);
-  const wageUnits = wageUnitsOf(person.wageBasis, month, workedDays);
-  const wagePay = wageUnits * person.dailyWage;
-  const bonusPay = role.tracksBonus ? bonusEarned(month.loads) : 0;
+
+  const monthLoads = role.bonusOnSixNine || paidPerLoad(person) ? drillerLoads(sales, month.month, now) : null;
+  const loadPay = monthLoads && paidPerLoad(person) ? loadPayOf(person, monthLoads) : null;
+  const wageUnits = loadPay ? loadPay.mainLoads + loadPay.otherLoads : wageUnitsOf(person.wageBasis, month, workedDays);
+  const wagePay = loadPay ? loadPay.mainPay + loadPay.otherPay : wageUnits * person.dailyWage;
+
+  const bonusLoads = role.tracksBonus ? month.loads : role.bonusOnSixNine && monthLoads ? monthLoads.sixNine : null;
+  const bonusPay = bonusLoads == null ? 0 : bonusEarned(bonusLoads);
   const gross = wagePay + bonusPay;
 
   const deductions = bills
@@ -85,7 +136,12 @@ export function payFor(
           : day != null && dayWorked(day)
             ? 1
             : 0;
-  const dayEarnings = dayWageUnits * person.dailyWage;
+  const dayLoadPay = paidPerLoad(person) && day ? loadPayOf(person, drillerLoads(sales, day.date, now)) : null;
+  const dayEarnings = paidPerLoad(person)
+    ? dayLoadPay
+      ? dayLoadPay.mainPay + dayLoadPay.otherPay
+      : 0
+    : dayWageUnits * person.dailyWage;
 
   return {
     workedDays,
@@ -93,7 +149,9 @@ export function payFor(
     dailyWage: person.dailyWage,
     wageUnits,
     wagePay,
+    loadPay,
     bonusPay,
+    bonusLoads,
     gross,
     deductions,
     net: gross - deductions,

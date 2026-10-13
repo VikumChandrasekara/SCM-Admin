@@ -1,7 +1,9 @@
 import {
+  LINK_OPTIONS,
   ROLES,
   serviceAlerts,
   stockStatus,
+  type LinkOption,
   type Machine,
   type Person,
   type ServiceStatus,
@@ -31,6 +33,25 @@ export function stockAlerts(store: readonly StoreItem[]): StockAlert[] {
     .sort((a, b) =>
       a.status === b.status ? a.item.name.localeCompare(b.item.name) : a.status === 'out' ? -1 : 1,
     );
+}
+
+/**
+ * What the crews record that no store item is linked to, so recording it takes
+ * nothing off the shelf: the fluids a crew's පිරවීම draws, and — when there is
+ * a driller — everything on the වෙඩි බඩු sheet, බිට් and කටු included. Parts
+ * fitted at a service are left out: they come off the shelf when staff mark
+ * the service done, not when a crew records anything.
+ */
+export function unlinkedUsage(store: readonly StoreItem[], crew: readonly Person[]): LinkOption[] {
+  const linked = new Set(store.map((item) => item.link));
+  const fluids = new Set<string>(crew.flatMap((person) => ROLES[person.role].fillItems));
+  const blasts = crew.some((person) => ROLES[person.role].tracksBlasting);
+  return LINK_OPTIONS.filter((option) => {
+    if (linked.has(option.link)) return false;
+    if (option.link.startsWith('fill:')) return fluids.has(option.link.slice('fill:'.length));
+    if (option.link.startsWith('blast:')) return blasts;
+    return false;
+  });
 }
 
 /**

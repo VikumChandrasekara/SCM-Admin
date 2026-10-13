@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { loadAnalysis } from '../src/lib/loads';
+import { drillerLoads, loadAnalysis } from '../src/lib/loads';
 import type { Sale } from '../src/lib/model';
 
 const now = new Date('2026-10-25T12:00:00Z').getTime();
@@ -101,5 +101,44 @@ describe('the loads that have gone', () => {
     const analysis = loadAnalysis([], now);
     expect(analysis.total).toMatchObject({ bills: 0, loads: 0, amount: 0 });
     expect(analysis.pending).toEqual({ bills: 0, loads: 0 });
+  });
+});
+
+describe('the loads a driller is paid on', () => {
+  const sales = [
+    sale('SIX12345', { material: 'six_nine' }),
+    sale('SIX22345', { ...tractor, material: 'six_nine' }),
+    sale('SAK12345'),
+    sale('SAK22345', tractor),
+    sale('BOLD2345', { material: 'boldas' }),
+    sale('DUST2345', { material: 'kory_dust' }),
+    sale('OLDX2345', { material: null }),
+  ];
+
+  it('splits the month into 6/9, සක්කර and everything else', () => {
+    // A tipper bill is one trip, a tractor bill as many loads as it says.
+    expect(drillerLoads(sales, '2026-10', now)).toEqual({ sixNine: 1 + 2, sakka: 1 + 2, other: 3 });
+  });
+
+  it('counts a single day on its own', () => {
+    const more = [...sales, sale('NEXT2345', { material: 'six_nine', date: '2026-10-21' })];
+    expect(drillerLoads(more, '2026-10-21', now)).toEqual({ sixNine: 1, sakka: 0, other: 0 });
+    expect(drillerLoads(more, '2026-10-22', now)).toEqual({ sixNine: 0, sakka: 0, other: 0 });
+    expect(drillerLoads(more, '2026-10', now).sixNine).toBe(1 + 2 + 1);
+  });
+
+  it('counts only loads that have gone, and only those dated in the month', () => {
+    const counted = drillerLoads(
+      [
+        sale('GONE2345', { material: 'six_nine' }),
+        sale('WAIT2345', { material: 'six_nine', status: 'pending', verifiedAt: null, createdAt: new Date(now - 60 * 60 * 1000) }),
+        sale('PREP2345', { material: 'six_nine', status: 'pending', prepaid: true, verifiedAt: null }),
+        sale('CANC2345', { material: 'six_nine', status: 'cancelled' }),
+        sale('LAST2345', { material: 'six_nine', date: '2026-09-30' }),
+      ],
+      '2026-10',
+      now,
+    );
+    expect(counted).toEqual({ sixNine: 1, sakka: 0, other: 0 });
   });
 });

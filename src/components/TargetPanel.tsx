@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 
 import { hours, money, rupees } from '../lib/format';
 import { ROLES, WAGE_BASIS_LABEL, type MonthTally, type Person } from '../lib/model';
+import type { LoadPay } from '../lib/pay';
 import {
   BONUS_PER_TIER,
   TIERS,
@@ -22,7 +23,9 @@ function unitCount(basis: Person['wageBasis'], value: number): string {
  * The mockup's green panel: the month's figures beside the bonus ladder.
  *
  * [wageUnits] and [wagePay] come from payFor — the same figures the dashboard
- * tiles beside this panel show, so the two never disagree.
+ * tiles beside this panel show, so the two never disagree. So do [loadPay] and
+ * [bonusLoads]: the loads the bonus is counted on, which for the excavator crew
+ * are the ones they tally and for a driller the month's loads of 6/9.
  */
 export function TargetPanel({
   person,
@@ -30,12 +33,16 @@ export function TargetPanel({
   today,
   wageUnits,
   wagePay,
+  loadPay,
+  bonusLoads,
 }: {
   person: Person;
   month: MonthTally;
   today: string;
   wageUnits: number;
   wagePay: number;
+  loadPay: LoadPay | null;
+  bonusLoads: number | null;
 }) {
   const role = ROLES[person.role];
   const basis = WAGE_BASIS_LABEL[person.wageBasis];
@@ -43,25 +50,33 @@ export function TargetPanel({
     <section className="rounded-panel p-5 text-white shadow-panel ring-1 ring-lime-hi/20 panel-lime">
       <div className="mb-4 flex items-baseline gap-2 border-b border-white/15 pb-3">
         <h2 className="flex-1 text-base font-bold tracking-tight">
-          {role.tracksBonus ? 'ඉලක්කය සහ බෝනස්' : `මේ මාසයේ ${basis.unit}`}
+          {bonusLoads != null ? 'ඉලක්කය සහ බෝනස්' : `මේ මාසයේ ${basis.unit}`}
         </h2>
         <span className="text-[11px] font-semibold text-white/60 tabular-nums">{month.month}</span>
       </div>
-      {role.tracksBonus ? (
+      {bonusLoads != null ? (
         <div className="grid items-center gap-5 md:grid-cols-[minmax(0,15rem)_minmax(0,1fr)]">
           <div className="space-y-2.5">
             <Row label="මාසේ දිනයන් ගණන" value={daysInMonth(month.month)} />
-            <Row label="පැටවූ ලෝඩ් ගණන" value={month.loads} />
-            <Row label="ඉලක්කය" value={currentTarget(month.loads)} />
+            <Row label={role.tracksBonus ? 'පැටවූ ලෝඩ් ගණන' : '6/9 ලෝඩ් ගණන'} value={bonusLoads} />
+            {role.tracksBonus ? null : loadPay ? (
+              <>
+                <Row label="පඩි ලෝඩ් (6/9 + සක්කර)" value={loadPay.mainLoads} />
+                {loadPay.otherLoads > 0 && <Row label="වෙනත් ලෝඩ්" value={loadPay.otherLoads} />}
+              </>
+            ) : (
+              <Row label={`${basis.unit} ගණන`} value={unitCount(person.wageBasis, wageUnits)} />
+            )}
+            <Row label="ඉලක්කය" value={currentTarget(bonusLoads)} />
             <Row label="ඉලක්කයට ඉතිරි දින" value={daysRemaining(month.month, today)} />
             <p className="pt-1 text-[11.5px] leading-relaxed font-medium text-white/75">
-              {tiersReached(month.loads) >= TIERS.length
+              {tiersReached(bonusLoads) >= TIERS.length
                 ? 'සියලු ඉලක්ක සම්පූර්ණයි'
-                : `ඊළඟ බෝනස් එකට තව ලෝඩ් ${loadsToTarget(month.loads)}ක්`}
-              {' · '}උපයා ඇති බෝනස් {rupees(bonusEarned(month.loads))}
+                : `ඊළඟ බෝනස් එකට තව ලෝඩ් ${loadsToTarget(bonusLoads)}ක්`}
+              {' · '}උපයා ඇති බෝනස් {rupees(bonusEarned(bonusLoads))}
             </p>
           </div>
-          <BonusChart loads={month.loads} />
+          <BonusChart loads={bonusLoads} />
         </div>
       ) : (
         <div className="grid items-center gap-5 md:grid-cols-[minmax(0,15rem)_minmax(0,1fr)]">

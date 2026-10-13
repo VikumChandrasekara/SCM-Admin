@@ -17,6 +17,7 @@ import {
   hasWageRate,
   machineTypeForRole,
   nameOf,
+  paidPerLoad,
   type Machine,
   type MachineDetails,
   type Person,
@@ -49,6 +50,8 @@ export interface UserFields {
   dailyWage: number;
   /** What the daily wage is paid for: a day, an hour, a foot or a load. */
   wageBasis: WageBasis;
+  /** A driller paid per load: what a load of anything but 6/9 and සක්කර is paid. Kept for no one else. */
+  otherLoadWage: number;
   /**
    * What the machine is, for a machine that does not exist yet and is set up
    * with this account. Its kind is always the one the role works, whatever
@@ -105,6 +108,7 @@ function recordFields(fields: UserFields) {
     machineId: ROLES[fields.role].isCrew ? fields.machineId.trim() : '',
     dailyWage: paid ? fields.dailyWage : 0,
     wageBasis: paid ? fields.wageBasis : 'day',
+    otherLoadWage: paid && paidPerLoad(fields) ? fields.otherLoadWage : 0,
   };
 }
 
@@ -121,6 +125,10 @@ function accountDiff(before: Person, fields: UserFields & { advanceAmount: numbe
     lines.push(
       `පඩිය: රු.${before.dailyWage} (${WAGE_BASIS_LABEL[before.wageBasis].per}) → රු.${dailyWage} (${WAGE_BASIS_LABEL[fields.wageBasis].per})`,
     );
+  }
+  const otherLoadWage = hasWageRate(fields.role) && paidPerLoad(fields) ? fields.otherLoadWage : 0;
+  if (otherLoadWage !== before.otherLoadWage) {
+    lines.push(`වෙනත් ලෝඩ් පඩිය: රු.${before.otherLoadWage} → රු.${otherLoadWage}`);
   }
   if (fields.advanceAmount !== before.advanceAmount) {
     lines.push(`ඇඩ්වාන්ස්: රු.${before.advanceAmount} → රු.${fields.advanceAmount}`);

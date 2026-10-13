@@ -1,5 +1,6 @@
-import { Bomb, Lock, Plus } from 'lucide-react';
+import { Bomb, Lock, Plus, TriangleAlert } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router';
 
 import { DateStepper } from '../components/DateStepper';
 import { StockChangeModal } from '../components/StockModals';
@@ -19,6 +20,7 @@ import {
 import { useLiveDocs } from '../data/live';
 import { useLiveData } from '../data/LiveData';
 import { dayRef, fetchDays } from '../data/machines';
+import { unlinkedUsage } from '../lib/alerts';
 import { dateTime, monthBounds, monthLabel, quantity } from '../lib/format';
 import {
   BLAST,
@@ -153,6 +155,8 @@ export function ExplosivesPage() {
   if (!ready) return <Loading />;
 
   const explosives = store.filter((item) => item.link?.startsWith('blast:'));
+  // What a sheet records that no store item is linked to — OK'ing a sheet takes none of it off the shelf.
+  const unlinked = unlinkedUsage(store, crew).filter((option) => option.link.startsWith('blast:'));
   const monthTotals = totals?.month === month ? totals.amounts : null;
   const monthSizes = totals?.month === month ? totals.sizes : {};
 
@@ -279,11 +283,22 @@ export function ExplosivesPage() {
                 </table>
               </TableFrame>
             )}
+            {explosives.length > 0 && unlinked.length > 0 && (
+              <p className="mt-3 flex items-start gap-2 rounded-xl bg-signal/[0.07] px-3 py-2 text-xs text-white/80 ring-1 ring-signal/25">
+                <TriangleAlert className="mt-0.5 size-4 shrink-0 text-signal" />
+                <span>
+                  මේවාට ගබඩා අයිතමයක් සම්බන්ධ කර නැත — OK කළ විට තොගයෙන් අඩු නොවේ: {unlinked.map((option) => option.label).join(', ')}.{' '}
+                  <Link to="/store" className="font-bold text-amber-hi hover:underline">
+                    ගබඩාවෙන් සම්බන්ධ කරන්න →
+                  </Link>
+                </span>
+              </p>
+            )}
           </Panel>
         </div>
       </div>
 
-      {restocking && <StockChangeModal item={restocking} onClose={() => setRestocking(null)} />}
+      {restocking &&<StockChangeModal item={restocking} onClose={() => setRestocking(null)} />}
     </>
   );
 }

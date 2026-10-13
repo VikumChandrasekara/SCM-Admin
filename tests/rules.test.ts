@@ -182,6 +182,19 @@ describe('accounts', () => {
     await assertFails(updateDoc(record, { receivableAmount: 100000 }));
   });
 
+  it('a supervisor sets what a driller paid per load is paid for the other loads — a number, never negative', async () => {
+    const driller = doc(as('sup1'), 'operators', 'comp1');
+    await assertSucceeds(updateDoc(driller, { dailyWage: 500, wageBasis: 'load', otherLoadWage: 300 }));
+    await assertSucceeds(updateDoc(driller, { otherLoadWage: 0 }));
+    await assertFails(updateDoc(driller, { otherLoadWage: -1 }));
+    await assertFails(updateDoc(driller, { otherLoadWage: '300' }));
+    // Still nothing else rides along with it.
+    await assertFails(updateDoc(driller, { otherLoadWage: 300, role: 'admin' }));
+    // And it is not set on staff, whose wage is the admin's to set.
+    await assertFails(updateDoc(doc(as('sup1'), 'operators', 'sup1'), { otherLoadWage: 300 }));
+    await assertSucceeds(updateDoc(doc(as('admin1'), 'operators', 'comp1'), { otherLoadWage: 450 }));
+  });
+
   describe('which machine a crew member is on', () => {
     beforeEach(async () => {
       await env.withSecurityRulesDisabled(async (context) => {
@@ -498,6 +511,15 @@ describe('store', () => {
     await assertFails(setDoc(doc(db, 'store', 'other-thing'), item({ link: 'other:thing' })));
   });
 
+  it('බිට් and කටු link at their own ids too — one item for every size', async () => {
+    const db = as('admin1');
+    await assertSucceeds(setDoc(doc(db, 'store', 'blast-bits'), item({ unit: 'ගණන', link: 'blast:bits' })));
+    await assertSucceeds(setDoc(doc(db, 'store', 'blast-rods'), item({ unit: 'ගණන', link: 'blast:rods' })));
+    await assertFails(setDoc(doc(db, 'store', 'bits'), item({ link: 'blast:bits' })));
+    // A size is not a link of its own.
+    await assertFails(setDoc(doc(db, 'store', 'blast-bits36'), item({ link: 'blast:bits36' })));
+  });
+
   it('an item counted in pieces but delivered by weight carries how many make a kilo — a positive number', async () => {
     const db = as('admin1');
     await assertSucceeds(
@@ -580,6 +602,39 @@ describe('usage postings', () => {
       updatedBy: 'op1',
     });
     await assertSucceeds(batch.commit());
+  });
+
+  it("a driller's බිට් and කටු post on their own, once, beside the rest of the sheet", async () => {
+    await env.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore() as unknown as Firestore;
+      await setDoc(doc(db, 'store', 'blast-bits'), item({ unit: 'ගණන', quantity: 20, link: 'blast:bits' }));
+    });
+    const sizes = {
+      type: 'usage',
+      items: [{ itemId: 'blast-bits', name: 'බිට්', unit: 'ගණන', delta: -8 }],
+      unmatched: [],
+      machineId: 'cp1',
+      date: '2026-09-10',
+      source: 'blastSizes',
+      note: '',
+      createdBy: 'comp1',
+      createdByName: 'comp1',
+      createdAt: serverTimestamp(),
+    };
+    const db = as('comp1');
+    const batch = writeBatch(db);
+    batch.set(doc(db, 'storeMovements', 'use_cp1_2026-09-10_blastSizes'), sizes);
+    batch.update(doc(db, 'store', 'blast-bits'), {
+      quantity: increment(-8),
+      updatedAt: serverTimestamp(),
+      updatedBy: 'comp1',
+    });
+    await assertSucceeds(batch.commit());
+
+    // The panel's backstop for the same sheet is refused, so it is never drawn twice.
+    await assertFails(
+      setDoc(doc(as('admin1'), 'storeMovements', 'use_cp1_2026-09-10_blastSizes'), { ...sizes, createdBy: 'admin1' }),
+    );
   });
 
   it('only staff record a restock', async () => {

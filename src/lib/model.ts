@@ -163,6 +163,13 @@ export const SIZED_ITEMS: readonly SizedItem[] = ['bits', 'rods'];
 
 export const SIZED_LABEL: Record<SizedItem, string> = { bits: 'බිට්', rods: 'කටු' };
 
+/**
+ * The store posting for a වෙඩි බඩු sheet's බිට් and කටු. Kept apart from the
+ * sheet's other items (`blast`) so an app from before they drew the store down
+ * can be topped up by the panel without drawing the rest a second time.
+ */
+export const BLAST_SIZES_SOURCE = 'blastSizes';
+
 /** Quantity by size; the size is the key, written as `36` or `2.5`. */
 export type SizeQuantities = Record<string, number>;
 
@@ -221,7 +228,13 @@ export interface RoleSpec {
   inspectionItems: readonly InspectionItem[];
   serviceTasks: readonly ServiceTask[];
   tracksBlasting: boolean;
+  /** A bonus ladder on the loads the crew's own daily tally counts — the excavator crew's. */
   tracksBonus: boolean;
+  /**
+   * A bonus ladder on the month's verified loads of 6/9 alone, taken from the
+   * sales bills rather than from anything the crew tallies — the drillers'.
+   */
+  bonusOnSixNine: boolean;
   isCrew: boolean;
 }
 
@@ -239,6 +252,7 @@ export const ROLES: Record<RoleId, RoleSpec> = {
     serviceTasks: ['engineOil', 'dieselFilter', 'hydraulicFilter', 'majorService'],
     tracksBlasting: false,
     tracksBonus: true,
+    bonusOnSixNine: false,
     isCrew: true,
   },
   compressor: {
@@ -251,6 +265,7 @@ export const ROLES: Record<RoleId, RoleSpec> = {
     serviceTasks: ['engineOil', 'dieselFilter', 'majorService'],
     tracksBlasting: true,
     tracksBonus: false,
+    bonusOnSixNine: true,
     isCrew: true,
   },
   supervisor: {
@@ -263,6 +278,7 @@ export const ROLES: Record<RoleId, RoleSpec> = {
     serviceTasks: [],
     tracksBlasting: false,
     tracksBonus: false,
+    bonusOnSixNine: false,
     isCrew: false,
   },
   admin: {
@@ -275,6 +291,7 @@ export const ROLES: Record<RoleId, RoleSpec> = {
     serviceTasks: [],
     tracksBlasting: false,
     tracksBonus: false,
+    bonusOnSixNine: false,
     isCrew: false,
   },
   // The owner of the land. Signs in to the phone app to see the loads he is
@@ -289,6 +306,7 @@ export const ROLES: Record<RoleId, RoleSpec> = {
     serviceTasks: [],
     tracksBlasting: false,
     tracksBonus: false,
+    bonusOnSixNine: false,
     isCrew: false,
   },
 };
@@ -327,6 +345,12 @@ export interface Person {
   dailyWage: number;
   /** What [dailyWage] is paid for. */
   wageBasis: WageBasis;
+  /**
+   * A driller paid per load is paid [dailyWage] for each load of 6/9 and
+   * සක්කර, and this for each load of anything else (බෝල්දාස්, C1, කෝරි
+   * ඩස්ට්). Nothing for any other crew member or basis.
+   */
+  otherLoadWage: number;
 }
 
 /**
@@ -353,7 +377,11 @@ export function wageBasisById(value: unknown): WageBasis {
   return value === 'hour' || value === 'foot' || value === 'load' || value === 'month' ? value : 'day';
 }
 
-/** A compressor crew member paid per load rather than per foot drilled. */
+/**
+ * A compressor crew member paid per load rather than per foot drilled. Their
+ * loads are the ones the sales bills show — see drillerLoads in loads.ts — not
+ * a figure anyone tallies.
+ */
 export function paidPerLoad(person: Pick<Person, 'role' | 'wageBasis'>): boolean {
   return person.role === 'compressor' && person.wageBasis === 'load';
 }
@@ -376,6 +404,7 @@ export function personFrom(id: string, data: DocumentData): Person {
     advanceAmount: num(data.advanceAmount),
     dailyWage: num(data.dailyWage),
     wageBasis: wageBasisById(data.wageBasis),
+    otherLoadWage: Math.max(num(data.otherLoadWage), 0),
   };
 }
 
@@ -672,7 +701,7 @@ export function monthFrom(month: string, data: DocumentData | undefined): MonthT
  * down: a fluid on a පිරවීම, an explosive on a වෙඩි බඩු sheet, or the part
  * fitted when a service is marked done.
  */
-export type StockLink = `fill:${FillItem}` | `blast:${BlastItem}` | `service:${PartTask}`;
+export type StockLink = `fill:${FillItem}` | `blast:${BlastItem | SizedItem}` | `service:${PartTask}`;
 
 export interface LinkOption {
   link: StockLink;
@@ -693,6 +722,14 @@ export const LINK_OPTIONS: readonly LinkOption[] = [
     label: BLAST[item].label,
     group: 'වෙඩි බඩු',
     unit: BLAST[item].unit || 'ගණන',
+  })),
+  // බිට් and කටු are drawn in several sizes, but the shelf holds them as one
+  // count: every size of a kind comes off the same item.
+  ...SIZED_ITEMS.map((item) => ({
+    link: `blast:${item}` as StockLink,
+    label: SIZED_LABEL[item],
+    group: 'වෙඩි බඩු',
+    unit: 'ගණන',
   })),
   ...PART_TASKS.map((task) => ({
     link: `service:${task}` as StockLink,
@@ -862,6 +899,7 @@ export function movementFrom(id: string, data: DocumentData): Movement {
 export function sourceLabel(source: string | null): string {
   if (!source) return '';
   if (source === 'blast') return 'වෙඩි බඩු';
+  if (source === BLAST_SIZES_SOURCE) return 'බිට් සහ කටු';
   const slot = /^fill(\d)$/.exec(source);
   return slot ? `පිරවීම ${slot[1]}` : source;
 }

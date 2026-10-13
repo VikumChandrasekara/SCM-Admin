@@ -455,6 +455,8 @@ export async function saveFigures(
     advanceAmount: number;
     dailyWage: number;
     wageBasis: WageBasis;
+    /** What a driller paid per load is paid for a load of anything but 6/9 and සක්කර. */
+    otherLoadWage: number;
   },
   by: Person,
 ): Promise<void> {
@@ -469,6 +471,9 @@ export async function saveFigures(
     lines.push(
       `පඩිය: රු.${person.dailyWage} (${WAGE_BASIS_LABEL[person.wageBasis].per}) → රු.${figures.dailyWage} (${WAGE_BASIS_LABEL[figures.wageBasis].per})`,
     );
+  }
+  if (figures.otherLoadWage !== person.otherLoadWage) {
+    lines.push(`වෙනත් ලෝඩ් පඩිය: රු.${person.otherLoadWage} → රු.${figures.otherLoadWage}`);
   }
   if (lines.length > 0) {
     batch.set(

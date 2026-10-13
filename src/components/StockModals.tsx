@@ -169,15 +169,27 @@ export function StockChangeModal({
   );
 }
 
-/** Adds an item, or edits [item]'s details. Admin only. */
-export function ItemModal({ item, onClose }: { item: StoreItem | null; onClose: () => void }) {
+/**
+ * Adds an item, or edits [item]'s details. Admin only. A new item may start
+ * out linked to [initialLink], with that link's name and unit filled in.
+ */
+export function ItemModal({
+  item,
+  initialLink,
+  onClose,
+}: {
+  item: StoreItem | null;
+  initialLink?: StockLink;
+  onClose: () => void;
+}) {
   const { profile } = useSession();
   const { store } = useLiveData();
   const toast = useToast();
 
-  const [name, setName] = useState(item?.name ?? '');
-  const [unit, setUnit] = useState(item?.unit ?? '');
-  const [link, setLink] = useState<StockLink | ''>(item?.link ?? '');
+  const starting = item ? undefined : LINK_OPTIONS.find((option) => option.link === initialLink);
+  const [name, setName] = useState(item?.name ?? starting?.label ?? '');
+  const [unit, setUnit] = useState(item?.unit ?? starting?.unit ?? '');
+  const [link, setLink] = useState<StockLink | ''>(item?.link ?? starting?.link ?? '');
   const [opening, setOpening] = useState(item ? String(item.quantity) : '');
   const [minimum, setMinimum] = useState(item ? String(item.minQuantity) : '');
   const [price, setPrice] = useState(item ? String(item.unitPrice) : '');

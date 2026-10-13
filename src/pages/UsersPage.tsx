@@ -44,6 +44,7 @@ import {
   machineTitle,
   machineTypeForRole,
   nameOf,
+  paidPerLoad,
   type Machine,
   type Person,
   type RoleId,
@@ -197,6 +198,7 @@ function UserModal({ person, onClose }: { person: Person | null; onClose: () => 
   const [meter, setMeter] = useState('');
   const [wage, setWage] = useState(person?.dailyWage ? String(person.dailyWage) : '');
   const [wageBasis, setWageBasis] = useState<WageBasis>(person?.wageBasis ?? 'day');
+  const [otherWage, setOtherWage] = useState(person?.otherLoadWage ? String(person.otherLoadWage) : '');
   const [advance, setAdvance] = useState(String(person?.advanceAmount ?? 0));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -204,6 +206,9 @@ function UserModal({ person, onClose }: { person: Person | null; onClose: () => 
   const crew = ROLES[role].isCrew;
   const supervisor = role === 'supervisor';
   const paysWage = hasWageRate(role);
+  // A driller paid per load: the rate above is for 6/9 and සක්කර loads, and a
+  // second one is for every other load.
+  const perLoadDriller = paidPerLoad({ role, wageBasis });
   const settingUp = crew && machineChoice === NEW_MACHINE;
   const machine = (settingUp ? newMachineId : machineChoice).trim();
   const chosen = settingUp ? undefined : machines.get(machineChoice);
@@ -236,7 +241,7 @@ function UserModal({ person, onClose }: { person: Person | null; onClose: () => 
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    const figures = [number(wage), number(advance), number(meter)];
+    const figures = [number(wage), number(advance), number(meter), number(otherWage)];
     if (!name.trim()) return setError('නම ඇතුළත් කරන්න.');
     if (!person && !USERNAME_PATTERN.test(username.trim().toLowerCase())) {
       return setError('පරිශීලක නාමය අකුරු 3–32ක් විය යුතුය: a–z, 0–9, . _ - පමණි.');
@@ -261,6 +266,7 @@ function UserModal({ person, onClose }: { person: Person | null; onClose: () => 
       machineId: machine,
       dailyWage: number(wage),
       wageBasis: supervisor ? ('month' as const) : wageBasis,
+      otherLoadWage: number(otherWage),
       newMachine: settingUp ? newDetails : undefined,
     };
     try {
@@ -440,9 +446,24 @@ function UserModal({ person, onClose }: { person: Person | null; onClose: () => 
                 ))}
               </Select>
             </Field>
-            <Field label={`පඩිය (රු.) — ${WAGE_BASIS_LABEL[wageBasis].per}`} hint="මාසයේ මුදල් ගණනයටත්, යෙදුමේ දවසේ පඩිය පෙන්වීමටත් යොදයි.">
+            <Field
+              label={perLoadDriller ? 'පඩිය (රු.) — 6/9 සහ සක්කර ලෝඩ් එකකට' : `පඩිය (රු.) — ${WAGE_BASIS_LABEL[wageBasis].per}`}
+              hint={
+                perLoadDriller
+                  ? 'විකුණුම් බිල්පත් වල තහවුරු කළ 6/9 සහ සක්කර ලෝඩ් වලට යොදයි.'
+                  : 'මාසයේ මුදල් ගණනයටත්, යෙදුමේ දවසේ පඩිය පෙන්වීමටත් යොදයි.'
+              }
+            >
               <Input type="number" min="0" step="any" value={wage} onChange={(event) => setWage(event.target.value)} />
             </Field>
+            {perLoadDriller && (
+              <Field
+                label="පඩිය (රු.) — වෙනත් ලෝඩ් එකකට"
+                hint="බෝල්දාස්, C1, කෝරි ඩස්ට් සහ වෙනත් ලෝඩ් වලට ගෙවන මුදල. හිස්ව තැබුවොත් ඒවාට ගෙවීමක් නැත."
+              >
+                <Input type="number" min="0" step="any" value={otherWage} onChange={(event) => setOtherWage(event.target.value)} />
+              </Field>
+            )}
           </div>
         )}
 

@@ -42,6 +42,7 @@ const person = (id: string, role: Person['role'], machineId = ''): Person => ({
   advanceAmount: 0,
   dailyWage: 0,
   wageBasis: 'day',
+  otherLoadWage: 0,
 });
 const admin = person('admin1', 'admin');
 const supervisor = person('sup1', 'supervisor');

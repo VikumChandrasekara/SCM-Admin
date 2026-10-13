@@ -29,6 +29,7 @@ const kamal: Person = {
   advanceAmount: 0,
   dailyWage: 0,
   wageBasis: 'day',
+  otherLoadWage: 0,
 };
 
 describe('the 10,000 hour service', () => {

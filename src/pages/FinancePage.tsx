@@ -45,6 +45,7 @@ export function FinancePage() {
   const [version, setVersion] = useState(0);
 
   const sales = useMonthSales(month);
+  const previousSales = useMonthSales(addMonths(month, -1));
   const bills = useMonthBills(month);
   const movements = useMonthMovements(month);
   const crewMonths = useCrewMonths(crew, month, version);
@@ -55,12 +56,15 @@ export function FinancePage() {
   const royaltyRates = useRoyaltyRates();
 
   // Last month's gross, from the same days and loads — no bills, as gross never takes them off.
-  const previousGross = previousCrew.data
-    ? previousCrew.data.reduce(
-        (total, { person, days, tally }) => total + payFor(person, days, tally, [], null, today).gross,
-        0,
-      )
-    : null;
+  // A driller's loads and bonus come from that month's sales, so those are waited for too.
+  const previousSalesData = previousSales.data;
+  const previousGross =
+    previousCrew.data && previousSalesData
+      ? previousCrew.data.reduce(
+          (total, { person, days, tally }) => total + payFor(person, days, tally, [], null, today, previousSalesData).gross,
+          0,
+        )
+      : null;
 
   const finance = useMemo(
     () =>

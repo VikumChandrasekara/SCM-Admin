@@ -144,7 +144,7 @@ export const EXPENSE_LABEL: Record<ExpenseCategory, { label: string; detail: str
   diesel: { label: 'ඩීසල්', detail: 'පිරවීම් වලින් භාවිත කළ — ලෝඩ් සියල්ලටම බෙදේ' },
   oil: { label: 'ඔයිල් සහ කූලන්ට්', detail: 'එන්ජින්, හයිඩ්‍රොලික්, කම්පසර් ඔයිල් සහ කූලන්ට්' },
   shells: { label: 'කරල්', detail: 'වෙඩි කරල් — ගබඩාවෙන් භාවිත කළ' },
-  explosives: { label: 'වෙඩි බඩු — අනෙක්', detail: 'කැප්, වෙඩි නූල්, ඇමෝනියා, යාරමීලා, වෙඩි කුඩු, ඩීසල් මිශ්‍ර' },
+  explosives: { label: 'වෙඩි බඩු — අනෙක්', detail: 'කැප්, වෙඩි නූල්, ඇමෝනියා, යාරමීලා, වෙඩි කුඩු, ඩීසල් මිශ්‍ර, බිට්, කටු' },
   parts: { label: 'කොටස් සහ සර්විස්', detail: 'ෆිල්ටර් සහ සර්විස් කොටස්' },
   wages: { label: 'පඩි', detail: 'කණ්ඩායම් වැටුප් — ඇඩ්වාන්ස් ඇතුළුව, කෑම නැතිව' },
   food: { label: 'කෑම', detail: 'කෑම බිල්පත් — පඩියෙන් අඩු කළ සහ අඩු නොකළ' },
@@ -462,7 +462,7 @@ export function financeFor({
     const theirs = bills.filter((bill) => bill.operatorId === person.id);
     return {
       person,
-      pay: payFor(person, days, tally, bills, null, today),
+      pay: payFor(person, days, tally, bills, null, today, sales, now),
       advances: sum(theirs.filter((bill) => bill.category === 'advance').map((bill) => bill.amount)),
       food: sum(theirs.filter((bill) => bill.category === 'food').map((bill) => bill.amount)),
     };

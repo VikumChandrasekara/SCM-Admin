@@ -47,6 +47,7 @@ const person = (id: string, role: Person['role'], overrides: Partial<Person> = {
   advanceAmount: 0,
   dailyWage: 0,
   wageBasis: 'day',
+  otherLoadWage: 0,
   ...overrides,
 });
 const admin = person('admin1', 'admin');

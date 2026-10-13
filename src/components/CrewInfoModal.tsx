@@ -9,6 +9,7 @@ import { useMonthBills } from '../data/bills';
 import { useLiveDoc, useLiveQuery } from '../data/live';
 import { useLiveData } from '../data/LiveData';
 import { dayRef, markLeaveWorked, monthRef, resetService, saveFigures, saveTally, setServiceDue } from '../data/machines';
+import { useMonthSales } from '../data/sales';
 import { db } from '../db';
 import { errorMessage } from '../lib/errors';
 import { hours, monthBounds, quantity, rupees, signedHours } from '../lib/format';
@@ -22,6 +23,7 @@ import {
   isPartTask,
   monthFrom,
   nameOf,
+  paidPerLoad,
   serviceDoneLabel,
   serviceNextLabel,
   serviceStatus,
@@ -70,13 +72,24 @@ export function CrewInfoModal({ person, date, onClose }: { person: Person; date:
     (snapshot) => dayFrom(snapshot.id, snapshot.data()),
   );
   const bills = useMonthBills(month);
+  // A driller's loads and bonus are counted from what was sold.
+  const sales = useMonthSales(month);
   const pay =
-    monthDays.data && bills.data
-      ? payFor(live, monthDays.data, monthTally.data ?? monthFrom(month, undefined), bills.data, day.data ?? null, today)
+    monthDays.data && bills.data && sales.data
+      ? payFor(
+          live,
+          monthDays.data,
+          monthTally.data ?? monthFrom(month, undefined),
+          bills.data,
+          day.data ?? null,
+          today,
+          sales.data,
+        )
       : null;
 
   const [advance, setAdvance] = useState(String(live.advanceAmount));
   const [wage, setWage] = useState(live.dailyWage ? String(live.dailyWage) : '');
+  const [otherWage, setOtherWage] = useState(live.otherLoadWage ? String(live.otherLoadWage) : '');
   const [wageBasis, setWageBasis] = useState<WageBasis>(live.wageBasis);
   const [tally, setTally] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<ServiceTask | null>(null);
@@ -98,6 +111,9 @@ export function CrewInfoModal({ person, date, onClose }: { person: Person; date:
   const field = tallyField(live);
   const whole = field === 'loads';
   const storedTally = day.data ? day.data[field] : 0;
+  // A driller paid per load is paid for the 6/9 and සක්කර loads sold, and a
+  // second rate for the rest — what is picked here, before it is saved.
+  const perLoadDriller = paidPerLoad({ role: live.role, wageBasis });
 
   /** The store item fitted for [task], when the store stocks one. */
   const partFor = (task: ServiceTask) => store.find((item) => item.link === `service:${task}`) ?? null;
@@ -120,13 +136,15 @@ export function CrewInfoModal({ person, date, onClose }: { person: Person; date:
   function saveInfo() {
     const advanceAmount = Number(advance);
     const rate = wage.trim() === '' ? 0 : Number(wage);
-    if ([advanceAmount, rate].some((value) => !Number.isFinite(value) || value < 0)) {
+    // Only a driller paid per load has a second rate; anyone else keeps none.
+    const otherRate = perLoadDriller && otherWage.trim() !== '' ? Number(otherWage) : 0;
+    if ([advanceAmount, rate, otherRate].some((value) => !Number.isFinite(value) || value < 0)) {
       toast.error('අගයන් ඍණ නොවන සංඛ්‍යා විය යුතුය.');
       return;
     }
     void run(
       'info',
-      () => saveFigures(live, { advanceAmount, dailyWage: rate, wageBasis }, profile),
+      () => saveFigures(live, { advanceAmount, dailyWage: rate, wageBasis, otherLoadWage: otherRate }, profile),
       'තොරතුරු සුරැකුණා.',
     );
   }
@@ -210,9 +228,24 @@ export function CrewInfoModal({ person, date, onClose }: { person: Person; date:
                 ))}
               </Select>
             </Field>
-            <Field label={`පඩිය (රු.) — ${WAGE_BASIS_LABEL[wageBasis].per}`} hint="මාසයේ මුදල් ගණනයටත්, යෙදුමේ දවසේ පඩිය පෙන්වීමටත් යොදයි.">
+            <Field
+              label={perLoadDriller ? 'පඩිය (රු.) — 6/9 සහ සක්කර ලෝඩ් එකකට' : `පඩිය (රු.) — ${WAGE_BASIS_LABEL[wageBasis].per}`}
+              hint={
+                perLoadDriller
+                  ? 'විකුණුම් බිල්පත් වල තහවුරු කළ 6/9 සහ සක්කර ලෝඩ් වලට යොදයි.'
+                  : 'මාසයේ මුදල් ගණනයටත්, යෙදුමේ දවසේ පඩිය පෙන්වීමටත් යොදයි.'
+              }
+            >
               <Input type="number" min="0" step="any" value={wage} onChange={(event) => setWage(event.target.value)} />
             </Field>
+            {perLoadDriller && (
+              <Field
+                label="පඩිය (රු.) — වෙනත් ලෝඩ් එකකට"
+                hint="බෝල්දාස්, C1, කෝරි ඩස්ට් සහ වෙනත් ලෝඩ් වලට ගෙවන මුදල. හිස්ව තැබුවොත් ඒවාට ගෙවීමක් නැත."
+              >
+                <Input type="number" min="0" step="any" value={otherWage} onChange={(event) => setOtherWage(event.target.value)} />
+              </Field>
+            )}
             <Button icon={<Save className="size-4" />} busy={busy === 'info'} onClick={saveInfo} className="w-full">
               තොරතුරු සුරකින්න
             </Button>
@@ -320,6 +353,11 @@ export function CrewInfoModal({ person, date, onClose }: { person: Person; date:
           <p className="mt-2 px-1 text-xs text-white/55">
             මෙය සකසන්නේ සුපවයිසර් / පරිපාලක පමණි — මාසයේ එකතුව වෙනස වන ප්‍රමාණයෙන් යාවත්කාලීන වේ.
           </p>
+          {perLoadDriller && (
+            <p className="mt-1 px-1 text-xs text-amber-hi">
+              මෙම පඩිය ගණනය කරන්නේ විකුණුම් බිල්පත් වල ලෝඩ් වලිනි — මෙහි ලෝඩ් ගණන සටහනක් පමණි, පඩියට බලපාන්නේ නැත.
+            </p>
+          )}
 
           <SectionLabel>
             <span className="mt-5 block">සේවා</span>

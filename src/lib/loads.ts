@@ -67,6 +67,37 @@ function add(row: LoadRow, sale: Sale): void {
   }
 }
 
+/**
+ * The loads a driller is paid and given a bonus on, as the sales bills show
+ * them: split into 6/9, සක්කර and everything else.
+ */
+export interface DrillerLoads {
+  /** Loads of 6/9 — also what the driller's bonus is counted on. */
+  sixNine: number;
+  /** Loads of සක්කර, paid the same as 6/9. */
+  sakka: number;
+  /** Loads of anything else: බෝල්දාස්, C1, කෝරි ඩස්ට්, or a bill from before materials were recorded. */
+  other: number;
+}
+
+export const noDrillerLoads = (): DrillerLoads => ({ sixNine: 0, sakka: 0, other: 0 });
+
+/**
+ * The loads that have gone — bills verified, as in [loadAnalysis] — dated
+ * within [datePrefix], a month (`2026-10`) or a single day (`2026-10-20`).
+ */
+export function drillerLoads(sales: readonly Sale[], datePrefix: string, now = Date.now()): DrillerLoads {
+  const loads = noDrillerLoads();
+  for (const sale of sales) {
+    if (!sale.date.startsWith(datePrefix) || saleStatus(sale, now) !== 'verified') continue;
+    const count = saleLoads(sale);
+    if (sale.material === 'six_nine') loads.sixNine += count;
+    else if (sale.material === 'sakka') loads.sakka += count;
+    else loads.other += count;
+  }
+  return loads;
+}
+
 /** The month's loads that have gone, by material and by vehicle. */
 export function loadAnalysis(sales: readonly Sale[], now = Date.now()): LoadAnalysis {
   const rows = new Map<LoadKind, LoadRow>(LOAD_MATERIALS.map((material) => [material, empty(material)]));

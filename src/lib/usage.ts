@@ -9,9 +9,12 @@ import {
 
 import {
   BLAST_ITEMS,
+  BLAST_SIZES_SOURCE,
   FILL_ITEMS,
+  SIZED_ITEMS,
   linkDocId,
   nameOf,
+  sizeLines,
   storeItemFrom,
   usageInStoreUnit,
   type Day,
@@ -38,7 +41,7 @@ export function usageId(machineId: string, date: string, source: string): string
 
 /** What one locked slot or sheet drew from the store. */
 export interface Usage {
-  /** `fill1`, `fill2`, `fill3` or `blast`. */
+  /** `fill1`, `fill2`, `fill3`, `blast` or `blastSizes` (the sheet's බිට් and කටු). */
   source: string;
   lockedAt: Date;
   amounts: Partial<Record<StockLink, number>>;
@@ -67,6 +70,19 @@ export function usagesOf(day: Day): Usage[] {
     }
     if (Object.keys(amounts).length > 0) {
       usages.push({ source: 'blast', lockedAt: day.blasting.lockedAt, amounts });
+    }
+
+    // බිට් and කටු are drawn in several sizes but held on the shelf as one
+    // count, so every size of a kind comes off the same item. Posted on their
+    // own so an app that only posted the rest can be topped up, and the two
+    // can never draw the same thing twice.
+    const sized: Partial<Record<StockLink, number>> = {};
+    for (const item of SIZED_ITEMS) {
+      const total = sizeLines(day.blasting.sizes[item]).reduce((sum, [, count]) => sum + count, 0);
+      if (total > 0) sized[`blast:${item}`] = total;
+    }
+    if (Object.keys(sized).length > 0) {
+      usages.push({ source: BLAST_SIZES_SOURCE, lockedAt: day.blasting.lockedAt, amounts: sized });
     }
   }
 

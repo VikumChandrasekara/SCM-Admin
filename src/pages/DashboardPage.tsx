@@ -14,6 +14,7 @@ import { useMonthBills } from '../data/bills';
 import { useLiveDoc, useLiveDocs, useLiveQuery } from '../data/live';
 import { useLiveData } from '../data/LiveData';
 import { dayRef, monthRef } from '../data/machines';
+import { useMonthSales } from '../data/sales';
 import { db } from '../db';
 import { serviceAlertsFor, stockAlerts } from '../lib/alerts';
 import { money, monthBounds, monthLabel, quantity, rupees } from '../lib/format';
@@ -72,6 +73,8 @@ export function DashboardPage() {
     (snapshot) => dayFrom(snapshot.id, snapshot.data()),
   );
   const bills = useMonthBills(month);
+  // A driller's loads and bonus are counted from what was sold.
+  const sales = useMonthSales(month);
 
   // Litre prices come from whatever store item each fluid is linked to.
   const prices = useMemo(() => {
@@ -93,6 +96,7 @@ export function DashboardPage() {
         bills.data ?? [],
         selected.machineId ? dayOf(selected) : null,
         today,
+        sales.data ?? [],
       )
     : null;
   const infoPerson = infoId ? crew.find((person) => person.id === infoId) ?? null : null;
@@ -203,6 +207,8 @@ export function DashboardPage() {
                 today={today}
                 wageUnits={pay.wageUnits}
                 wagePay={pay.wagePay}
+                loadPay={pay.loadPay}
+                bonusLoads={pay.bonusLoads}
               />
 
               <div className="grid gap-4 sm:grid-cols-2 lg:flex lg:flex-col">
@@ -278,7 +284,13 @@ function countOrHours(value: number): string {
 }
 
 function grossCaption(person: Person, pay: NonNullable<ReturnType<typeof payFor>>): string {
-  const parts = [`${WAGE_BASIS_LABEL[person.wageBasis].unit} ${countOrHours(pay.wageUnits)} × ${money(person.dailyWage)}`];
+  const parts = pay.loadPay
+    ? [`6/9 සහ සක්කර ලෝඩ් ${pay.loadPay.mainLoads} × ${money(person.dailyWage)}`]
+    : [`${WAGE_BASIS_LABEL[person.wageBasis].unit} ${countOrHours(pay.wageUnits)} × ${money(person.dailyWage)}`];
+  // Only when there are some, or a rate for them: most months a driller sells nothing else.
+  if (pay.loadPay && (pay.loadPay.otherLoads > 0 || person.otherLoadWage > 0)) {
+    parts.push(`වෙනත් ලෝඩ් ${pay.loadPay.otherLoads} × ${money(person.otherLoadWage)}`);
+  }
   if (pay.bonusPay > 0) parts.push(`බෝනස් ${money(pay.bonusPay)}`);
   return parts.join(' + ');
 }
