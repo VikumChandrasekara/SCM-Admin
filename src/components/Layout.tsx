@@ -39,6 +39,7 @@ import { PageBoundary } from './PageBoundary';
 import { Badge, IconButton, Loading, cx } from './ui';
 import { useServiceWatcher } from './useServiceWatcher';
 import { useStockWatcher } from './useStockWatcher';
+import { useStoreLinker } from './useStoreLinker';
 
 interface NavEntry {
   to: string;
@@ -73,7 +74,8 @@ export function Layout() {
   const location = useLocation();
 
   // These run for as long as any page of the panel is open.
-  useUsageReconciler(crew, profile);
+  const linked = useStoreLinker(store, crew, profile, ready);
+  useUsageReconciler(crew, profile, linked);
   useStockWatcher(store, ready);
   useServiceWatcher(crew, machines, ready);
   useExpiredSalesSweeper();

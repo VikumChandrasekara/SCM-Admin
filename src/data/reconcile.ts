@@ -16,7 +16,7 @@ import { dayRef } from './machines';
  * days are left alone: by then the shelf has been counted, and a late
  * posting would take the same fuel off twice.
  */
-export function useUsageReconciler(crew: readonly Person[], me: Person): void {
+export function useUsageReconciler(crew: readonly Person[], me: Person, settled = true): void {
   const today = useToday();
   const yesterday = addDays(today, -1);
 
@@ -33,6 +33,9 @@ export function useUsageReconciler(crew: readonly Person[], me: Person): void {
   const attempted = useRef(new Set<string>());
 
   useEffect(() => {
+    // Until every use has its store item (see useStoreLinker), a posting would
+    // find some there and some not, and draw only from the ones that are.
+    if (!settled) return;
     for (const person of crew) {
       if (!person.machineId) continue;
       for (const date of [yesterday, today]) {
@@ -56,5 +59,5 @@ export function useUsageReconciler(crew: readonly Person[], me: Person): void {
         }
       }
     }
-  }, [crew, days, today, yesterday, me]);
+  }, [crew, days, today, yesterday, me, settled]);
 }

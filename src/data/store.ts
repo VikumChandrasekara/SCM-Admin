@@ -12,7 +12,8 @@ import {
 } from 'firebase/firestore';
 
 import { db } from '../db';
-import { linkDocId, movementFrom, type Person, type StockLink, type StoreItem } from '../lib/model';
+import { linkDocId, movementFrom, storeItemFrom, type Person, type StockLink, type StoreItem } from '../lib/model';
+import type { LinkPlan } from '../lib/storeLink';
 import { auditEntry } from './audit';
 import { commit } from './commit';
 import { useLiveQuery } from './live';
@@ -161,6 +162,98 @@ function stockSummary(change: StockChange, item: StoreItem, amount: number, delt
         : `නැවත ගණන් කළා ${item.quantity} → ${amount} ${item.unit}`;
   const after = change === 'adjust' ? amount : item.quantity + delta;
   return `${what} · දැන් ${after} ${item.unit}${note.trim() ? ` · ${note.trim()}` : ''}`;
+}
+
+export type LinkResult = 'adopted' | 'created' | 'present';
+
+/**
+ * Gives the use in [plan] an item to draw from, without anyone choosing one —
+ * see storeLink.ts for why a link cannot simply be added to an item.
+ *
+ * One transaction. If the use already has its item (another session got there
+ * first) nothing is written. Otherwise the plan's item is moved to the id the
+ * link fixes, count and price and all, and the old one goes to the recycle bin
+ * for 30 days, where it can be put back; with no such item a new one is made
+ * at 0. Either way the count stays what it was, so nothing is logged as stock
+ * coming or going — only in the audit trail, which says what was done.
+ */
+export async function linkStoreItem(plan: LinkPlan, by: Person): Promise<LinkResult> {
+  const { option } = plan;
+  const target = doc(db, 'store', linkDocId(option.link));
+  const used = `${option.group} · ${option.label}`;
+
+  try {
+    return await linkInTransaction(target, used, plan, by);
+  } catch (failure) {
+    // Two sessions at once: the rules refuse the second one's writes to what the
+    // first has just made, rather than letting it retry and find it there.
+    if ((failure as { code?: string }).code === 'permission-denied' && (await getDoc(target)).exists()) {
+      return 'present';
+    }
+    throw failure;
+  }
+}
+
+function linkInTransaction(
+  target: ReturnType<typeof doc>,
+  used: string,
+  { option, adopt }: LinkPlan,
+  by: Person,
+): Promise<LinkResult> {
+  return runTransaction(db, async (tx): Promise<LinkResult> => {
+    // Every read first: a transaction may not read after it has written.
+    if ((await tx.get(target)).exists()) return 'present';
+    const sourceRef = adopt ? doc(db, 'store', adopt.id) : null;
+    const source = sourceRef ? await tx.get(sourceRef) : null;
+
+    if (adopt && sourceRef && source?.exists() && !source.data().link) {
+      // As the server holds it now, not as the panel last saw it.
+      const stored = storeItemFrom(source.id, source.data());
+      tx.set(target, {
+        name: stored.name,
+        unit: stored.unit,
+        quantity: stored.quantity,
+        minQuantity: stored.minQuantity,
+        unitPrice: stored.unitPrice,
+        piecesPerKg: stored.piecesPerKg,
+        link: option.link,
+        note: stored.note,
+        createdAt: source.data().createdAt ?? serverTimestamp(),
+        countedAt: source.data().countedAt ?? null,
+        updatedAt: serverTimestamp(),
+        updatedBy: by.id,
+      });
+      const summary = `ඉතිරිව තිබූ ප්‍රමාණය ${stored.quantity} ${stored.unit} · ${used} සඳහා මාරු කළා`;
+      tx.set(binRef('store', adopt.id), binEntryData('store', adopt.id, source.data(), stored.name, summary, by));
+      tx.delete(sourceRef);
+      tx.set(
+        doc(collection(db, 'auditLog')),
+        auditEntry('store.link', 'store', target.id, stored.name, `${used} සඳහා සම්බන්ධ කළා — ${stored.quantity} ${stored.unit} සමඟ`, by),
+      );
+      return 'adopted';
+    }
+
+    tx.set(target, {
+      name: option.label,
+      unit: option.unit,
+      quantity: 0,
+      minQuantity: 0,
+      unitPrice: 0,
+      piecesPerKg: null,
+      link: option.link,
+      note: '',
+      createdAt: serverTimestamp(),
+      // Not counted yet, so what the crews use from now on is drawn from it.
+      countedAt: null,
+      updatedAt: serverTimestamp(),
+      updatedBy: by.id,
+    });
+    tx.set(
+      doc(collection(db, 'auditLog')),
+      auditEntry('store.link', 'store', target.id, option.label, `${used} සඳහා ගබඩා අයිතමයක් නොතිබූ නිසා නව අයිතමයක් සෑදුවා — ප්‍රමාණය 0`, by),
+    );
+    return 'created';
+  });
 }
 
 /**

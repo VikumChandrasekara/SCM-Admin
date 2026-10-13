@@ -23,7 +23,7 @@ import {
 } from '../components/ui';
 import { useLiveData } from '../data/LiveData';
 import { useMovements, type StockChange } from '../data/store';
-import { stockAlerts, unlinkedUsage } from '../lib/alerts';
+import { stockAlerts } from '../lib/alerts';
 import { dateTime, money, quantity, rupees } from '../lib/format';
 import {
   MOVEMENT_LABEL,
@@ -32,7 +32,6 @@ import {
   sourceLabel,
   stockStatus,
   type Movement,
-  type StockLink,
   type StoreItem,
 } from '../lib/model';
 
@@ -41,7 +40,7 @@ type Filter = 'all' | 'alerts' | 'linked';
 export function StorePage() {
   const { profile } = useSession();
   const permissions = permissionsFor(profile);
-  const { store, crew, ready } = useLiveData();
+  const { store, ready } = useLiveData();
   // The log grows for ever; a page of it at a time keeps a slow line quick.
   const [logSize, setLogSize] = useState(25);
   const movements = useMovements(logSize);
@@ -49,15 +48,12 @@ export function StorePage() {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
   const [editing, setEditing] = useState<StoreItem | 'new' | null>(null);
-  /** The link a new item is being made for, from the list of what no item is linked to. */
-  const [creating, setCreating] = useState<StockLink | null>(null);
   const [changing, setChanging] = useState<{ item: StoreItem; mode: StockChange } | null>(null);
   const [deleting, setDeleting] = useState<StoreItem | null>(null);
 
   if (!ready) return <Loading />;
 
   const alerts = stockAlerts(store);
-  const unlinked = unlinkedUsage(store, crew);
   const value = store.reduce((sum, item) => sum + Math.max(item.quantity, 0) * item.unitPrice, 0);
   const needle = search.trim().toLowerCase();
   const shown = store.filter(
@@ -90,40 +86,6 @@ export function StorePage() {
         <Summary label="තොග අවසන්" value={String(alerts.filter((alert) => alert.status === 'out').length)} tone="out" />
         <Summary label="තොගයේ වටිනාකම" value={rupees(value)} />
       </div>
-
-      {unlinked.length > 0 && (
-        <Panel tone="deep" className="mb-6 p-4">
-          <p className="mb-1 flex items-center gap-2 text-sm font-extrabold text-signal">
-            <TriangleAlert className="size-5" /> තොගයෙන් අඩු නොවන භාවිත
-          </p>
-          <p className="mb-3 text-xs text-white/65">
-            කණ්ඩායම් මේවා සටහන් කළත් ගබඩාවේ සම්බන්ධ අයිතමයක් නැති නිසා තොගය අඩු වන්නේ නැත.
-            {permissions.editItems
-              ? ' එබූ විට එම භාවිතයට සම්බන්ධ අයිතමයක් සාදයි. සම්බන්ධතාවය පසුව වෙනස් කළ නොහැකි නිසා, සම්බන්ධ නොකළ පැරණි අයිතමයක් ඇත්නම් එහි ඉතිරිය නව අයිතමයට දමා පැරණි එක ඉවත් කරන්න.'
-              : ' නව අයිතම එකතු කරන්නේ පරිපාලක පමණි.'}
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {unlinked.map((option) =>
-              permissions.editItems ? (
-                <button
-                  key={option.link}
-                  type="button"
-                  onClick={() => setCreating(option.link)}
-                  className="flex items-center gap-2 rounded-xl bg-well px-3 py-2 text-left hover:bg-black/30"
-                >
-                  <span className="text-sm font-bold">{option.label}</span>
-                  <span className="text-xs text-white/65">{option.group}</span>
-                  <PackagePlus className="size-4 text-amber-hi" />
-                </button>
-              ) : (
-                <span key={option.link} className="rounded-xl bg-well px-3 py-2 text-sm font-bold">
-                  {option.label} <span className="text-xs font-normal text-white/65">{option.group}</span>
-                </span>
-              ),
-            )}
-          </div>
-        </Panel>
-      )}
 
       {alerts.length > 0 && (
         <Panel tone="deep" className="mb-6 p-4">
@@ -284,7 +246,6 @@ export function StorePage() {
       </Panel>
 
       {editing && <ItemModal item={editing === 'new' ? null : editing} onClose={() => setEditing(null)} />}
-      {creating && <ItemModal item={null} initialLink={creating} onClose={() => setCreating(null)} />}
       {changing && <StockChangeModal item={changing.item} initial={changing.mode} onClose={() => setChanging(null)} />}
       {deleting && <DeleteItemModal item={deleting} onClose={() => setDeleting(null)} />}
     </>

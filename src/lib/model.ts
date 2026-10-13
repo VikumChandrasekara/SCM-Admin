@@ -925,6 +925,8 @@ export type AuditAction =
   | 'store.delete'
   | 'store.restore'
   | 'store.stock'
+  // The panel tying a store item to what the crews record, with no one asked.
+  | 'store.link'
   | 'bill.create'
   | 'bill.update'
   | 'bill.delete'
@@ -965,6 +967,7 @@ export const AUDIT_LABEL: Record<AuditAction, string> = {
   'store.delete': 'ගබඩා අයිතමය ඉවත් කළා',
   'store.restore': 'ගබඩා අයිතමය ආපසු ගත්තා',
   'store.stock': 'ගබඩා තොගය වෙනස් කළා',
+  'store.link': 'ගබඩා අයිතමය කණ්ඩායම් භාවිතයට සම්බන්ධ කළා',
   'bill.create': 'බිල්පතක් සෑදුවා',
   'bill.update': 'බිල්පතක් සංස්කරණය කළා',
   'bill.delete': 'බිල්පතක් ඉවත් කළා',

@@ -169,27 +169,15 @@ export function StockChangeModal({
   );
 }
 
-/**
- * Adds an item, or edits [item]'s details. Admin only. A new item may start
- * out linked to [initialLink], with that link's name and unit filled in.
- */
-export function ItemModal({
-  item,
-  initialLink,
-  onClose,
-}: {
-  item: StoreItem | null;
-  initialLink?: StockLink;
-  onClose: () => void;
-}) {
+/** Adds an item, or edits [item]'s details. Admin only. */
+export function ItemModal({ item, onClose }: { item: StoreItem | null; onClose: () => void }) {
   const { profile } = useSession();
   const { store } = useLiveData();
   const toast = useToast();
 
-  const starting = item ? undefined : LINK_OPTIONS.find((option) => option.link === initialLink);
-  const [name, setName] = useState(item?.name ?? starting?.label ?? '');
-  const [unit, setUnit] = useState(item?.unit ?? starting?.unit ?? '');
-  const [link, setLink] = useState<StockLink | ''>(item?.link ?? starting?.link ?? '');
+  const [name, setName] = useState(item?.name ?? '');
+  const [unit, setUnit] = useState(item?.unit ?? '');
+  const [link, setLink] = useState<StockLink | ''>(item?.link ?? '');
   const [opening, setOpening] = useState(item ? String(item.quantity) : '');
   const [minimum, setMinimum] = useState(item ? String(item.minQuantity) : '');
   const [price, setPrice] = useState(item ? String(item.unitPrice) : '');
@@ -391,7 +379,8 @@ export function DeleteItemModal({ item, onClose }: { item: StoreItem; onClose: (
       <p className="text-sm text-white/80">
         <b>{item.name}</b> ({quantity(item.quantity, item.unit)}) ගබඩා ලැයිස්තුවෙන් ඉවත් වේ. පසුගිය චලනයන් ලොගයේ
         රැඳේ.
-        {item.link && ' මෙය කණ්ඩායම් භාවිතයට සම්බන්ධ නිසා, ඉවත් කළ පසු එම භාවිතය තොගයෙන් අඩු නොවේ.'}
+        {item.link &&
+          ' මෙය කණ්ඩායම් භාවිතයට සම්බන්ධ අයිතමයකි — කණ්ඩායම් එය සටහන් කරන තාක්, පැනලය විවෘත කළ විට ප්‍රමාණය 0 ලෙස එය නැවත ස්වයංක්‍රීයව සාදයි.'}
       </p>
       {error && <div className="mt-3"><ErrorNote>{error}</ErrorNote></div>}
     </Modal>

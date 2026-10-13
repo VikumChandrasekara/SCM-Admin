@@ -23,6 +23,9 @@ export function useStockWatcher(store: readonly StoreItem[], ready: boolean): vo
     if (!before) return;
 
     for (const item of store) {
+      // An item that has only just appeared did not run out: it is new, or the
+      // panel moved it to the id its link needs.
+      if (!before.has(item.id)) continue;
       const now = current.get(item.id) ?? 'ok';
       const was = before.get(item.id) ?? 'ok';
       if (severity[now] <= severity[was]) continue;
