@@ -35,7 +35,9 @@ const person = (id: string, role: Person['role'], machineId: string): Person => 
   advanceAmount: 0,
   dailyWage: 0,
   wageBasis: 'day',
-  otherLoadWage: 0,
+  sakkaLoadWage: 0,
+  boldasLoadWage: 0,
+  c1LoadWage: 0,
 });
 
 const machine = (id: string, extra: object = {}): Machine => machineFrom(id, { totalHours: 100, ...extra });

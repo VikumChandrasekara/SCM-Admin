@@ -15,6 +15,7 @@ import {
   ROLES,
   WAGE_BASIS_LABEL,
   hasWageRate,
+  loadRateChanges,
   machineTypeForRole,
   nameOf,
   paidPerLoad,
@@ -50,8 +51,10 @@ export interface UserFields {
   dailyWage: number;
   /** What the daily wage is paid for: a day, an hour, a foot or a load. */
   wageBasis: WageBasis;
-  /** A driller paid per load: what a load of anything but 6/9 and සක්කර is paid. Kept for no one else. */
-  otherLoadWage: number;
+  /** A driller paid per load: what a load of සක්කර, බෝල්දාස් and C1 is paid. Kept for no one else. */
+  sakkaLoadWage: number;
+  boldasLoadWage: number;
+  c1LoadWage: number;
   /**
    * What the machine is, for a machine that does not exist yet and is set up
    * with this account. Its kind is always the one the role works, whatever
@@ -100,6 +103,16 @@ function addMachineIfNew(
   );
 }
 
+/** The rates for සක්කර, බෝල්දාස් and C1 — a driller paid per load's, and nothing for anyone else. */
+function loadRatesOf(fields: UserFields) {
+  const kept = hasWageRate(fields.role) && paidPerLoad(fields);
+  return {
+    sakkaLoadWage: kept ? fields.sakkaLoadWage : 0,
+    boldasLoadWage: kept ? fields.boldasLoadWage : 0,
+    c1LoadWage: kept ? fields.c1LoadWage : 0,
+  };
+}
+
 function recordFields(fields: UserFields) {
   const paid = hasWageRate(fields.role);
   return {
@@ -108,7 +121,7 @@ function recordFields(fields: UserFields) {
     machineId: ROLES[fields.role].isCrew ? fields.machineId.trim() : '',
     dailyWage: paid ? fields.dailyWage : 0,
     wageBasis: paid ? fields.wageBasis : 'day',
-    otherLoadWage: paid && paidPerLoad(fields) ? fields.otherLoadWage : 0,
+    ...loadRatesOf(fields),
   };
 }
 
@@ -126,10 +139,7 @@ function accountDiff(before: Person, fields: UserFields & { advanceAmount: numbe
       `පඩිය: රු.${before.dailyWage} (${WAGE_BASIS_LABEL[before.wageBasis].per}) → රු.${dailyWage} (${WAGE_BASIS_LABEL[fields.wageBasis].per})`,
     );
   }
-  const otherLoadWage = hasWageRate(fields.role) && paidPerLoad(fields) ? fields.otherLoadWage : 0;
-  if (otherLoadWage !== before.otherLoadWage) {
-    lines.push(`වෙනත් ලෝඩ් පඩිය: රු.${before.otherLoadWage} → රු.${otherLoadWage}`);
-  }
+  lines.push(...loadRateChanges(before, loadRatesOf(fields)));
   if (fields.advanceAmount !== before.advanceAmount) {
     lines.push(`ඇඩ්වාන්ස්: රු.${before.advanceAmount} → රු.${fields.advanceAmount}`);
   }

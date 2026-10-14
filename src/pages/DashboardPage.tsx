@@ -284,13 +284,13 @@ function countOrHours(value: number): string {
 }
 
 function grossCaption(person: Person, pay: NonNullable<ReturnType<typeof payFor>>): string {
+  // A driller paid per load: 6/9 always, the other kinds only when there are some
+  // or a rate for them — most months a driller sells little but 6/9.
   const parts = pay.loadPay
-    ? [`6/9 සහ සක්කර ලෝඩ් ${pay.loadPay.mainLoads} × ${money(person.dailyWage)}`]
+    ? pay.loadPay.lines
+        .filter((line) => line.label === '6/9' || line.loads > 0 || line.rate > 0)
+        .map((line) => `${line.label} ලෝඩ් ${line.loads} × ${money(line.rate)}`)
     : [`${WAGE_BASIS_LABEL[person.wageBasis].unit} ${countOrHours(pay.wageUnits)} × ${money(person.dailyWage)}`];
-  // Only when there are some, or a rate for them: most months a driller sells nothing else.
-  if (pay.loadPay && (pay.loadPay.otherLoads > 0 || person.otherLoadWage > 0)) {
-    parts.push(`වෙනත් ලෝඩ් ${pay.loadPay.otherLoads} × ${money(person.otherLoadWage)}`);
-  }
   if (pay.bonusPay > 0) parts.push(`බෝනස් ${money(pay.bonusPay)}`);
   return parts.join(' + ');
 }

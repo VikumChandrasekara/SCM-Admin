@@ -20,7 +20,7 @@ import {
 } from '../lib/model';
 import { PricesModal } from './PricesModal';
 import { useToast } from './Toasts';
-import { Button, ErrorNote, Field, IconButton, Input, Modal, Segmented, Select, Textarea } from './ui';
+import { Button, ErrorNote, Field, IconButton, Input, Modal, Segmented, Textarea } from './ui';
 
 /**
  * A new sale. The price is the one staff set — this only chooses what and
@@ -37,6 +37,8 @@ export function SaleModal({ onClose, onCreated }: { onClose: () => void; onCreat
   const [type, setType] = useState<SaleType>('tipper');
   const [prepaid, setPrepaid] = useState(false);
   const [amount, setAmount] = useState('');
+  /** A tipper bill written for a number of loads typed in, rather than cubes picked from the lorry sizes. */
+  const [byLoads, setByLoads] = useState(false);
   const [material, setMaterial] = useState<SaleMaterial | ''>('');
   const [payment, setPayment] = useState<PaymentType>('cash');
   const [customerName, setCustomerName] = useState('');
@@ -46,7 +48,11 @@ export function SaleModal({ onClose, onCreated }: { onClose: () => void; onCreat
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const count = Number(amount);
+  const typed = Number(amount);
+  // Loads typed in are kept as that many full tipper loads' worth of cubes, so
+  // the bill still adds up as cubes × the cube price.
+  const wholeLoads = type === 'tipper' && byLoads;
+  const count = wholeLoads ? typed * CUBES_PER_TIPPER : typed;
   const unitPrice = prices.data ? unitPriceOf(prices.data, type) : null;
   const total = unitPrice != null && Number.isFinite(count) && count > 0 ? count * unitPrice : null;
   const loadPrice = prices.data
@@ -58,6 +64,7 @@ export function SaleModal({ onClose, onCreated }: { onClose: () => void; onCreat
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (!Number.isFinite(count) || count <= 0) return setError('ප්‍රමාණය ශුන්‍යයට වඩා වැඩි විය යුතුය.');
+    if (wholeLoads && !Number.isInteger(typed)) return setError('ලෝඩ් ගණන පූර්ණ සංඛ්‍යාවක් විය යුතුය.');
     if (!customerName.trim()) return setError('පාරිභෝගිකයාගේ නම ඇතුළත් කරන්න.');
     // A prepaid load's vehicle may not be known until it comes.
     if (!prepaid && !vehicleNo.trim()) return setError('වාහන අංකය ඇතුළත් කරන්න.');
@@ -166,19 +173,58 @@ export function SaleModal({ onClose, onCreated }: { onClose: () => void; onCreat
             // A div rather than a Field, for the same reason as the type
             // picker: a <label> around a group of buttons names the first one
             // after the whole group.
-            <div>
-              <span className="mb-1.5 block text-[12.5px] font-semibold text-white/70">
-                ප්‍රමාණය ({SALE_TYPE.tipper.unit})
-              </span>
-              <Segmented
-                value={amount}
-                onChange={setAmount}
-                options={TIPPER_SIZES.map((size) => ({ value: String(size), label: quantity(size) }))}
-              />
-              {unitPrice != null && (
-                <span className="mt-1 block text-xs text-white/55">
-                  කියුබ් එකක් රු. {money(unitPrice)} · ටිපර් ලෝඩ් එකක් = කියුබ් {CUBES_PER_TIPPER}
-                </span>
+            <div className="space-y-3">
+              <div>
+                <span className="mb-1.5 block text-[12.5px] font-semibold text-white/70">ප්‍රමාණය දෙන ආකාරය</span>
+                <Segmented
+                  value={byLoads ? 'loads' : 'cubes'}
+                  onChange={(value) => {
+                    setByLoads(value === 'loads');
+                    setAmount('');
+                  }}
+                  options={[
+                    { value: 'cubes', label: 'කියුබ් අනුව' },
+                    { value: 'loads', label: 'ලෝඩ් ගණන අනුව' },
+                  ]}
+                />
+              </div>
+              {byLoads ? (
+                <Field
+                  label="ලෝඩ් ගණන"
+                  hint={
+                    unitPrice == null
+                      ? undefined
+                      : `ලෝඩ් එකක් = කියුබ් ${CUBES_PER_TIPPER} · රු. ${money(unitPrice * CUBES_PER_TIPPER)}` +
+                        (count > 0 ? ` · කියුබ් ${quantity(count)}` : '')
+                  }
+                >
+                  <Input
+                    type="number"
+                    inputMode="numeric"
+                    min="1"
+                    step="1"
+                    autoFocus
+                    required
+                    value={amount}
+                    onChange={(event) => setAmount(event.target.value)}
+                  />
+                </Field>
+              ) : (
+                <div>
+                  <span className="mb-1.5 block text-[12.5px] font-semibold text-white/70">
+                    ප්‍රමාණය ({SALE_TYPE.tipper.unit})
+                  </span>
+                  <Segmented
+                    value={amount}
+                    onChange={setAmount}
+                    options={TIPPER_SIZES.map((size) => ({ value: String(size), label: quantity(size) }))}
+                  />
+                  {unitPrice != null && (
+                    <span className="mt-1 block text-xs text-white/55">
+                      කියුබ් එකක් රු. {money(unitPrice)} · ටිපර් ලෝඩ් එකක් = කියුබ් {CUBES_PER_TIPPER}
+                    </span>
+                  )}
+                </div>
               )}
             </div>
           ) : (
@@ -202,36 +248,38 @@ export function SaleModal({ onClose, onCreated }: { onClose: () => void; onCreat
           <div className="flex items-center justify-between rounded-card px-4 py-3 text-ink shadow-control chip-amber">
             <span className="text-sm font-bold">
               {total != null && unitPrice != null
-                ? `${quantity(count, SALE_TYPE[type].unit)} × ${money(unitPrice)}`
+                ? wholeLoads
+                  ? `ලෝඩ් ${quantity(typed)} (කියුබ් ${quantity(count)}) × ${money(unitPrice * CUBES_PER_TIPPER)}`
+                  : `${quantity(count, SALE_TYPE[type].unit)} × ${money(unitPrice)}`
                 : (loadPrice ?? 'මිල පූරණය වෙමින්...')}
             </span>
             <span className="text-xl font-extrabold tabular-nums">{total != null ? rupees(total) : '—'}</span>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="ද්‍රව්‍යය">
-              <Select value={material} onChange={(event) => setMaterial(event.target.value as SaleMaterial | '')}>
-                <option value="">— තෝරන්න —</option>
-                {(Object.keys(SALE_MATERIAL) as SaleMaterial[]).map((id) => (
-                  <option key={id} value={id}>
-                    {SALE_MATERIAL[id]}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <Field label="ගෙවීම" hint={prepaid ? 'කලින් ගෙවීම මුදලින් පමණි.' : undefined}>
-              <Select
-                value={prepaid ? 'cash' : payment}
-                disabled={prepaid}
-                onChange={(event) => setPayment(event.target.value as PaymentType)}
-              >
-                {(Object.keys(PAYMENT_TYPE_LABEL) as PaymentType[]).map((id) => (
-                  <option key={id} value={id}>
-                    {PAYMENT_TYPE_LABEL[id]}
-                  </option>
-                ))}
-              </Select>
-            </Field>
+          {/* Divs rather than Fields, for the same reason as the type picker: a
+              <label> around a group of buttons names the first one after the whole group. */}
+          <div>
+            <span className="mb-1.5 block text-[13px] font-semibold text-white/75">ද්‍රව්‍යය</span>
+            {/* Nothing is picked until someone does, so the bill cannot go out with a guessed material. */}
+            <Segmented
+              value={material}
+              onChange={setMaterial}
+              options={(Object.keys(SALE_MATERIAL) as SaleMaterial[]).map((id) => ({ value: id, label: SALE_MATERIAL[id] }))}
+            />
+          </div>
+
+          <div>
+            <span className="mb-1.5 block text-[13px] font-semibold text-white/75">ගෙවීම</span>
+            <Segmented
+              value={prepaid ? 'cash' : payment}
+              disabled={prepaid}
+              onChange={setPayment}
+              options={(Object.keys(PAYMENT_TYPE_LABEL) as PaymentType[]).map((id) => ({
+                value: id,
+                label: PAYMENT_TYPE_LABEL[id],
+              }))}
+            />
+            {prepaid && <span className="mt-1 block text-xs text-white/55">කලින් ගෙවීම මුදලින් පමණි.</span>}
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">

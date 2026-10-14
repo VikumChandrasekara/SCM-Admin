@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { emptyDay, monthFrom, type Person, type Sale, type SaleMaterial } from '../src/lib/model';
+import { emptyDay, monthFrom, personFrom, type Person, type Sale, type SaleMaterial } from '../src/lib/model';
 import { payFor } from '../src/lib/pay';
 
 const now = new Date('2026-10-25T12:00:00Z').getTime();
@@ -16,7 +16,9 @@ const person = (role: Person['role'], extra: Partial<Person> = {}): Person => ({
   advanceAmount: 0,
   dailyWage: 0,
   wageBasis: 'day',
-  otherLoadWage: 0,
+  sakkaLoadWage: 0,
+  boldasLoadWage: 0,
+  c1LoadWage: 0,
   ...extra,
 });
 
@@ -58,22 +60,34 @@ const pay = (
 ) => payFor(who, [], tally(extra.loads, extra.feet), [], extra.day ?? null, today, sales, now);
 
 describe('a driller paid per load', () => {
-  const driller = person('compressor', { wageBasis: 'load', dailyWage: 500, otherLoadWage: 300 });
+  const driller = person('compressor', {
+    wageBasis: 'load',
+    dailyWage: 500,
+    sakkaLoadWage: 450,
+    boldasLoadWage: 300,
+    c1LoadWage: 250,
+  });
 
-  it('is paid the wage for 6/9 and සක්කර loads, and the other rate for every other load', () => {
+  it('is paid each kind of load at its own rate, and nothing for any other', () => {
     const figures = pay(driller, [
       sale('SIX00001', 'six_nine', 10),
       sale('SAK00001', 'sakka', 2),
       sale('BOL00001', 'boldas', 1),
+      sale('CON00001', 'c1', 3),
+      // කෝරි ඩස්ට්, and a bill from before materials were recorded, are not paid for.
       sale('DUS00001', 'kory_dust', 4),
-      // A bill from before materials were recorded is "anything else".
       sale('OLD00001', null, 2),
     ]);
 
-    expect(figures.loadPay).toEqual({ mainLoads: 12, mainPay: 6000, otherLoads: 7, otherPay: 2100 });
-    expect(figures.wageUnits).toBe(19);
-    expect(figures.wagePay).toBe(8100);
-    expect(figures.gross).toBe(8100);
+    expect(figures.loadPay?.lines).toEqual([
+      { label: '6/9', loads: 10, rate: 500, pay: 5000 },
+      { label: 'සක්කර', loads: 2, rate: 450, pay: 900 },
+      { label: 'බෝල්දාස්', loads: 1, rate: 300, pay: 300 },
+      { label: 'C1', loads: 3, rate: 250, pay: 750 },
+    ]);
+    expect(figures.wageUnits).toBe(16);
+    expect(figures.wagePay).toBe(6950);
+    expect(figures.gross).toBe(6950);
   });
 
   it('is not paid for a load that has not gone, for another month, or for the crew tally', () => {
@@ -93,22 +107,25 @@ describe('a driller paid per load', () => {
       { loads: 400 },
     );
 
-    expect(figures.loadPay).toMatchObject({ mainLoads: 3, mainPay: 1500, otherLoads: 0, otherPay: 0 });
+    expect(figures.loadPay).toMatchObject({ loads: 3, pay: 1500 });
     expect(figures.wagePay).toBe(1500);
   });
 
-  it('is paid nothing for the other loads until their rate is set', () => {
+  it('is paid nothing for a kind of load until its rate is set', () => {
     const figures = pay(person('compressor', { wageBasis: 'load', dailyWage: 500 }), [
       sale('SIX00001', 'six_nine', 2),
       sale('BOL00001', 'boldas', 6),
+      sale('SAK00001', 'sakka', 1),
     ]);
-    expect(figures.loadPay).toMatchObject({ mainPay: 1000, otherLoads: 6, otherPay: 0 });
+    expect(figures.loadPay).toMatchObject({ loads: 9, pay: 1000 });
+    expect(figures.loadPay?.lines[2]).toEqual({ label: 'බෝල්දාස්', loads: 6, rate: 0, pay: 0 });
     expect(figures.wagePay).toBe(1000);
   });
 
   it('has no loads, and no pay, in a month with no sales', () => {
     const figures = pay(driller, []);
-    expect(figures.loadPay).toEqual({ mainLoads: 0, mainPay: 0, otherLoads: 0, otherPay: 0 });
+    expect(figures.loadPay).toMatchObject({ loads: 0, pay: 0 });
+    expect(figures.loadPay?.lines.every((line) => line.loads === 0 && line.pay === 0)).toBe(true);
     expect(figures.gross).toBe(0);
   });
 
@@ -153,8 +170,22 @@ describe('a driller paid per load', () => {
   });
 });
 
+describe('a driller saved before each kind of load had a rate', () => {
+  const stored = { role: 'compressor', wageBasis: 'load', dailyWage: 500, otherLoadWage: 300 };
+
+  it('is still paid as before: සක්කර at the 6/9 wage, බෝල්දාස් and C1 at the old shared rate', () => {
+    const old = personFrom('p1', stored);
+    expect(old).toMatchObject({ sakkaLoadWage: 500, boldasLoadWage: 300, c1LoadWage: 300 });
+  });
+
+  it('keeps a rate set to nothing as nothing', () => {
+    const set = personFrom('p1', { ...stored, sakkaLoadWage: 0, c1LoadWage: 275 });
+    expect(set).toMatchObject({ sakkaLoadWage: 0, boldasLoadWage: 300, c1LoadWage: 275 });
+  });
+});
+
 describe("a driller's bonus", () => {
-  const perLoad = person('compressor', { wageBasis: 'load', dailyWage: 500 });
+  const perLoad = person('compressor', { wageBasis: 'load', dailyWage: 500, sakkaLoadWage: 500 });
 
   it('is counted on the loads of 6/9 alone', () => {
     // 250 of 6/9 and 100 of සක්කර: 350 loads sold, but only 250 are 6/9.
@@ -203,8 +234,8 @@ describe('the excavator crew', () => {
     expect(figures.loadPay).toBeNull();
   });
 
-  it('is not given the other-load rate, even if one is stored on the record', () => {
-    const figures = pay(person('operator', { wageBasis: 'load', dailyWage: 50, otherLoadWage: 999 }), [], { loads: 10 });
+  it('is not given the load rates, even if some are stored on the record', () => {
+    const figures = pay(person('operator', { wageBasis: 'load', dailyWage: 50, sakkaLoadWage: 999 }), [], { loads: 10 });
     expect(figures.loadPay).toBeNull();
     expect(figures.wagePay).toBe(500);
   });

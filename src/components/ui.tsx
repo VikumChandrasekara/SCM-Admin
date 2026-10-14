@@ -184,30 +184,43 @@ export function Textarea({ className, ...rest }: TextareaHTMLAttributes<HTMLText
   return <textarea {...rest} className={cx(control, 'min-h-20 resize-y', className)} />;
 }
 
-/** A row of mutually exclusive choices, one of which is always selected. */
+/**
+ * A row of mutually exclusive choices. One is selected — unless [value] is one
+ * that no option has, as before anything has been picked.
+ */
 export function Segmented<T extends string>({
   value,
   options,
   onChange,
+  disabled,
   className,
 }: {
   value: T;
   options: readonly { value: T; label: ReactNode }[];
   onChange: (value: T) => void;
+  disabled?: boolean;
   className?: string;
 }) {
   return (
-    <div role="radiogroup" className={cx('flex flex-wrap gap-1 rounded-control bg-well p-1 ring-1 ring-hairline', className)}>
+    <div
+      role="radiogroup"
+      aria-disabled={disabled || undefined}
+      className={cx('flex flex-wrap gap-1 rounded-control bg-well p-1 ring-1 ring-hairline', disabled && 'opacity-60', className)}
+    >
       {options.map((option) => (
         <button
           key={option.value}
           type="button"
           role="radio"
           aria-checked={option.value === value}
+          disabled={disabled}
           onClick={() => onChange(option.value)}
           className={cx(
             'flex-1 rounded-[7px] px-3 py-1.5 text-sm font-semibold whitespace-nowrap transition',
-            option.value === value ? 'chip-amber text-ink shadow-control' : 'text-white/70 hover:bg-white/10 hover:text-white',
+            disabled && 'cursor-not-allowed',
+            option.value === value
+              ? 'chip-amber text-ink shadow-control'
+              : cx('text-white/70', !disabled && 'hover:bg-white/10 hover:text-white'),
           )}
         >
           {option.label}

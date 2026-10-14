@@ -61,8 +61,12 @@ export function TargetPanel({
             <Row label={role.tracksBonus ? 'පැටවූ ලෝඩ් ගණන' : '6/9 ලෝඩ් ගණන'} value={bonusLoads} />
             {role.tracksBonus ? null : loadPay ? (
               <>
-                <Row label="පඩි ලෝඩ් (6/9 + සක්කර)" value={loadPay.mainLoads} />
-                {loadPay.otherLoads > 0 && <Row label="වෙනත් ලෝඩ්" value={loadPay.otherLoads} />}
+                {/* 6/9 is the row above, since the bonus is counted on it; the rest show once some have gone. */}
+                {loadPay.lines
+                  .filter((line) => line.label !== '6/9' && line.loads > 0)
+                  .map((line) => (
+                    <Row key={line.label} label={`${line.label} ලෝඩ්`} value={line.loads} />
+                  ))}
               </>
             ) : (
               <Row label={`${basis.unit} ගණන`} value={unitCount(person.wageBasis, wageUnits)} />

@@ -15,7 +15,7 @@ import {
   type SaleMaterial,
 } from '../lib/model';
 import { useToast } from './Toasts';
-import { Button, ErrorNote, Field, Input, Modal, Select, Textarea } from './ui';
+import { Button, ErrorNote, Field, Input, Modal, Segmented, Textarea } from './ui';
 
 /**
  * Puts a mistake on a bill right — the admin's. What the bill was sold at, its
@@ -109,30 +109,28 @@ export function SaleEditModal({ sale, onClose }: { sale: Sale; onClose: () => vo
           <span className="text-xl font-extrabold tabular-nums">{total != null ? rupees(total) : '—'}</span>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="ද්‍රව්‍යය">
-            <Select value={material} onChange={(event) => setMaterial(event.target.value as SaleMaterial | '')}>
-              <option value="">— තෝරන්න —</option>
-              {(Object.keys(SALE_MATERIAL) as SaleMaterial[]).map((id) => (
-                <option key={id} value={id}>
-                  {SALE_MATERIAL[id]}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="ගෙවීම" hint={sale.prepaid ? 'කලින් ගෙවීම මුදලින් පමණි.' : undefined}>
-            <Select
-              value={sale.prepaid ? 'cash' : payment}
-              disabled={sale.prepaid}
-              onChange={(event) => setPayment(event.target.value as PaymentType)}
-            >
-              {(Object.keys(PAYMENT_TYPE_LABEL) as PaymentType[]).map((id) => (
-                <option key={id} value={id}>
-                  {PAYMENT_TYPE_LABEL[id]}
-                </option>
-              ))}
-            </Select>
-          </Field>
+        {/* Divs rather than Fields: a <label> around a group of buttons names the first one after the whole group. */}
+        <div>
+          <span className="mb-1.5 block text-[13px] font-semibold text-white/75">ද්‍රව්‍යය</span>
+          <Segmented
+            value={material}
+            onChange={setMaterial}
+            options={(Object.keys(SALE_MATERIAL) as SaleMaterial[]).map((id) => ({ value: id, label: SALE_MATERIAL[id] }))}
+          />
+        </div>
+
+        <div>
+          <span className="mb-1.5 block text-[13px] font-semibold text-white/75">ගෙවීම</span>
+          <Segmented
+            value={sale.prepaid ? 'cash' : payment}
+            disabled={sale.prepaid}
+            onChange={setPayment}
+            options={(Object.keys(PAYMENT_TYPE_LABEL) as PaymentType[]).map((id) => ({
+              value: id,
+              label: PAYMENT_TYPE_LABEL[id],
+            }))}
+          />
+          {sale.prepaid && <span className="mt-1 block text-xs text-white/55">කලින් ගෙවීම මුදලින් පමණි.</span>}
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">

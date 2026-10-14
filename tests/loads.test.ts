@@ -62,6 +62,14 @@ describe('the loads that have gone', () => {
     expect(total).toMatchObject({ bills: 9, loads: 4 + 3 + 1 + 1 + 1 + 1, tractorLoads: 4 });
   });
 
+  it('counts one bill written for several tipper loads as all of them', () => {
+    // 5 loads of 3 cubes on a single bill, and a driller is paid for all 5.
+    const big = sale('BIG12345', { material: 'six_nine', quantity: 15, amount: 97500 });
+    const { rows } = loadAnalysis([big], now);
+    expect(rows.find((entry) => entry.kind === 'six_nine')).toMatchObject({ bills: 1, tipperLoads: 5, cubes: 15, loads: 5 });
+    expect(drillerLoads([big], '2026-10', now).sixNine).toBe(5);
+  });
+
   it('lists the main materials, then the side ones, and bills with none only when there are some', () => {
     expect(loadAnalysis(sales, now).rows.map((row) => row.kind)).toEqual([
       'six_nine',
@@ -115,15 +123,16 @@ describe('the loads a driller is paid on', () => {
     sale('OLDX2345', { material: null }),
   ];
 
-  it('splits the month into 6/9, සක්කර and everything else', () => {
+  it('splits the month into 6/9, සක්කර, බෝල්දාස්, C1 and everything else', () => {
+    const withC1 = [...sales, sale('CONE2345', { ...tractor, material: 'c1' })];
     // A tipper bill is one trip, a tractor bill as many loads as it says.
-    expect(drillerLoads(sales, '2026-10', now)).toEqual({ sixNine: 1 + 2, sakka: 1 + 2, other: 3 });
+    expect(drillerLoads(withC1, '2026-10', now)).toEqual({ sixNine: 1 + 2, sakka: 1 + 2, boldas: 1, c1: 2, other: 2 });
   });
 
   it('counts a single day on its own', () => {
     const more = [...sales, sale('NEXT2345', { material: 'six_nine', date: '2026-10-21' })];
-    expect(drillerLoads(more, '2026-10-21', now)).toEqual({ sixNine: 1, sakka: 0, other: 0 });
-    expect(drillerLoads(more, '2026-10-22', now)).toEqual({ sixNine: 0, sakka: 0, other: 0 });
+    expect(drillerLoads(more, '2026-10-21', now)).toEqual({ sixNine: 1, sakka: 0, boldas: 0, c1: 0, other: 0 });
+    expect(drillerLoads(more, '2026-10-22', now)).toEqual({ sixNine: 0, sakka: 0, boldas: 0, c1: 0, other: 0 });
     expect(drillerLoads(more, '2026-10', now).sixNine).toBe(1 + 2 + 1);
   });
 
@@ -139,6 +148,6 @@ describe('the loads a driller is paid on', () => {
       '2026-10',
       now,
     );
-    expect(counted).toEqual({ sixNine: 1, sakka: 0, other: 0 });
+    expect(counted).toEqual({ sixNine: 1, sakka: 0, boldas: 0, c1: 0, other: 0 });
   });
 });

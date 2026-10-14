@@ -60,7 +60,7 @@ function add(row: LoadRow, sale: Sale): void {
   row.amount += sale.amount;
   row.loads += saleLoads(sale);
   if (sale.type === 'tipper') {
-    row.tipperLoads += 1;
+    row.tipperLoads += saleLoads(sale);
     row.cubes += sale.quantity;
   } else {
     row.tractorLoads += sale.quantity;
@@ -69,18 +69,22 @@ function add(row: LoadRow, sale: Sale): void {
 
 /**
  * The loads a driller is paid and given a bonus on, as the sales bills show
- * them: split into 6/9, සක්කර and everything else.
+ * them: split into 6/9, සක්කර, බෝල්දාස්, C1 and everything else.
  */
 export interface DrillerLoads {
   /** Loads of 6/9 — also what the driller's bonus is counted on. */
   sixNine: number;
-  /** Loads of සක්කර, paid the same as 6/9. */
+  /** Loads of සක්කර. */
   sakka: number;
-  /** Loads of anything else: බෝල්දාස්, C1, කෝරි ඩස්ට්, or a bill from before materials were recorded. */
+  /** Loads of බෝල්දාස්. */
+  boldas: number;
+  /** Loads of C1. */
+  c1: number;
+  /** Loads of anything else: කෝරි ඩස්ට්, or a bill from before materials were recorded. */
   other: number;
 }
 
-export const noDrillerLoads = (): DrillerLoads => ({ sixNine: 0, sakka: 0, other: 0 });
+export const noDrillerLoads = (): DrillerLoads => ({ sixNine: 0, sakka: 0, boldas: 0, c1: 0, other: 0 });
 
 /**
  * The loads that have gone — bills verified, as in [loadAnalysis] — dated
@@ -93,6 +97,8 @@ export function drillerLoads(sales: readonly Sale[], datePrefix: string, now = D
     const count = saleLoads(sale);
     if (sale.material === 'six_nine') loads.sixNine += count;
     else if (sale.material === 'sakka') loads.sakka += count;
+    else if (sale.material === 'boldas') loads.boldas += count;
+    else if (sale.material === 'c1') loads.c1 += count;
     else loads.other += count;
   }
   return loads;

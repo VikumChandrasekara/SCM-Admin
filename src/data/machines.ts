@@ -31,6 +31,7 @@ import {
   WAGE_BASIS_LABEL,
   dayFrom,
   dayWorked,
+  loadRateChanges,
   machineTypeForRole,
   monthFrom,
   nameOf,
@@ -455,8 +456,10 @@ export async function saveFigures(
     advanceAmount: number;
     dailyWage: number;
     wageBasis: WageBasis;
-    /** What a driller paid per load is paid for a load of anything but 6/9 and සක්කර. */
-    otherLoadWage: number;
+    /** What a driller paid per load is paid for a load of සක්කර, බෝල්දාස් and C1. */
+    sakkaLoadWage: number;
+    boldasLoadWage: number;
+    c1LoadWage: number;
   },
   by: Person,
 ): Promise<void> {
@@ -472,9 +475,7 @@ export async function saveFigures(
       `පඩිය: රු.${person.dailyWage} (${WAGE_BASIS_LABEL[person.wageBasis].per}) → රු.${figures.dailyWage} (${WAGE_BASIS_LABEL[figures.wageBasis].per})`,
     );
   }
-  if (figures.otherLoadWage !== person.otherLoadWage) {
-    lines.push(`වෙනත් ලෝඩ් පඩිය: රු.${person.otherLoadWage} → රු.${figures.otherLoadWage}`);
-  }
+  lines.push(...loadRateChanges(person, figures));
   if (lines.length > 0) {
     batch.set(
       doc(collection(db, 'auditLog')),

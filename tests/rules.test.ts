@@ -182,17 +182,44 @@ describe('accounts', () => {
     await assertFails(updateDoc(record, { receivableAmount: 100000 }));
   });
 
-  it('a supervisor sets what a driller paid per load is paid for the other loads — a number, never negative', async () => {
+  it('a supervisor sets each of a driller’s load rates — සක්කර, බෝල්දාස්, C1 — a number, never negative', async () => {
     const driller = doc(as('sup1'), 'operators', 'comp1');
-    await assertSucceeds(updateDoc(driller, { dailyWage: 500, wageBasis: 'load', otherLoadWage: 300 }));
-    await assertSucceeds(updateDoc(driller, { otherLoadWage: 0 }));
-    await assertFails(updateDoc(driller, { otherLoadWage: -1 }));
-    await assertFails(updateDoc(driller, { otherLoadWage: '300' }));
-    // Still nothing else rides along with it.
-    await assertFails(updateDoc(driller, { otherLoadWage: 300, role: 'admin' }));
-    // And it is not set on staff, whose wage is the admin's to set.
-    await assertFails(updateDoc(doc(as('sup1'), 'operators', 'sup1'), { otherLoadWage: 300 }));
-    await assertSucceeds(updateDoc(doc(as('admin1'), 'operators', 'comp1'), { otherLoadWage: 450 }));
+    await assertSucceeds(
+      updateDoc(driller, { dailyWage: 500, wageBasis: 'load', sakkaLoadWage: 450, boldasLoadWage: 300, c1LoadWage: 250 }),
+    );
+    await assertSucceeds(updateDoc(driller, { c1LoadWage: 0 }));
+    await assertFails(updateDoc(driller, { sakkaLoadWage: -1 }));
+    await assertFails(updateDoc(driller, { boldasLoadWage: '300' }));
+    await assertFails(updateDoc(driller, { c1LoadWage: null }));
+    // Still nothing else rides along with them.
+    await assertFails(updateDoc(driller, { boldasLoadWage: 300, role: 'admin' }));
+    // And they are not set on staff, whose wage is the admin's to set.
+    await assertFails(updateDoc(doc(as('sup1'), 'operators', 'sup1'), { sakkaLoadWage: 300 }));
+    await assertSucceeds(updateDoc(doc(as('admin1'), 'operators', 'comp1'), { sakkaLoadWage: 450 }));
+  });
+
+  it('a credit bill is ticked off as paid with one payment of its own — once, never changed', async () => {
+    const tick = (uid: string, code: string) =>
+      setDoc(doc(as(uid), 'payments', `sale-${code}`), {
+        customerKey: 'silva',
+        customerName: 'Silva',
+        amount: 19500,
+        date: '2026-10-13',
+        note: 'බිල් 189',
+        saleCode: code,
+        createdBy: uid,
+        createdAt: serverTimestamp(),
+      });
+
+    await assertSucceeds(tick('sup1', 'CRED2345'));
+    // A second tick on the same bill finds a payment already there — an update, which no one may make.
+    await assertFails(tick('admin1', 'CRED2345'));
+    await assertFails(updateDoc(doc(as('admin1'), 'payments', 'sale-CRED2345'), { amount: 1 }));
+    await assertFails(deleteDoc(doc(as('admin1'), 'payments', 'sale-CRED2345')));
+    // Another bill is its own payment.
+    await assertSucceeds(tick('admin1', 'CRED3456'));
+    // Staff only: a crew member cannot settle a bill.
+    await assertFails(tick('comp1', 'CRED4567'));
   });
 
   describe('which machine a crew member is on', () => {

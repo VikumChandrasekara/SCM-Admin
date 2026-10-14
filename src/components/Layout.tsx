@@ -29,7 +29,7 @@ import { useBinSweeper } from '../data/recycle';
 import { useExpiredSalesSweeper } from '../data/sales';
 import { usingEmulators } from '../firebase';
 import { serviceAlertsFor, stockAlerts, type ServiceAlert, type StockAlert } from '../lib/alerts';
-import { quantity } from '../lib/format';
+import { dateTime, quantity } from '../lib/format';
 import { ROLES, STOCK_LABEL, nameOf, serviceMessage } from '../lib/model';
 import { useOnline } from '../lib/useOnline';
 import { prefetchPage } from '../pages/lazy';
@@ -269,8 +269,12 @@ function AlertsBell({ stock, service }: { stock: StockAlert[]; service: ServiceA
       </IconButton>
 
       {open && (
-        <div className="absolute right-0 z-50 mt-2 w-[min(92vw,360px)] overflow-hidden rounded-panel panel-surface shadow-pop ring-1 ring-hairline-hi">
-          <div className="max-h-[70vh] overflow-y-auto p-4">
+        // top-full: the bell's row is a centring flex container, and an absolutely
+        // positioned child with no top is placed at its centre there — so a tall
+        // list reached above the page and its first entries were cut off.
+        <div className="absolute top-full right-0 z-50 mt-2 w-[min(92vw,360px)] overflow-hidden rounded-panel panel-surface shadow-pop ring-1 ring-hairline-hi">
+          {/* Leaves the header's height and a margin clear, so a long list scrolls inside the panel instead. */}
+          <div className="max-h-[calc(100vh-9rem)] overflow-y-auto p-4">
             <p className="mb-2 text-[11px] font-bold tracking-[0.16em] text-white/60 uppercase">ගබඩාව</p>
             {stock.length === 0 ? (
               <p className="mb-4 text-sm text-white/65">සියලු අයිතම ප්‍රමාණවත්.</p>
@@ -285,7 +289,14 @@ function AlertsBell({ stock, service }: { stock: StockAlert[]; service: ServiceA
                     >
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-sm font-semibold">{item.name}</span>
-                        <span className="text-xs text-white/55">ඉතිරි {quantity(item.quantity, item.unit)}</span>
+                        <span className="block text-xs text-white/55">ඉතිරි {quantity(item.quantity, item.unit)}</span>
+                        {/* The last time the shelf moved — a draw-down, a restock or a recount — which is
+                            what took it to where it is now. */}
+                        {item.updatedAt && (
+                          <span className="block text-[11px] text-white/40 tabular-nums">
+                            අවසන් වෙනස {dateTime(item.updatedAt)}
+                          </span>
+                        )}
                       </span>
                       <Badge tone={status}>{STOCK_LABEL[status]}</Badge>
                     </Link>

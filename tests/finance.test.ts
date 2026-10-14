@@ -45,7 +45,9 @@ const person = (id: string, role: Person['role'], extra: Partial<Person> = {}): 
   advanceAmount: 0,
   dailyWage: 0,
   wageBasis: 'day',
-  otherLoadWage: 0,
+  sakkaLoadWage: 0,
+  boldasLoadWage: 0,
+  c1LoadWage: 0,
   ...extra,
 });
 

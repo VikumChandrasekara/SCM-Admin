@@ -346,11 +346,14 @@ export interface Person {
   /** What [dailyWage] is paid for. */
   wageBasis: WageBasis;
   /**
-   * A driller paid per load is paid [dailyWage] for each load of 6/9 and
-   * සක්කර, and this for each load of anything else (බෝල්දාස්, C1, කෝරි
-   * ඩස්ට්). Nothing for any other crew member or basis.
+   * A driller paid per load is paid [dailyWage] for each load of 6/9, and its
+   * own rate for each load of සක්කර, බෝල්දාස් and C1. Loads of anything else
+   * (කෝරි ඩස්ට්, or a bill from before materials were recorded) are not paid.
+   * Nothing for any other crew member or basis.
    */
-  otherLoadWage: number;
+  sakkaLoadWage: number;
+  boldasLoadWage: number;
+  c1LoadWage: number;
 }
 
 /**
@@ -394,7 +397,30 @@ export function tallyField(person: Pick<Person, 'role' | 'wageBasis'>): 'loads' 
   return ROLES[person.role].tracksBonus || paidPerLoad(person) ? 'loads' : 'feet';
 }
 
+/** A stored rate, or [fallback] when the record has none. */
+function rateOr(value: unknown, fallback: number): number {
+  return typeof value === 'number' ? Math.max(value, 0) : fallback;
+}
+
+type LoadRateKey = 'sakkaLoadWage' | 'boldasLoadWage' | 'c1LoadWage';
+
+const LOAD_RATE_LABEL: readonly (readonly [LoadRateKey, string])[] = [
+  ['sakkaLoadWage', 'සක්කර'],
+  ['boldasLoadWage', 'බෝල්දාස්'],
+  ['c1LoadWage', 'C1'],
+];
+
+/** The audit lines for each of a driller's load rates that [after] changes from [before]. */
+export function loadRateChanges(before: Pick<Person, LoadRateKey>, after: Pick<Person, LoadRateKey>): string[] {
+  return LOAD_RATE_LABEL.filter(([key]) => after[key] !== before[key]).map(
+    ([key, label]) => `${label} ලෝඩ් පඩිය: රු.${before[key]} → රු.${after[key]}`,
+  );
+}
+
 export function personFrom(id: string, data: DocumentData): Person {
+  const dailyWage = num(data.dailyWage);
+  // A single rate for every load but 6/9 and සක්කර, from before each had its own.
+  const otherLoadWage = Math.max(num(data.otherLoadWage), 0);
   return {
     id,
     name: str(data.name),
@@ -402,9 +428,13 @@ export function personFrom(id: string, data: DocumentData): Person {
     machineId: str(data.machineId),
     role: roleById(data.role),
     advanceAmount: num(data.advanceAmount),
-    dailyWage: num(data.dailyWage),
+    dailyWage,
     wageBasis: wageBasisById(data.wageBasis),
-    otherLoadWage: Math.max(num(data.otherLoadWage), 0),
+    // Before each material had a rate, සක්කර was paid the 6/9 wage and
+    // බෝල්දාස් and C1 the other rate — so a record without one reads that way.
+    sakkaLoadWage: rateOr(data.sakkaLoadWage, dailyWage),
+    boldasLoadWage: rateOr(data.boldasLoadWage, otherLoadWage),
+    c1LoadWage: rateOr(data.c1LoadWage, otherLoadWage),
   };
 }
 
@@ -937,6 +967,7 @@ export type AuditAction =
   | 'sales.restore'
   | 'sales.verify'
   | 'sales.prices'
+  | 'sales.machineHourly'
   | 'royalty.rates'
   | 'landowner.rate'
   | 'landowner.paid'
@@ -978,6 +1009,7 @@ export const AUDIT_LABEL: Record<AuditAction, string> = {
   'sales.restore': 'විකුණුම් බිල්පතක් ආපසු ගත්තා',
   'sales.verify': 'විකුණුම් බිල්පතක් තහවුරු කළා',
   'sales.prices': 'විකුණුම් මිල වෙනස් කළා',
+  'sales.machineHourly': 'යන්ත්‍රයට පැයකට ගාස්තුව වෙනස් කළා',
   'royalty.rates': 'රාජ භාග අනුපාත වෙනස් කළා',
   'landowner.rate': 'ඉඩම් හිමියාගේ ගාස්තු වෙනස් කළා',
   'landowner.paid': 'ඉඩම් හිමියාට ගෙවූ බව සලකුණු කළා',
@@ -1046,7 +1078,16 @@ export function auditEntryFrom(id: string, data: DocumentData): AuditEntry {
  */
 export type BillCategory = 'advance' | 'food' | 'royalty' | 'repair' | 'water' | 'loan' | 'other';
 
+/** Every category a stored bill can carry, including the ones no longer offered. */
 export const BILL_CATEGORIES: readonly BillCategory[] = ['advance', 'food', 'royalty', 'repair', 'water', 'loan', 'other'];
+
+/**
+ * What a new bill can be. රාජ භාගය is not here: it is worked out from the
+ * explosives used (see royalty.ts), so no one writes a bill for it. Royalty
+ * bills already entered keep their category — the finance report still shows
+ * what they paid.
+ */
+export const BILL_CHOICES: readonly BillCategory[] = BILL_CATEGORIES.filter((value) => value !== 'royalty');
 
 export const BILL: Record<
   BillCategory,
@@ -1114,6 +1155,13 @@ export const SALE_TYPE: Record<SaleType, { label: string; unit: string }> = {
  * only what it was built to.
  */
 export const TIPPER_SIZES: readonly number[] = [1, 2, 2.5, 3, 4, 5];
+
+/**
+ * The most one lorry carries. A tipper bill for more than this was written for
+ * several loads at once — see saleLoads in landowner.ts — typed in as a load
+ * count and kept as that many loads' worth of cubes.
+ */
+export const MAX_TIPPER_CUBES = 5;
 
 export type SaleStatus = 'pending' | 'verified' | 'cancelled';
 
@@ -1251,6 +1299,8 @@ export interface Payment {
   /** `yyyy-MM-dd` */
   date: string;
   note: string;
+  /** The credit bill this payment settled in full, when it was recorded by ticking that bill off. */
+  saleCode?: string;
   createdByName: string;
   createdAt: Date | null;
 }
@@ -1263,6 +1313,7 @@ export function paymentFrom(id: string, data: DocumentData): Payment {
     amount: num(data.amount),
     date: str(data.date),
     note: str(data.note),
+    ...(str(data.saleCode) ? { saleCode: str(data.saleCode) } : {}),
     createdByName: str(data.createdByName),
     createdAt: toDate(data.createdAt),
   };

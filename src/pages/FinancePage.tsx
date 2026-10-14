@@ -2,6 +2,7 @@ import { ChevronDown, ChevronLeft, ChevronRight, RefreshCw, TrendingDown, Trendi
 import { useMemo, useState, type ReactNode } from 'react';
 
 import { DataError } from '../components/DataError';
+import { MachineRateModal } from '../components/MachineRateModal';
 import { RoyaltyModal } from '../components/RoyaltyModal';
 import { Button, IconButton, Loading, PageHeader, Panel, SectionLabel, TableFrame, cx, td, th } from '../components/ui';
 import { useMonthBills } from '../data/bills';
@@ -25,7 +26,7 @@ import {
   type StockRow,
 } from '../lib/finance';
 import { addMonths, money, monthKey, monthLabel, quantity, rupees } from '../lib/format';
-import { ROLES, SALE_MATERIAL, SALE_TYPE, SALE_TYPES, nameOf } from '../lib/model';
+import { ROLES, SALE_MATERIAL, SALE_TYPE, SALE_TYPES, nameOf, type SalesPrices } from '../lib/model';
 import { payFor } from '../lib/pay';
 import { useToday } from '../lib/useToday';
 
@@ -137,10 +138,10 @@ export function FinancePage() {
         <DataError error={failure} />
       ) : crewMonths.error ? (
         <p className="rounded-xl bg-alarm/30 px-4 py-3 text-sm font-semibold">{errorMessage(crewMonths.error)}</p>
-      ) : !finance ? (
+      ) : !finance || !prices.data ? (
         <Loading />
       ) : (
-        <FinanceReport finance={finance} previousGross={previousGross} />
+        <FinanceReport finance={finance} previousGross={previousGross} prices={prices.data} />
       )}
     </>
   );
@@ -148,10 +149,19 @@ export function FinancePage() {
 
 const perLoad = (value: number | null) => (value == null ? '—' : money(value));
 
-function FinanceReport({ finance, previousGross }: { finance: Finance; previousGross: number | null }) {
+function FinanceReport({
+  finance,
+  previousGross,
+  prices,
+}: {
+  finance: Finance;
+  previousGross: number | null;
+  prices: SalesPrices;
+}) {
   const crew = crewSummaryFor(finance.salaries);
   const change = previousGross ? finance.salaryTotal - previousGross : null;
   const [open, setOpen] = useState<ExpenseCategory | null>(null);
+  const [editingMachine, setEditingMachine] = useState(false);
   const { allocation } = finance;
 
   return (
@@ -293,7 +303,15 @@ function FinanceReport({ finance, previousGross }: { finance: Finance; previousG
 
       {/* ---- expenses ---- */}
       <section className="mb-8">
-        <SectionLabel>වියදම් — වර්ග අනුව</SectionLabel>
+        <SectionLabel
+          trailing={
+            <Button variant="secondary" onClick={() => setEditingMachine(true)}>
+              යන්ත්‍රයට පැයකට රු. {money(prices.machineHourly)} — වෙනස් කරන්න
+            </Button>
+          }
+        >
+          වියදම් — වර්ග අනුව
+        </SectionLabel>
         <Panel className="p-4 sm:p-5">
           {finance.expenseRows.length === 0 ? (
             <p className="py-4 text-center text-sm text-white/60">මෙම මාසයේ වියදමක් නැත.</p>
@@ -371,6 +389,7 @@ function FinanceReport({ finance, previousGross }: { finance: Finance; previousG
             </p>
           </div>
         </Panel>
+        {editingMachine && <MachineRateModal prices={prices} onClose={() => setEditingMachine(false)} />}
       </section>
 
       <RoyaltySection royalty={finance.royalty} />

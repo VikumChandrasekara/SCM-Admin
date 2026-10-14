@@ -47,26 +47,46 @@ export interface PayFigures {
   dayEarnings: number;
 }
 
+/** One kind of load a driller is paid for, each at a rate of its own. */
+export interface LoadPayLine {
+  /** What the loads are called: 6/9, සක්කර, බෝල්දාස් or C1. */
+  label: string;
+  loads: number;
+  /** Rupees for each of them. */
+  rate: number;
+  pay: number;
+}
+
 /**
- * What a driller paid per load earns. Loads of 6/9 and සක්කර are paid at the
- * wage rate, and loads of anything else at [Person.otherLoadWage].
+ * What a driller paid per load earns. Loads of 6/9 are paid at the wage rate;
+ * සක්කර, බෝල්දාස් and C1 each at a rate of their own. Loads of anything else
+ * (කෝරි ඩස්ට්, an old bill with no material) are not paid.
  */
 export interface LoadPay {
-  /** Loads of 6/9 and සක්කර. */
-  mainLoads: number;
-  mainPay: number;
-  /** Loads of anything else. */
-  otherLoads: number;
-  otherPay: number;
+  /** Always in the order 6/9, සක්කර, බෝල්දාස්, C1. */
+  lines: LoadPayLine[];
+  /** Every kind of load together. */
+  loads: number;
+  pay: number;
 }
 
 function loadPayOf(person: Person, loads: DrillerLoads): LoadPay {
-  const mainLoads = loads.sixNine + loads.sakka;
+  const line = (label: string, count: number, rate: number): LoadPayLine => ({
+    label,
+    loads: count,
+    rate,
+    pay: count * rate,
+  });
+  const lines = [
+    line('6/9', loads.sixNine, person.dailyWage),
+    line('සක්කර', loads.sakka, person.sakkaLoadWage),
+    line('බෝල්දාස්', loads.boldas, person.boldasLoadWage),
+    line('C1', loads.c1, person.c1LoadWage),
+  ];
   return {
-    mainLoads,
-    mainPay: mainLoads * person.dailyWage,
-    otherLoads: loads.other,
-    otherPay: loads.other * person.otherLoadWage,
+    lines,
+    loads: lines.reduce((sum, entry) => sum + entry.loads, 0),
+    pay: lines.reduce((sum, entry) => sum + entry.pay, 0),
   };
 }
 
@@ -108,8 +128,8 @@ export function payFor(
 
   const monthLoads = role.bonusOnSixNine || paidPerLoad(person) ? drillerLoads(sales, month.month, now) : null;
   const loadPay = monthLoads && paidPerLoad(person) ? loadPayOf(person, monthLoads) : null;
-  const wageUnits = loadPay ? loadPay.mainLoads + loadPay.otherLoads : wageUnitsOf(person.wageBasis, month, workedDays);
-  const wagePay = loadPay ? loadPay.mainPay + loadPay.otherPay : wageUnits * person.dailyWage;
+  const wageUnits = loadPay ? loadPay.loads : wageUnitsOf(person.wageBasis, month, workedDays);
+  const wagePay = loadPay ? loadPay.pay : wageUnits * person.dailyWage;
 
   const bonusLoads = role.tracksBonus ? month.loads : role.bonusOnSixNine && monthLoads ? monthLoads.sixNine : null;
   const bonusPay = bonusLoads == null ? 0 : bonusEarned(bonusLoads);
@@ -138,9 +158,7 @@ export function payFor(
             : 0;
   const dayLoadPay = paidPerLoad(person) && day ? loadPayOf(person, drillerLoads(sales, day.date, now)) : null;
   const dayEarnings = paidPerLoad(person)
-    ? dayLoadPay
-      ? dayLoadPay.mainPay + dayLoadPay.otherPay
-      : 0
+    ? (dayLoadPay?.pay ?? 0)
     : dayWageUnits * person.dailyWage;
 
   return {

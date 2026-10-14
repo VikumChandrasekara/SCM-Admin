@@ -1,6 +1,6 @@
 import type { DocumentData } from 'firebase/firestore';
 
-import { isSaleIncome, toDate } from './model';
+import { CUBES_PER_TIPPER, MAX_TIPPER_CUBES, isSaleIncome, toDate } from './model';
 import type { Sale, SaleMaterial } from './model';
 
 /**
@@ -27,9 +27,15 @@ export function paysLandowner(
   return sale.material != null && (LANDOWNER_MATERIALS as readonly string[]).includes(sale.material);
 }
 
-/** Loads a sale counts for: a tipper bill is one trip whatever it carried; a tractor bill is its load count. */
+/**
+ * Loads a sale counts for: a tipper bill is one trip whatever one lorry
+ * carried (up to {@link MAX_TIPPER_CUBES} cubes); a bill for more than a lorry
+ * holds was written for several loads at once, each {@link CUBES_PER_TIPPER}
+ * cubes. A tractor bill is its load count.
+ */
 export function saleLoads(sale: Pick<Sale, 'type' | 'quantity'>): number {
-  return sale.type === 'tipper' ? 1 : sale.quantity;
+  if (sale.type !== 'tipper') return sale.quantity;
+  return sale.quantity > MAX_TIPPER_CUBES ? Math.ceil(sale.quantity / CUBES_PER_TIPPER) : 1;
 }
 
 /** One setting of the per-load figures, as it was recorded. */

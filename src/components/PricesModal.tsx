@@ -18,19 +18,16 @@ export function PricesModal({ prices, onClose }: { prices: SalesPrices; onClose:
   const toast = useToast();
   const [tipper, setTipper] = useState(String(prices.tipperPrice));
   const [tractor, setTractor] = useState(String(prices.tractorPrice));
-  const [hourly, setHourly] = useState(String(prices.machineHourly));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const tipperPrice = Number(tipper);
   const tractorPrice = Number(tractor);
-  const machineHourly = hourly.trim() === '' ? NaN : Number(hourly);
   const cubePrice = tipperPrice > 0 ? cubePriceFor(tipperPrice) : null;
 
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (!(tipperPrice > 0) || !(tractorPrice > 0)) return setError('මිල ශුන්‍යයට වඩා වැඩි විය යුතුය.');
-    if (!(machineHourly >= 0)) return setError('යන්ත්‍ර ගාස්තුව ඍණ නොවන ගණනක් විය යුතුය.');
 
     setBusy(true);
     setError(null);
@@ -42,7 +39,8 @@ export function PricesModal({ prices, onClose }: { prices: SalesPrices; onClose:
           tractorPrice,
           // The old per-load figure rides along untouched: each new bill still carries it.
           machineCharge: prices.machineCharge,
-          machineHourly,
+          // The machine's hourly charge is an expense, set on the finance page.
+          machineHourly: prices.machineHourly,
         },
         profile,
       );
@@ -85,12 +83,6 @@ export function PricesModal({ prices, onClose }: { prices: SalesPrices; onClose:
         </Field>
         <Field label="ට්‍රැක්ටර් ලෝඩ් එකක මිල (රු.)">
           <Input type="number" inputMode="decimal" min="0" step="1" required value={tractor} onChange={(event) => setTractor(event.target.value)} />
-        </Field>
-        <Field
-          label="යන්ත්‍රයට — පැයකට (රු.)"
-          hint="එක්ස්කැවේටර් වැඩ කළ පැය ගණනට. සියලු මාසවල මූල්‍ය වාර්තාවේ වියදමක් ලෙස අඩු වේ."
-        >
-          <Input type="number" inputMode="decimal" min="0" step="1" required value={hourly} onChange={(event) => setHourly(event.target.value)} />
         </Field>
         {error && <ErrorNote>{error}</ErrorNote>}
       </form>

@@ -57,7 +57,29 @@ export async function saveSalesPrices(prices: SalesPrices, by: Person): Promise<
       'settings',
       'sales',
       'විකුණුම් මිල',
-      `ටිපර් ලෝඩ් රු.${prices.tipperPrice} (කියුබ් රු.${prices.cubePrice}) · ට්‍රැක්ටර් ලෝඩ් රු.${prices.tractorPrice} · යන්ත්‍රයට පැයකට රු.${prices.machineHourly}`,
+      `ටිපර් ලෝඩ් රු.${prices.tipperPrice} (කියුබ් රු.${prices.cubePrice}) · ට්‍රැක්ටර් ලෝඩ් රු.${prices.tractorPrice}`,
+      by,
+    ),
+  );
+  await commit(batch);
+}
+
+/**
+ * What the machine is charged for each hour the loading excavator worked — an
+ * expense on the finance report. Kept in the same document as the sale prices,
+ * which it leaves exactly as they are.
+ */
+export async function saveMachineHourly(prices: SalesPrices, machineHourly: number, by: Person): Promise<void> {
+  const batch = writeBatch(db);
+  batch.set(pricesRef(), { ...prices, machineHourly, updatedAt: serverTimestamp(), updatedBy: by.id });
+  batch.set(
+    doc(collection(db, 'auditLog')),
+    auditEntry(
+      'sales.machineHourly',
+      'settings',
+      'sales',
+      'යන්ත්‍ර ගාස්තුව',
+      `යන්ත්‍රයට පැයකට රු.${prices.machineHourly} → රු.${machineHourly}`,
       by,
     ),
   );

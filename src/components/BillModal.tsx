@@ -5,7 +5,7 @@ import { saveBill } from '../data/bills';
 import { useLiveData } from '../data/LiveData';
 import { errorMessage } from '../lib/errors';
 import { todayKey } from '../lib/format';
-import { BILL, BILL_CATEGORIES, ROLES, nameOf, type Bill, type BillCategory } from '../lib/model';
+import { BILL, BILL_CHOICES, ROLES, nameOf, type Bill, type BillCategory } from '../lib/model';
 import { useToast } from './Toasts';
 import { Button, ErrorNote, Field, Input, Modal, Segmented, Select, Textarea } from './ui';
 
@@ -86,7 +86,12 @@ export function BillModal({
           <Segmented
             value={kind}
             onChange={setKind}
-            options={BILL_CATEGORIES.map((value) => ({ value, label: BILL[value].label }))}
+            // A royalty bill that was entered before is still shown as what it is
+            // while it is edited; a new bill cannot be one.
+            options={(BILL_CHOICES.includes(kind) ? BILL_CHOICES : [...BILL_CHOICES, kind]).map((value) => ({
+              value,
+              label: BILL[value].label,
+            }))}
           />
         </Field>
 

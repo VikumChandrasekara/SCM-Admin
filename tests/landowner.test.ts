@@ -108,6 +108,16 @@ describe('what a sale sends to the landowner', () => {
   it('is its material’s own figure, a tipper bill as one load and a tractor bill as its load count', () => {
     expect(saleLoads({ type: 'tipper', quantity: 3 })).toBe(1);
     expect(saleLoads({ type: 'tractor', quantity: 2 })).toBe(2);
+  });
+
+  it('counts a tipper bill for more than one lorry holds as the loads it was written for, 3 cubes each', () => {
+    // Every size a lorry comes in is one trip, the biggest included.
+    for (const cubes of [1, 2, 2.5, 3, 4, 5]) expect(saleLoads({ type: 'tipper', quantity: cubes })).toBe(1);
+    // Loads typed in on the bill are kept as 3 cubes each.
+    expect(saleLoads({ type: 'tipper', quantity: 6 })).toBe(2);
+    expect(saleLoads({ type: 'tipper', quantity: 15 })).toBe(5);
+    // A bill that was not a whole number of loads rounds up.
+    expect(saleLoads({ type: 'tipper', quantity: 7 })).toBe(3);
     expect(landownerChargeOf(sale('SAKK2345'), history)).toBe(400);
     expect(landownerChargeOf(sale('SIXN2345', { material: 'six_nine' }), history)).toBe(800);
     expect(landownerChargeOf(sale('TRAC2345', { type: 'tractor', quantity: 2, material: 'kory_dust' }), history)).toBe(600);

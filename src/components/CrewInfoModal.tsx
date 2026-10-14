@@ -35,6 +35,7 @@ import {
 import { payFor } from '../lib/pay';
 import { leaveDatesFor } from '../lib/target';
 import { useToday } from '../lib/useToday';
+import { LoadRateFields, draftOf, ratesOf } from './LoadRateFields';
 import { useToast } from './Toasts';
 import { Button, Field, IconButton, Input, Modal, SectionLabel, Select, ValueChip, cx } from './ui';
 
@@ -89,7 +90,7 @@ export function CrewInfoModal({ person, date, onClose }: { person: Person; date:
 
   const [advance, setAdvance] = useState(String(live.advanceAmount));
   const [wage, setWage] = useState(live.dailyWage ? String(live.dailyWage) : '');
-  const [otherWage, setOtherWage] = useState(live.otherLoadWage ? String(live.otherLoadWage) : '');
+  const [loadRates, setLoadRates] = useState(() => draftOf(live));
   const [wageBasis, setWageBasis] = useState<WageBasis>(live.wageBasis);
   const [tally, setTally] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<ServiceTask | null>(null);
@@ -111,8 +112,8 @@ export function CrewInfoModal({ person, date, onClose }: { person: Person; date:
   const field = tallyField(live);
   const whole = field === 'loads';
   const storedTally = day.data ? day.data[field] : 0;
-  // A driller paid per load is paid for the 6/9 and සක්කර loads sold, and a
-  // second rate for the rest — what is picked here, before it is saved.
+  // A driller paid per load has a rate for each kind of load sold — 6/9,
+  // සක්කර, බෝල්දාස්, C1 and the rest — what is picked here, before it is saved.
   const perLoadDriller = paidPerLoad({ role: live.role, wageBasis });
 
   /** The store item fitted for [task], when the store stocks one. */
@@ -136,15 +137,16 @@ export function CrewInfoModal({ person, date, onClose }: { person: Person; date:
   function saveInfo() {
     const advanceAmount = Number(advance);
     const rate = wage.trim() === '' ? 0 : Number(wage);
-    // Only a driller paid per load has a second rate; anyone else keeps none.
-    const otherRate = perLoadDriller && otherWage.trim() !== '' ? Number(otherWage) : 0;
-    if ([advanceAmount, rate, otherRate].some((value) => !Number.isFinite(value) || value < 0)) {
+    // Only a driller paid per load has rates for the other loads; anyone else keeps none.
+    const typed = ratesOf(loadRates);
+    const rates = perLoadDriller ? typed : { sakkaLoadWage: 0, boldasLoadWage: 0, c1LoadWage: 0 };
+    if ([advanceAmount, rate, ...Object.values(rates)].some((value) => !Number.isFinite(value) || value < 0)) {
       toast.error('අගයන් ඍණ නොවන සංඛ්‍යා විය යුතුය.');
       return;
     }
     void run(
       'info',
-      () => saveFigures(live, { advanceAmount, dailyWage: rate, wageBasis, otherLoadWage: otherRate }, profile),
+      () => saveFigures(live, { advanceAmount, dailyWage: rate, wageBasis, ...rates }, profile),
       'තොරතුරු සුරැකුණා.',
     );
   }
@@ -229,23 +231,16 @@ export function CrewInfoModal({ person, date, onClose }: { person: Person; date:
               </Select>
             </Field>
             <Field
-              label={perLoadDriller ? 'පඩිය (රු.) — 6/9 සහ සක්කර ලෝඩ් එකකට' : `පඩිය (රු.) — ${WAGE_BASIS_LABEL[wageBasis].per}`}
+              label={perLoadDriller ? 'පඩිය (රු.) — 6/9 ලෝඩ් එකකට' : `පඩිය (රු.) — ${WAGE_BASIS_LABEL[wageBasis].per}`}
               hint={
                 perLoadDriller
-                  ? 'විකුණුම් බිල්පත් වල තහවුරු කළ 6/9 සහ සක්කර ලෝඩ් වලට යොදයි.'
+                  ? 'විකුණුම් බිල්පත් වල තහවුරු කළ 6/9 ලෝඩ් වලට යොදයි.'
                   : 'මාසයේ මුදල් ගණනයටත්, යෙදුමේ දවසේ පඩිය පෙන්වීමටත් යොදයි.'
               }
             >
               <Input type="number" min="0" step="any" value={wage} onChange={(event) => setWage(event.target.value)} />
             </Field>
-            {perLoadDriller && (
-              <Field
-                label="පඩිය (රු.) — වෙනත් ලෝඩ් එකකට"
-                hint="බෝල්දාස්, C1, කෝරි ඩස්ට් සහ වෙනත් ලෝඩ් වලට ගෙවන මුදල. හිස්ව තැබුවොත් ඒවාට ගෙවීමක් නැත."
-              >
-                <Input type="number" min="0" step="any" value={otherWage} onChange={(event) => setOtherWage(event.target.value)} />
-              </Field>
-            )}
+            {perLoadDriller && <LoadRateFields draft={loadRates} onChange={setLoadRates} />}
             <Button icon={<Save className="size-4" />} busy={busy === 'info'} onClick={saveInfo} className="w-full">
               තොරතුරු සුරකින්න
             </Button>
