@@ -1,8 +1,8 @@
-import { collection, limit, orderBy, query, serverTimestamp } from 'firebase/firestore';
+import { collection, orderBy, query, serverTimestamp } from 'firebase/firestore';
 
 import { db } from '../db';
 import { auditEntryFrom, nameOf, type AuditAction, type AuditEntry, type Person } from '../lib/model';
-import { useLiveQuery } from './live';
+import { useLivePages } from './live';
 
 /**
  * One entry for `auditLog` — written into the same batch or transaction as
@@ -31,11 +31,14 @@ export function auditEntry(
   };
 }
 
-/** The most recent admin-panel changes, newest first. Admin only — see firestore.rules. */
-export function useAuditLog(count = 100) {
-  return useLiveQuery(
-    `auditLog:${count}`,
-    () => query(collection(db, 'auditLog'), orderBy('createdAt', 'desc'), limit(count)),
+/**
+ * The admin-panel changes, newest first, a page of 100 at a time. Admin only —
+ * see firestore.rules. The log grows for ever, so only the page on screen is read.
+ */
+export function useAuditLog() {
+  return useLivePages(
+    'auditLog',
+    () => query(collection(db, 'auditLog'), orderBy('createdAt', 'desc')),
     (snapshot) => auditEntryFrom(snapshot.id, snapshot.data()),
   );
 }

@@ -3,6 +3,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 
 import { DataError } from '../components/DataError';
 import { MachineRateModal } from '../components/MachineRateModal';
+import { Pagination, usePagination } from '../components/Pagination';
 import { RoyaltyModal } from '../components/RoyaltyModal';
 import { Button, IconButton, Loading, PageHeader, Panel, SectionLabel, TableFrame, cx, td, th } from '../components/ui';
 import { useMonthBills } from '../data/bills';
@@ -20,12 +21,14 @@ import {
   isMainMaterial,
   type ExpenseCategory,
   type Finance,
+  type LedgerEntry,
   type LedgerKind,
   type MaterialRow,
   type RoyaltyReport,
   type StockRow,
 } from '../lib/finance';
 import { addMonths, money, monthKey, monthLabel, quantity, rupees } from '../lib/format';
+import type { Pager } from '../lib/paginate';
 import { ROLES, SALE_MATERIAL, SALE_TYPE, SALE_TYPES, nameOf, type SalesPrices } from '../lib/model';
 import { payFor } from '../lib/pay';
 import { useToday } from '../lib/useToday';
@@ -149,6 +152,9 @@ export function FinancePage() {
 
 const perLoad = (value: number | null) => (value == null ? '—' : money(value));
 
+/** A totals row covers the whole month, however many pages its rows run to. */
+const totalLabel = (pager: Pager) => ((pager.pages ?? 1) > 1 ? 'මුළු එකතුව' : 'එකතුව');
+
 function FinanceReport({
   finance,
   previousGross,
@@ -163,6 +169,9 @@ function FinanceReport({
   const [open, setOpen] = useState<ExpenseCategory | null>(null);
   const [editingMachine, setEditingMachine] = useState(false);
   const { allocation } = finance;
+  // The totals rows and headline figures cover the whole month; only the rows are paged.
+  const salaryPages = usePagination(finance.salaries);
+  const ledgerPages = usePagination(finance.ledger);
 
   return (
     <>
@@ -350,23 +359,7 @@ function FinanceReport({
                     </button>
                     {open === line.key && (
                       <div className="mt-2 rounded-control bg-well p-3 ring-1 ring-hairline">
-                        {entries.length === 0 ? (
-                          <p className="py-2 text-center text-xs text-white/55">සටහන් නැත.</p>
-                        ) : (
-                          <TableFrame>
-                            <table className="w-full min-w-[480px] border-collapse text-xs">
-                              <tbody>
-                                {entries.map((entry, index) => (
-                                  <tr key={index} className="border-b border-hairline/60 last:border-0">
-                                    <td className={cx(td, 'whitespace-nowrap text-white/70 tabular-nums')}>{entry.date}</td>
-                                    <td className={td}>{entry.description}</td>
-                                    <td className={cx(td, 'text-right font-bold tabular-nums')}>{money(entry.expense)}</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </TableFrame>
-                        )}
+                        <ExpenseEntries entries={entries} />
                       </div>
                     )}
                   </li>
@@ -555,7 +548,7 @@ function FinanceReport({
                   </tr>
                 </thead>
                 <tbody>
-                  {finance.salaries.map(({ person, pay, advances, food }) => (
+                  {salaryPages.rows.map(({ person, pay, advances, food }) => (
                     <tr key={person.id} className="border-b border-hairline/60 last:border-0">
                       <td className={td}>
                         <span className="font-bold">{nameOf(person)}</span>
@@ -575,7 +568,7 @@ function FinanceReport({
                     </tr>
                   ))}
                   <tr className="border-t border-hairline font-extrabold">
-                    <td className={td}>එකතුව</td>
+                    <td className={td}>{totalLabel(salaryPages.pager)}</td>
                     <td className={td} colSpan={3} />
                     <td className={cx(td, 'text-right tabular-nums')}>{money(finance.salaryTotal)}</td>
                     <td className={cx(td, 'text-right tabular-nums')}>
@@ -592,6 +585,7 @@ function FinanceReport({
               </table>
             </TableFrame>
           )}
+          <Pagination pager={salaryPages.pager} />
         </Panel>
       </section>
 
@@ -642,7 +636,7 @@ function FinanceReport({
                   </tr>
                 </thead>
                 <tbody>
-                  {finance.ledger.map((entry, index) => (
+                  {ledgerPages.rows.map((entry, index) => (
                     <tr key={index} className="border-b border-hairline/60 last:border-0">
                       <td className={cx(td, 'whitespace-nowrap text-white/75 tabular-nums')}>{entry.date}</td>
                       <td className={cx(td, 'text-xs whitespace-nowrap text-white/65')}>
@@ -657,7 +651,7 @@ function FinanceReport({
                   ))}
                   <tr className="border-t border-hairline font-extrabold">
                     <td className={td} colSpan={3}>
-                      එකතුව
+                      {totalLabel(ledgerPages.pager)}
                     </td>
                     <td className={cx(td, 'text-right text-lime-hi tabular-nums')}>{money(finance.income)}</td>
                     <td className={cx(td, 'text-right tabular-nums')}>{money(finance.expenses)}</td>
@@ -666,6 +660,7 @@ function FinanceReport({
               </table>
             </TableFrame>
           )}
+          <Pagination pager={ledgerPages.pager} />
         </Panel>
       </section>
     </>
@@ -766,8 +761,32 @@ function MaterialName({ row }: { row: MaterialRow }) {
   );
 }
 
+/** The entries behind one expense line, a page of 100 at a time. */
+function ExpenseEntries({ entries }: { entries: readonly LedgerEntry[] }) {
+  const { rows, pager } = usePagination(entries);
+  if (entries.length === 0) return <p className="py-2 text-center text-xs text-white/55">සටහන් නැත.</p>;
+  return (
+    <>
+      <TableFrame>
+        <table className="w-full min-w-[480px] border-collapse text-xs">
+          <tbody>
+            {rows.map((entry, index) => (
+              <tr key={index} className="border-b border-hairline/60 last:border-0">
+                <td className={cx(td, 'whitespace-nowrap text-white/70 tabular-nums')}>{entry.date}</td>
+                <td className={td}>{entry.description}</td>
+                <td className={cx(td, 'text-right font-bold tabular-nums')}>{money(entry.expense)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </TableFrame>
+      <Pagination pager={pager} />
+    </>
+  );
+}
+
 function StockTable({
-  rows,
+  rows: allRows,
   total,
   empty,
   heading = 'අයිතමය',
@@ -777,8 +796,9 @@ function StockTable({
   empty: string;
   heading?: string;
 }) {
-  if (rows.length === 0) return <p className="py-4 text-center text-sm text-white/60">{empty}</p>;
-  const estimated = rows.some((row) => row.estimated);
+  const { rows, pager } = usePagination(allRows);
+  if (allRows.length === 0) return <p className="py-4 text-center text-sm text-white/60">{empty}</p>;
+  const estimated = allRows.some((row) => row.estimated);
   return (
     <>
       <TableFrame>
@@ -810,6 +830,7 @@ function StockTable({
           </tbody>
         </table>
       </TableFrame>
+      <Pagination pager={pager} />
       {estimated && <p className="mt-2 text-[11px] text-white/55">≈ — මිල සටහන් නොකළ පැරණි සටහන්, අයිතමයේ වත්මන් මිලට ගණනය කළා.</p>}
     </>
   );

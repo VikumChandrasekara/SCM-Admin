@@ -2,6 +2,7 @@ import { Clock, Pencil, Plus, Tractor, Users } from 'lucide-react';
 import { useState } from 'react';
 
 import { AssignCrewModal, MachineHoursModal, MachineModal } from '../components/MachineModals';
+import { Pagination, usePagination } from '../components/Pagination';
 import {
   Badge,
   Button,
@@ -52,6 +53,8 @@ export function MachinesPage() {
     list.map((machine) => monthRef(machine.id, month)),
     (snapshot) => monthFrom(month, snapshot.data()),
   );
+  // The tiles above total every machine; only the table is paged.
+  const { rows, pager } = usePagination(list);
 
   if (!ready) return <Loading />;
 
@@ -116,7 +119,7 @@ export function MachinesPage() {
                 </tr>
               </thead>
               <tbody>
-                {list.map((machine) => {
+                {rows.map((machine) => {
                   const type = machineTypeOf(machine, people);
                   const onMachine = crewOn(machine.id, people);
                   const tasks = type ? ROLES[MACHINE_TYPE[type].role].serviceTasks : [];
@@ -178,6 +181,7 @@ export function MachinesPage() {
             </table>
           </TableFrame>
         )}
+        <Pagination pager={pager} />
       </Panel>
 
       <p className="mt-4 max-w-3xl text-xs leading-relaxed text-white/55">

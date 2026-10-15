@@ -2,9 +2,9 @@ import { ClipboardList } from 'lucide-react';
 import { useState } from 'react';
 
 import { DataError } from '../components/DataError';
+import { Pagination } from '../components/Pagination';
 import {
   Badge,
-  Button,
   EmptyState,
   Field,
   Loading,
@@ -72,9 +72,8 @@ const SOURCE_LABEL = { panel: 'පුවරුවෙන්', phone: 'ෆෝන�
 
 /** විගණන සටහන — every account, store, bill, sale and price change, who made it and when. */
 export function AuditLogPage() {
-  const [count, setCount] = useState(100);
   const [group, setGroup] = useState<Group>('all');
-  const log = useAuditLog(count);
+  const log = useAuditLog();
   const entries = (log.data ?? []).filter((entry) => group === 'all' || auditGroup(entry.action) === group);
 
   return (
@@ -85,7 +84,7 @@ export function AuditLogPage() {
       />
 
       <Panel tone="deep" className="mb-6 flex flex-wrap items-end gap-4 p-4">
-        <Field label="වර්ගය" className="min-w-48">
+        <Field label="වර්ගය" className="min-w-48" hint="පෙන්වන පිටුවේ සටහන් පමණක් පෙරේ">
           <Select value={group} onChange={(event) => setGroup(event.target.value as Group)}>
             <option value="all">සියල්ල</option>
             {(Object.keys(GROUP_LABEL) as Exclude<Group, 'all'>[]).map((key) => (
@@ -102,33 +101,35 @@ export function AuditLogPage() {
           <DataError error={log.error} />
         ) : log.data === undefined ? (
           <Loading />
-        ) : entries.length === 0 ? (
-          <EmptyState icon={<ClipboardList className="size-7" />} title="තවම සටහන් නැත" />
         ) : (
-          <TableFrame>
-            <table className="w-full min-w-[820px] border-collapse text-sm">
-              <thead>
-                <tr className="border-b border-hairline">
-                  <th className={th}>වේලාව</th>
-                  <th className={th}>ක්‍රියාව</th>
-                  <th className={th}>විස්තරය</th>
-                  <th className={th}>කළේ</th>
-                </tr>
-              </thead>
-              <tbody>
-                {entries.map((entry) => (
-                  <AuditRow key={entry.id} entry={entry} />
-                ))}
-              </tbody>
-            </table>
-            {log.data.length >= count && (
-              <div className="mt-3 flex justify-center">
-                <Button variant="secondary" size="sm" onClick={() => setCount((value) => value + 50)}>
-                  පෙර සටහන් තවත් පෙන්වන්න
-                </Button>
-              </div>
+          <>
+            {entries.length === 0 ? (
+              <EmptyState
+                icon={<ClipboardList className="size-7" />}
+                title={log.data.length > 0 ? 'මෙම පිටුවේ ගැළපෙන සටහන් නැත' : 'තවම සටහන් නැත'}
+              />
+            ) : (
+              <TableFrame>
+                <table className="w-full min-w-[820px] border-collapse text-sm">
+                  <thead>
+                    <tr className="border-b border-hairline">
+                      <th className={th}>වේලාව</th>
+                      <th className={th}>ක්‍රියාව</th>
+                      <th className={th}>විස්තරය</th>
+                      <th className={th}>කළේ</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {entries.map((entry) => (
+                      <AuditRow key={entry.id} entry={entry} />
+                    ))}
+                  </tbody>
+                </table>
+              </TableFrame>
             )}
-          </TableFrame>
+            {/* Outside the empty check: a page the filter empties must still lead on to the next. */}
+            <Pagination pager={log.pager} />
+          </>
         )}
       </Panel>
     </>

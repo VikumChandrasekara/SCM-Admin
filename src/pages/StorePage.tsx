@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useSession } from '../auth/AuthContext';
 import { permissionsFor } from '../auth/permissions';
 import { DataError } from '../components/DataError';
+import { Pagination, usePagination } from '../components/Pagination';
 import { DeleteItemModal, ItemModal, StockChangeModal } from '../components/StockModals';
 import {
   Badge,
@@ -42,8 +43,7 @@ export function StorePage() {
   const permissions = permissionsFor(profile);
   const { store, ready } = useLiveData();
   // The log grows for ever; a page of it at a time keeps a slow line quick.
-  const [logSize, setLogSize] = useState(25);
-  const movements = useMovements(logSize);
+  const movements = useMovements();
 
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
@@ -51,16 +51,19 @@ export function StorePage() {
   const [changing, setChanging] = useState<{ item: StoreItem; mode: StockChange } | null>(null);
   const [deleting, setDeleting] = useState<StoreItem | null>(null);
 
-  if (!ready) return <Loading />;
-
-  const alerts = stockAlerts(store);
-  const value = store.reduce((sum, item) => sum + Math.max(item.quantity, 0) * item.unitPrice, 0);
   const needle = search.trim().toLowerCase();
   const shown = store.filter(
     (item) =>
       (filter === 'all' || (filter === 'alerts' ? stockStatus(item) !== 'ok' : item.link != null)) &&
       (!needle || item.name.toLowerCase().includes(needle)),
   );
+  // Before the early return below: a hook may not come after one.
+  const { rows: itemRows, pager: itemPager } = usePagination(shown, `${filter}|${needle}`);
+
+  if (!ready) return <Loading />;
+
+  const alerts = stockAlerts(store);
+  const value = store.reduce((sum, item) => sum + Math.max(item.quantity, 0) * item.unitPrice, 0);
 
   return (
     <>
@@ -158,7 +161,7 @@ export function StorePage() {
                 </tr>
               </thead>
               <tbody>
-                {shown.map((item) => {
+                {itemRows.map((item) => {
                   const status = stockStatus(item);
                   return (
                     <tr key={item.id} className="border-b border-hairline/60 last:border-0">
@@ -206,6 +209,7 @@ export function StorePage() {
             </table>
           </TableFrame>
         )}
+        <Pagination pager={itemPager} />
       </Panel>
 
       <SectionLabel>තොග චලනයන්</SectionLabel>
@@ -217,31 +221,27 @@ export function StorePage() {
         ) : movements.data.length === 0 ? (
           <p className="py-6 text-center text-sm text-white/60">තවම චලනයන් නැත.</p>
         ) : (
-          <TableFrame>
-            <table className="w-full min-w-[720px] border-collapse text-sm">
-              <thead>
-                <tr className="border-b border-hairline">
-                  <th className={th}>වේලාව</th>
-                  <th className={th}>වර්ගය</th>
-                  <th className={th}>අයිතම</th>
-                  <th className={th}>විස්තරය</th>
-                  <th className={th}>කළේ</th>
-                </tr>
-              </thead>
-              <tbody>
-                {movements.data.map((movement) => (
-                  <MovementRow key={movement.id} movement={movement} />
-                ))}
-              </tbody>
-            </table>
-            {movements.data.length >= logSize && (
-              <div className="mt-3 flex justify-center">
-                <Button variant="secondary" size="sm" onClick={() => setLogSize((size) => size + 25)}>
-                  පෙර චලනයන් තවත් පෙන්වන්න
-                </Button>
-              </div>
-            )}
-          </TableFrame>
+          <>
+            <TableFrame>
+              <table className="w-full min-w-[720px] border-collapse text-sm">
+                <thead>
+                  <tr className="border-b border-hairline">
+                    <th className={th}>වේලාව</th>
+                    <th className={th}>වර්ගය</th>
+                    <th className={th}>අයිතම</th>
+                    <th className={th}>විස්තරය</th>
+                    <th className={th}>කළේ</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {movements.data.map((movement) => (
+                    <MovementRow key={movement.id} movement={movement} />
+                  ))}
+                </tbody>
+              </table>
+            </TableFrame>
+            <Pagination pager={movements.pager} />
+          </>
         )}
       </Panel>
 

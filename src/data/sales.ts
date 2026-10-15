@@ -9,7 +9,7 @@ import {
   where,
   writeBatch,
 } from 'firebase/firestore';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { db } from '../db';
 import { dateTime, monthBounds, monthKey, todayKey } from '../lib/format';
@@ -95,11 +95,18 @@ export function useMonthSales(month: string) {
     () => query(collection(db, 'sales'), where('date', '>=', from), where('date', '<=', to), orderBy('date', 'desc')),
     (snapshot) => saleFrom(snapshot.id, snapshot.data()),
   );
-  const sorted = sales.data
-    ? [...sales.data].sort(
-        (a, b) => b.date.localeCompare(a.date) || (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0),
-      )
-    : undefined;
+  // Sorted once per snapshot, not once per render: callers hang their own
+  // memos (the finance report's, above all) on this array's identity, and a
+  // fresh copy every render made every one of them recompute every time.
+  const sorted = useMemo(
+    () =>
+      sales.data
+        ? [...sales.data].sort(
+            (a, b) => b.date.localeCompare(a.date) || (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0),
+          )
+        : undefined,
+    [sales.data],
+  );
   return { data: sorted, error: sales.error };
 }
 

@@ -3,6 +3,7 @@ import { useState } from 'react';
 
 import { useSession } from '../auth/AuthContext';
 import { DataError } from '../components/DataError';
+import { Pagination, usePagination } from '../components/Pagination';
 import { useToast } from '../components/Toasts';
 import {
   Badge,
@@ -56,6 +57,7 @@ export function RecycleBinPage() {
   const entries = (bin.data ?? [])
     .filter((entry) => !binExpired(entry, now) && (kind === 'all' || entry.kind === kind))
     .sort((a, b) => (b.deletedAt?.getTime() ?? 0) - (a.deletedAt?.getTime() ?? 0));
+  const { rows, pager } = usePagination(entries, kind);
 
   async function restore(entry: BinEntry) {
     setBusy(entry.id);
@@ -113,7 +115,7 @@ export function RecycleBinPage() {
                 </tr>
               </thead>
               <tbody>
-                {entries.map((entry) => {
+                {rows.map((entry) => {
                   const left = binDaysLeft(entry, now);
                   return (
                     <tr key={entry.id} className="border-b border-hairline/60 align-top last:border-0">
@@ -153,6 +155,7 @@ export function RecycleBinPage() {
             </table>
           </TableFrame>
         )}
+        <Pagination pager={pager} />
       </Panel>
     </>
   );

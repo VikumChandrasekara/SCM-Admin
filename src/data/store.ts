@@ -3,7 +3,6 @@ import {
   doc,
   getDoc,
   increment,
-  limit,
   orderBy,
   query,
   runTransaction,
@@ -16,15 +15,18 @@ import { linkDocId, movementFrom, storeItemFrom, type Person, type StockLink, ty
 import type { LinkPlan } from '../lib/storeLink';
 import { auditEntry } from './audit';
 import { commit } from './commit';
-import { useLiveQuery } from './live';
+import { useLivePages } from './live';
 import { movement } from './movement';
 import { binEntryData, binRef } from './recycle';
 
-/** The most recent changes to any count, newest first. */
-export function useMovements(count = 80) {
-  return useLiveQuery(
-    `movements:${count}`,
-    () => query(collection(db, 'storeMovements'), orderBy('createdAt', 'desc'), limit(count)),
+/**
+ * Every change to any count, newest first, a page of 100 at a time. The log
+ * grows for ever, so only the page on screen is read.
+ */
+export function useMovements() {
+  return useLivePages(
+    'movements',
+    () => query(collection(db, 'storeMovements'), orderBy('createdAt', 'desc')),
     (snapshot) => movementFrom(snapshot.id, snapshot.data()),
   );
 }

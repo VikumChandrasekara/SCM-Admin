@@ -3,6 +3,7 @@ import { useState, type FormEvent } from 'react';
 
 import { useSession } from '../auth/AuthContext';
 import { DataError } from '../components/DataError';
+import { Pagination, usePagination } from '../components/Pagination';
 import { SignaturePad, SignatureView } from '../components/SignaturePad';
 import { useToast } from '../components/Toasts';
 import {
@@ -71,6 +72,7 @@ export function LandownerPage() {
   const [removing, setRemoving] = useState(false);
 
   const history = rates.data ? newestFirst(rates.data) : [];
+  const { rows: historyRows, pager: historyPager } = usePagination(history);
   const current = rates.data ? currentRates(rates.data) : null;
   const everSet = history.length > 0;
   const valueOf = (material: LandownerMaterial) => drafts[material] ?? String(current?.[material] ?? 0);
@@ -230,7 +232,7 @@ export function LandownerPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {history.map((entry) => (
+                    {historyRows.map((entry) => (
                       <tr key={entry.id} className="border-b border-hairline/60 last:border-0">
                         <td className={cx(td, 'whitespace-nowrap')}>{entry.at ? dateTime(entry.at) : 'සුරකිමින්…'}</td>
                         {LANDOWNER_MATERIALS.map((material) => {
@@ -250,6 +252,7 @@ export function LandownerPage() {
                 </table>
               </TableFrame>
             )}
+            <Pagination pager={historyPager} />
           </Panel>
         </div>
       )}

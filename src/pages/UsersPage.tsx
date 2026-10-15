@@ -3,6 +3,7 @@ import { useState, type FormEvent } from 'react';
 
 import { useSession } from '../auth/AuthContext';
 import { LoadRateFields, draftOf, ratesOf } from '../components/LoadRateFields';
+import { Pagination, usePagination } from '../components/Pagination';
 import { useToast } from '../components/Toasts';
 import {
   Badge,
@@ -69,6 +70,8 @@ export function UsersPage() {
   const [editing, setEditing] = useState<Person | 'new' | null>(null);
   const [password, setPassword] = useState<Person | null>(null);
   const [removing, setRemoving] = useState<Person | null>(null);
+  // Above the early return: a hook may not come after one.
+  const { rows, pager } = usePagination(people);
 
   if (!ready) return <Loading />;
 
@@ -101,7 +104,7 @@ export function UsersPage() {
                 </tr>
               </thead>
               <tbody>
-                {people.map((person) => {
+                {rows.map((person) => {
                   const self = person.id === profile.id;
                   return (
                     <tr key={person.id} className="border-b border-hairline/60 last:border-0">
@@ -162,6 +165,7 @@ export function UsersPage() {
             </table>
           </TableFrame>
         )}
+        <Pagination pager={pager} />
       </Panel>
 
       <p className="mt-4 max-w-3xl text-xs leading-relaxed text-white/55">

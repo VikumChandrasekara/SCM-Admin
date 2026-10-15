@@ -7,6 +7,7 @@ import { errorMessage } from '../lib/errors';
 import { rupees } from '../lib/format';
 import { customerAccounts, type CustomerAccount } from '../lib/customers';
 import { nameOf } from '../lib/model';
+import { Pagination, usePagination } from './Pagination';
 import { PaymentReceiptModal, type PaymentSlip } from './PaymentReceipt';
 import { useToast } from './Toasts';
 import { Button, Field, Input, Panel, SectionLabel, cx } from './ui';
@@ -23,6 +24,8 @@ export function CreditAccounts() {
     () => customerAccounts(sales.data ?? [], payments.data ?? [], now),
     [sales.data, payments.data, now],
   );
+  // Above the early return: a hook may not come after one.
+  const { rows, pager } = usePagination(accounts);
 
   if (accounts.length === 0) return null;
 
@@ -30,7 +33,7 @@ export function CreditAccounts() {
     <Panel className="mb-6 p-4 sm:p-5">
       <SectionLabel>ණය ගිණුම්</SectionLabel>
       <ul className="divide-y divide-hairline">
-        {accounts.map((account) => (
+        {rows.map((account) => (
           <li key={account.customerKey} className="flex flex-wrap items-center justify-between gap-3 py-3">
             <div>
               <p className="font-bold">{account.customerName}</p>
@@ -51,6 +54,7 @@ export function CreditAccounts() {
           </li>
         ))}
       </ul>
+      <Pagination pager={pager} />
       {paying && (
         <PaymentForm
           account={paying}

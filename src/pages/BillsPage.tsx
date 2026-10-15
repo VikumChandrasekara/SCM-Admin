@@ -5,6 +5,7 @@ import { useSession } from '../auth/AuthContext';
 import { permissionsFor } from '../auth/permissions';
 import { BillModal } from '../components/BillModal';
 import { DataError } from '../components/DataError';
+import { Pagination, usePagination } from '../components/Pagination';
 import { useToast } from '../components/Toasts';
 import {
   Badge,
@@ -57,6 +58,8 @@ export function BillsPage() {
     (bill) => (!category || bill.category === category) && (!personId || bill.operatorId === personId),
   );
   const total = (list: Bill[]) => list.reduce((sum, bill) => sum + bill.amount, 0);
+  // The tiles and totals still count the whole month; only the table is paged.
+  const { rows, pager } = usePagination(shown, `${month}|${category}|${personId}`);
 
   async function confirmDelete(bill: Bill) {
     setDeleteBusy(true);
@@ -171,7 +174,7 @@ export function BillsPage() {
                 </tr>
               </thead>
               <tbody>
-                {shown.map((bill) => (
+                {rows.map((bill) => (
                   <tr key={bill.id} className="border-b border-hairline/60 last:border-0">
                     <td className={cx(td, 'whitespace-nowrap tabular-nums')}>{bill.date}</td>
                     <td className={td}>
@@ -199,6 +202,7 @@ export function BillsPage() {
             </table>
           </TableFrame>
         )}
+        <Pagination pager={pager} />
       </Panel>
 
       {editing && (

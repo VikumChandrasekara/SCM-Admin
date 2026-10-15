@@ -6,6 +6,7 @@ import { permissionsFor } from '../auth/permissions';
 import { CreditAccounts } from '../components/CreditAccounts';
 import { DataError } from '../components/DataError';
 import { LoadAnalysis } from '../components/LoadAnalysis';
+import { Pagination, usePagination } from '../components/Pagination';
 import { SaleEditModal } from '../components/SaleEditModal';
 import { SaleModal } from '../components/SaleModal';
 import { SaleReceiptModal, SaleStatusBadge } from '../components/SaleReceipt';
@@ -80,6 +81,8 @@ export function SalesPage() {
             ? statusOf(sale) === 'pending' && !sale.prepaid
             : statusOf(sale) === value;
   const shown = all.filter((sale) => matches(sale, filter));
+  // The tiles and totals above still count the whole month; only the table is paged.
+  const { rows, pager } = usePagination(shown, `${month}|${filter}`);
 
   // A credit bill is paid once it has been ticked off: that records a payment for
   // the whole bill, which is also what takes it off the customer's account.
@@ -233,7 +236,7 @@ export function SalesPage() {
                 </tr>
               </thead>
               <tbody>
-                {shown.map((sale) => (
+                {rows.map((sale) => (
                   <tr
                     key={sale.code}
                     onClick={() => setShowing(sale.code)}
@@ -313,6 +316,7 @@ export function SalesPage() {
             </table>
           </TableFrame>
         )}
+        <Pagination pager={pager} />
       </Panel>
 
       {creating && (

@@ -5,6 +5,7 @@ import { useSearchParams } from 'react-router';
 import { useSession } from '../auth/AuthContext';
 import { permissionsFor } from '../auth/permissions';
 import { DayEditModal } from '../components/DayEditModal';
+import { Pagination, usePagination } from '../components/Pagination';
 import {
   EmptyState,
   ErrorNote,
@@ -39,6 +40,8 @@ import {
 import { useToday } from '../lib/useToday';
 
 type Range = '7' | '30' | '90' | 'custom';
+
+const NO_DAYS: Day[] = [];
 
 /** ඉතිහාසය — one crew member's recorded days, newest first. */
 export function HistoryPage() {
@@ -76,11 +79,15 @@ export function HistoryPage() {
     };
   }, [key, machineId, from, to]);
 
+  const current = loaded?.key === key ? loaded : null;
+  const days = machineId ? current?.days ?? null : [];
+  // Above the early return: a hook may not come after one. Not keyed on
+  // [version], so saving an edit to a day leaves the reader on their page.
+  const { rows, pager } = usePagination(days ?? NO_DAYS, `${machineId}|${from}|${to}`);
+
   if (!ready) return <Loading />;
 
   const role = person ? ROLES[person.role] : null;
-  const current = loaded?.key === key ? loaded : null;
-  const days = machineId ? current?.days ?? null : [];
 
   return (
     <>
@@ -170,7 +177,7 @@ export function HistoryPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {days.map((day) => {
+                    {rows.map((day) => {
                       const marks = role.inspectionItems.map((item) => day.inspection[item]);
                       const passed = marks.filter((mark) => mark === true).length;
                       const failed = marks.filter((mark) => mark === false).length;
@@ -221,6 +228,7 @@ export function HistoryPage() {
                 </table>
               </TableFrame>
             )}
+            <Pagination pager={pager} />
           </Panel>
         </>
       )}
