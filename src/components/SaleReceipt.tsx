@@ -18,7 +18,8 @@ import {
   type SaleStatus,
 } from '../lib/model';
 import { Letterhead } from './Letterhead';
-import { Badge, Button, Loading, Modal, cx } from './ui';
+import { ReceiptRow, StarRule } from './ReceiptParts';
+import { Badge, Button, Loading, Modal } from './ui';
 
 const statusTone: Record<SaleStatus, 'ok' | 'low' | 'out'> = {
   verified: 'ok',
@@ -50,8 +51,8 @@ export function useSaleQr(code: string): string | null {
 }
 
 // Only the bill is printed, a till-roll wide — it prints the same on a
-// receipt printer and at the top of an A4 sheet. The letterhead's rule and
-// the tinted table head are kept: browsers drop backgrounds unless told.
+// receipt printer and at the top of an A4 sheet. It is black on white with no
+// fills, so there is nothing a browser would drop.
 export const PRINT_CSS = `
 @media print {
   @page { margin: 4mm; }
@@ -61,7 +62,6 @@ export const PRINT_CSS = `
   .print-sheet {
     position: fixed !important; left: 0; top: 0; width: 72mm;
     margin: 0 !important; box-shadow: none !important; border-radius: 0 !important;
-    -webkit-print-color-adjust: exact; print-color-adjust: exact;
   }
 }`;
 
@@ -99,106 +99,83 @@ export function SaleReceiptModal({ code, onClose }: { code: string; onClose: () 
 }
 
 /**
- * The bill itself, as it is printed: the company's letterhead, the bill's
- * number within the month, the line sold as a small table, and the QR any
- * role scans to verify it.
+ * The bill itself, as it is printed — a till receipt, black on white: the
+ * company's name, the bill's number within the month, what was sold and to
+ * whom, the line sold with its total, and the QR any role scans to verify it.
  */
 export function SaleSheet({ sale }: { sale: Sale }) {
   const qr = useSaleQr(sale.code);
-  const cell = 'px-2 py-2 text-right';
+  const type = SALE_TYPE[sale.type];
 
   return (
-    <div className="print-sheet mx-auto max-w-sm overflow-hidden rounded-card bg-white text-[12.5px] text-black shadow-panel">
+    <div className="print-sheet mx-auto max-w-sm overflow-hidden rounded-card bg-white pb-5 text-[13px] text-black shadow-panel">
       <Letterhead />
 
-      <div className="px-5 pt-4 pb-3">
-        <div className="flex items-stretch justify-between gap-3">
-          <div className="flex flex-col justify-center">
-            <p className="text-[17px] leading-tight font-black">විකුණුම් බිල්පත</p>
-            <p className="mt-0.5 text-[9.5px] font-extrabold tracking-[0.22em] text-black/50">SALES INVOICE</p>
-          </div>
-          <div className="min-w-20 rounded-md border-2 border-black px-3 py-1.5 text-center">
-            <p className="text-[9px] font-bold tracking-wider text-black/55">බිල් අංකය</p>
-            <p className="text-[26px] leading-none font-black tabular-nums">{saleNumber(sale)}</p>
-          </div>
+      <div className="space-y-3 px-5">
+        <StarRule />
+        <div className="text-center">
+          <p className="text-[18px] leading-tight font-black">විකුණුම් බිල්පත</p>
+          <p className="mt-0.5 pl-[0.3em] text-[10px] font-bold tracking-[0.3em]">SALES INVOICE</p>
         </div>
+        <StarRule />
 
-        <dl className="mt-3.5 divide-y divide-black/10 rounded-md border border-black/15 px-3 py-0.5">
-          <Row label="දිනය" value={dateTime(sale.createdAt)} />
-          <Row label="පාරිභෝගිකයා" value={sale.customerName || '—'} />
-          {sale.customerPhone && <Row label="දුරකථනය" value={sale.customerPhone} />}
-          {sale.vehicleNo && <Row label="වාහනය" value={sale.vehicleNo} />}
-          {sale.material && <Row label="ද්‍රව්‍යය" value={SALE_MATERIAL[sale.material]} />}
-          <Row label="ගෙවීම" value={PAYMENT_TYPE_LABEL[sale.paymentType]} />
-          {sale.prepaid && <Row label="ලෝඩ් එක" value="කලින් ගෙවූ — පසුව ගෙන යයි" />}
+        <dl className="space-y-1">
+          <ReceiptRow strong label="බිල් අංකය" value={saleNumber(sale)} />
+          <ReceiptRow label="දිනය" value={dateTime(sale.createdAt)} />
+          <ReceiptRow label="පාරිභෝගිකයා" value={sale.customerName || '—'} />
+          {sale.customerPhone && <ReceiptRow label="දුරකථනය" value={sale.customerPhone} />}
+          {sale.vehicleNo && <ReceiptRow label="වාහනය" value={sale.vehicleNo} />}
+          {sale.material && <ReceiptRow label="ද්‍රව්‍යය" value={SALE_MATERIAL[sale.material]} />}
+          <ReceiptRow label="ගෙවීම" value={PAYMENT_TYPE_LABEL[sale.paymentType]} />
+          {sale.prepaid && <ReceiptRow label="ලෝඩ් එක" value="කලින් ගෙවූ — පසුව ගෙන යයි" />}
         </dl>
+        <StarRule />
 
-        <table className="mt-3.5 w-full border-collapse text-[12px]">
-          <thead>
-            <tr className="border-y border-black/70 bg-black/[0.06] text-[10.5px] text-black/65">
-              <th className="px-2 py-1.5 text-left font-bold">විස්තරය</th>
-              <th className={cx(cell, 'py-1.5 font-bold')}>ප්‍රමාණය</th>
-              <th className={cx(cell, 'py-1.5 font-bold')}>මිල</th>
-              <th className={cx(cell, 'py-1.5 font-bold')}>මුදල</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr className="align-top">
-              <td className="px-2 py-2.5 font-bold">
-                {SALE_TYPE[sale.type].label}
-                {sale.note && <span className="block text-[10.5px] font-normal text-black/60">{sale.note}</span>}
-              </td>
-              <td className={cx(cell, 'py-2.5 tabular-nums')}>{quantity(sale.quantity, SALE_TYPE[sale.type].unit)}</td>
-              <td className={cx(cell, 'py-2.5 tabular-nums')}>
-                <div>{money(sale.unitPrice)}</div>
-                <div className="text-[9.5px] font-normal text-black/50">/ {SALE_TYPE[sale.type].unit}</div>
-              </td>
-              <td className={cx(cell, 'py-2.5 font-bold tabular-nums')}>{money(sale.amount)}</td>
-            </tr>
-          </tbody>
-        </table>
-
-        <div className="mt-1 flex items-center justify-between rounded-md border-2 border-black px-3 py-2">
-          <span>
-            <span className="block text-sm leading-tight font-black">මුළු මුදල</span>
-            <span className="block text-[9px] font-bold tracking-[0.22em] text-black/50">TOTAL</span>
-          </span>
-          <span className="text-[22px] font-black tabular-nums">{rupees(sale.amount)}</span>
+        <div>
+          <div className="flex justify-between text-[12px] font-bold">
+            <span>විස්තරය</span>
+            <span>මුදල</span>
+          </div>
+          <div className="mt-2 flex items-baseline justify-between gap-3">
+            <span className="font-bold">{type.label}</span>
+            <span className="font-bold tabular-nums">{money(sale.amount)}</span>
+          </div>
+          <p className="text-[12px] tabular-nums">
+            {quantity(sale.quantity, type.unit)} × {money(sale.unitPrice)} / {type.unit}
+          </p>
+          {sale.note && <p className="mt-0.5 text-[12px]">{sale.note}</p>}
         </div>
-        {sale.paymentType === 'credit' && (
-          <p className="mt-1.5 text-center text-[10.5px] font-semibold text-black/65">ණය බිල්පතකි — මුදල පසුව ගෙවිය යුතුය.</p>
-        )}
+        <StarRule />
 
-        <div className="mt-4 flex flex-col items-center">
+        <div>
+          <div className="flex items-baseline justify-between gap-3">
+            <span className="text-[17px] font-black">මුළු මුදල</span>
+            <span className="text-[22px] font-black tabular-nums">{rupees(sale.amount)}</span>
+          </div>
+          {sale.paymentType === 'credit' && (
+            <p className="mt-1.5 text-[11.5px] font-semibold">ණය බිල්පතකි — මුදල පසුව ගෙවිය යුතුය.</p>
+          )}
+        </div>
+        <StarRule />
+
+        <div className="flex flex-col items-center">
           {qr ? (
-            <img src={qr} alt={`QR ${formatSaleCode(sale.code)}`} className="size-40" />
+            <img src={qr} alt={`QR ${formatSaleCode(sale.code)}`} className="size-36" />
           ) : (
-            <div className="size-40 animate-pulse rounded bg-black/10" />
+            <div className="size-36 border border-dashed border-black" />
           )}
           {/* Typed in to verify the bill when the QR cannot be scanned. */}
-          <p className="mt-1.5 font-mono text-[11px] font-bold tracking-[0.18em]">{formatSaleCode(sale.code)}</p>
-          <p className="mt-0.5 text-[9.5px] text-black/50">QR එක ස්කෑන් කර බිල්පත තහවුරු කරන්න</p>
+          <p className="mt-1.5 pl-[0.18em] font-mono text-[12px] font-bold tracking-[0.18em]">{formatSaleCode(sale.code)}</p>
+          <p className="mt-0.5 text-[10.5px]">QR එක ස්කෑන් කර බිල්පත තහවුරු කරන්න</p>
         </div>
+        <StarRule />
 
-        <p className="mt-3 border-t border-black/10 pt-2 text-center text-[10.5px] text-black/55">
-          Billed by: {sale.createdByName || '—'}
-        </p>
+        <div className="text-center">
+          <p className="text-[11.5px]">Billed by: {sale.createdByName || '—'}</p>
+          <p className="mt-2 text-[13px] font-black">ස්තූතියි! නැවත එන්න.</p>
+          <p className="mt-1 text-[10px]">{DEVELOPED_BY}</p>
+        </div>
       </div>
-
-      {/* Footer */}
-      <div className="border-t border-dashed border-black/30 bg-black/[0.04] px-5 py-3 text-center">
-        <p className="text-[12px] font-bold">ස්තූතියි! නැවත එන්න.</p>
-        <p className="mt-0.5 text-[9.5px] text-black/50">{DEVELOPED_BY}</p>
-      </div>
-    </div>
-  );
-}
-
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex justify-between gap-3 py-1.5">
-      <dt className="text-black/60">{label}</dt>
-      <dd className="text-right font-semibold">{value}</dd>
     </div>
   );
 }
