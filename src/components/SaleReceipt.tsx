@@ -1,6 +1,5 @@
-import { Printer } from 'lucide-react';
 import QRCode from 'qrcode';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useSale } from '../data/sales';
 import { DEVELOPED_BY } from '../lib/company';
@@ -17,6 +16,7 @@ import {
   type Sale,
   type SaleStatus,
 } from '../lib/model';
+import { PrintButton, PrinterSettings, useBillPrint } from './BillPrint';
 import { Letterhead } from './Letterhead';
 import { ReceiptRow, StarRule } from './ReceiptParts';
 import { Badge, Button, Loading, Modal } from './ui';
@@ -68,6 +68,8 @@ export const PRINT_CSS = `
 /** The bill for sale [code], live, with its QR and a print button. */
 export function SaleReceiptModal({ code, onClose }: { code: string; onClose: () => void }) {
   const sale = useSale(code);
+  const body = useRef<HTMLDivElement>(null);
+  const printer = useBillPrint(useCallback(() => body.current?.querySelector<HTMLElement>('.print-sheet') ?? null, []));
 
   return (
     <Modal
@@ -80,20 +82,21 @@ export function SaleReceiptModal({ code, onClose }: { code: string; onClose: () 
           <Button variant="secondary" onClick={onClose}>
             වසන්න
           </Button>
-          <Button icon={<Printer className="size-4" />} disabled={!sale.data} onClick={() => window.print()}>
-            මුද්‍රණය කරන්න
-          </Button>
+          <PrintButton printer={printer} disabled={!sale.data} />
         </>
       }
     >
       <style>{PRINT_CSS}</style>
-      {sale.data === undefined ? (
-        <Loading />
-      ) : sale.data === null ? (
-        <p className="py-8 text-center text-sm text-white/70">මෙම අංකයෙන් බිල්පතක් නැත.</p>
-      ) : (
-        <SaleSheet sale={sale.data} />
-      )}
+      <div ref={body}>
+        {sale.data === undefined ? (
+          <Loading />
+        ) : sale.data === null ? (
+          <p className="py-8 text-center text-sm text-white/70">මෙම අංකයෙන් බිල්පතක් නැත.</p>
+        ) : (
+          <SaleSheet sale={sale.data} />
+        )}
+      </div>
+      {sale.data && <PrinterSettings printer={printer} />}
     </Modal>
   );
 }
