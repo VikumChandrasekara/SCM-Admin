@@ -1824,3 +1824,77 @@ describe('the landowner’s own login', () => {
     );
   });
 });
+
+describe('notifications', () => {
+  const entry = (overrides: object = {}) => ({
+    type: 'service',
+    title: 'සේවා අවවාදය',
+    body: 'ex1 — එන්ජින් ඔයිල් මාරු කිරීමට තව පැය 30 යි',
+    data: { machineId: 'ex1' },
+    createdAt: Timestamp.now(),
+    readAt: null,
+    ...overrides,
+  });
+
+  beforeEach(async () => {
+    await env.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore() as unknown as Firestore;
+      await setDoc(doc(db, 'operators', 'op1', 'notifications', 'n1'), entry());
+      await setDoc(doc(db, 'operators', 'land1', 'notifications', 'n2'), entry({ type: 'payment' }));
+      await setDoc(doc(db, 'workerStatus', 'push'), { lastSeenAt: Timestamp.now() });
+    });
+  });
+
+  it('is read by the person it is for, and by nobody else — staff included', async () => {
+    await assertSucceeds(getDoc(doc(as('op1'), 'operators', 'op1', 'notifications', 'n1')));
+    await assertSucceeds(getDocs(collection(as('op1'), 'operators', 'op1', 'notifications')));
+    await assertSucceeds(getDocs(collection(as('land1'), 'operators', 'land1', 'notifications')));
+
+    await assertFails(getDoc(doc(as('comp1'), 'operators', 'op1', 'notifications', 'n1')));
+    await assertFails(getDoc(doc(as('sup1'), 'operators', 'op1', 'notifications', 'n1')));
+    await assertFails(getDoc(doc(as('admin1'), 'operators', 'op1', 'notifications', 'n1')));
+    await assertFails(getDocs(collection(as('op1'), 'operators', 'land1', 'notifications')));
+    const signedOut = env.unauthenticatedContext().firestore() as unknown as Firestore;
+    await assertFails(getDoc(doc(signedOut, 'operators', 'op1', 'notifications', 'n1')));
+  });
+
+  it('is marked read by its owner, once, and nothing else about it changes', async () => {
+    const own = doc(as('op1'), 'operators', 'op1', 'notifications', 'n1');
+    await assertFails(updateDoc(own, { readAt: 'yesterday' }));
+    await assertFails(updateDoc(own, { readAt: null }));
+    await assertFails(updateDoc(own, { title: 'changed' }));
+    await assertFails(updateDoc(own, { readAt: Timestamp.now(), body: 'changed' }));
+    await assertSucceeds(updateDoc(own, { readAt: Timestamp.now() }));
+    // Already read: it keeps the time it was first read.
+    await assertFails(updateDoc(own, { readAt: Timestamp.now() }));
+
+    // Someone else's is not theirs to mark.
+    await assertFails(
+      updateDoc(doc(as('sup1'), 'operators', 'land1', 'notifications', 'n2'), { readAt: serverTimestamp() }),
+    );
+  });
+
+  it('is filed and removed by the worker alone', async () => {
+    for (const uid of ['op1', 'sup1', 'admin1']) {
+      await assertFails(setDoc(doc(as(uid), 'operators', 'op1', 'notifications', 'forged'), entry()));
+    }
+    await assertFails(deleteDoc(doc(as('op1'), 'operators', 'op1', 'notifications', 'n1')));
+    await assertFails(deleteDoc(doc(as('admin1'), 'operators', 'op1', 'notifications', 'n1')));
+  });
+
+  it('does not open the operator record to anyone it was closed to', async () => {
+    await assertFails(getDoc(doc(as('comp1'), 'operators', 'op1')));
+    await assertSucceeds(getDoc(doc(as('op1'), 'operators', 'op1')));
+  });
+
+  it('lets staff, and only staff, see whether the worker is alive', async () => {
+    await assertSucceeds(getDoc(doc(as('sup1'), 'workerStatus', 'push')));
+    await assertSucceeds(getDoc(doc(as('admin1'), 'workerStatus', 'push')));
+    await assertFails(getDoc(doc(as('op1'), 'workerStatus', 'push')));
+    await assertFails(getDoc(doc(as('comp1'), 'workerStatus', 'push')));
+    await assertFails(getDoc(doc(as('land1'), 'workerStatus', 'push')));
+
+    await assertFails(setDoc(doc(as('admin1'), 'workerStatus', 'push'), { lastSeenAt: Timestamp.now() }));
+    await assertFails(setDoc(doc(as('sup1'), 'workerStatus', 'push'), { lastSeenAt: Timestamp.now() }));
+  });
+});
