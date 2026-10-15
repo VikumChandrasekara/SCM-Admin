@@ -1,5 +1,5 @@
 import QRCode from 'qrcode';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { useSale } from '../data/sales';
 import { DEVELOPED_BY } from '../lib/company';
@@ -16,7 +16,7 @@ import {
   type Sale,
   type SaleStatus,
 } from '../lib/model';
-import { PrintButton, PrinterSettings, useBillPrint } from './BillPrint';
+import { PrintBillButton } from './BillPrint';
 import { Letterhead } from './Letterhead';
 import { ReceiptRow, StarRule } from './ReceiptParts';
 import { Badge, Button, Loading, Modal } from './ui';
@@ -69,7 +69,6 @@ export const PRINT_CSS = `
 export function SaleReceiptModal({ code, onClose }: { code: string; onClose: () => void }) {
   const sale = useSale(code);
   const body = useRef<HTMLDivElement>(null);
-  const printer = useBillPrint(useCallback(() => body.current?.querySelector<HTMLElement>('.print-sheet') ?? null, []));
 
   return (
     <Modal
@@ -82,7 +81,7 @@ export function SaleReceiptModal({ code, onClose }: { code: string; onClose: () 
           <Button variant="secondary" onClick={onClose}>
             වසන්න
           </Button>
-          <PrintButton printer={printer} disabled={!sale.data} />
+          <PrintBillButton container={body} disabled={!sale.data} />
         </>
       }
     >
@@ -96,7 +95,6 @@ export function SaleReceiptModal({ code, onClose }: { code: string; onClose: () 
           <SaleSheet sale={sale.data} />
         )}
       </div>
-      {sale.data && <PrinterSettings printer={printer} />}
     </Modal>
   );
 }

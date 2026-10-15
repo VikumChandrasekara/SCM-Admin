@@ -114,12 +114,51 @@ export async function reopenPrinter(saved: SavedPrinter): Promise<PrinterLink | 
   }
 }
 
+/**
+ * The printers the browser already lets this page use — ones picked before —
+ * without opening any of them. A browser only names a device the person has
+ * chosen in its own picker, so a printer never used here is added with
+ * [pickPrinter].
+ */
+export async function knownPrinters(): Promise<SavedPrinter[]> {
+  const found: SavedPrinter[] = [];
+  const collect = async (list: () => Promise<SavedPrinter[]>) => {
+    try {
+      found.push(...(await list()));
+    } catch {
+      // The browser blocked the lookup: those printers are simply not listed.
+    }
+  };
+  if ('usb' in navigator) {
+    await collect(async () =>
+      (await navigator.usb.getDevices()).map((d) => ({ kind: 'usb', name: usbName(d), key: usbKey(d) })),
+    );
+  }
+  if ('serial' in navigator) {
+    await collect(async () =>
+      (await navigator.serial.getPorts()).map((p) => ({ kind: 'serial', name: serialName(p), key: serialKey(p) })),
+    );
+  }
+  if ('bluetooth' in navigator) {
+    await collect(async () =>
+      ((await navigator.bluetooth.getDevices?.()) ?? []).map((d) => ({
+        kind: 'ble',
+        name: d.name || 'Bluetooth ප්‍රින්ටරය',
+        key: d.id,
+      })),
+    );
+  }
+  return found;
+}
+
 // ---- USB --------------------------------------------------------------------
 
 const usbKey = (d: USBDevice) => `${d.vendorId}:${d.productId}:${d.serialNumber ?? ''}`;
 
+const usbName = (d: USBDevice) => d.productName || `USB ${d.vendorId.toString(16)}:${d.productId.toString(16)}`;
+
 async function openUsb(device: USBDevice): Promise<{ link: PrinterLink; saved: SavedPrinter }> {
-  const name = device.productName || `USB ${device.vendorId.toString(16)}:${device.productId.toString(16)}`;
+  const name = usbName(device);
   try {
     await device.open();
     if (device.configuration === null) await device.selectConfiguration(1);

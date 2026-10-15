@@ -1,5 +1,6 @@
-import { Printer } from 'lucide-react';
-import { useCallback, useRef, useState } from 'react';
+import { Printer, RefreshCw } from 'lucide-react';
+import { useCallback, useEffect, useState, type RefObject } from 'react';
+import { createPortal } from 'react-dom';
 
 import { billToEscPos } from '../lib/billImage';
 import { PAPER, type PaperWidth } from '../lib/escpos';
@@ -7,6 +8,7 @@ import {
   PrintFailure,
   TRANSPORT_LABEL,
   isCancelled,
+  knownPrinters,
   loadSaved,
   pickPrinter,
   reopenPrinter,
@@ -18,7 +20,7 @@ import {
   type TransportKind,
 } from '../lib/thermalPrinter';
 import { useToast } from './Toasts';
-import { Button, ErrorNote, Segmented } from './ui';
+import { Button, ErrorNote, IconButton, Loading, Modal, Segmented, cx } from './ui';
 
 const PAPER_KEY = 'scm.printer.paper';
 
@@ -32,140 +34,224 @@ function loadPaper(): PaperWidth {
   return 'mm58';
 }
 
-/**
- * Prints a bill straight to the receipt printer — no print dialog, as in the
- * phone app. [getSheet] gives the bill's element when it is time to print.
- * In a browser that cannot reach a printer (Firefox, Safari) the print button
- * falls back to the browser's own print dialog.
- */
-export function useBillPrint(getSheet: () => HTMLElement | null) {
-  const toast = useToast();
-  const [paper, setPaperState] = useState<PaperWidth>(loadPaper);
-  const [saved, setSaved] = useState<SavedPrinter | null>(loadSaved);
-  const [printing, setPrinting] = useState(false);
-  const [problem, setProblem] = useState<string | null>(null);
-  const busy = useRef(false);
-  const kinds = supportedKinds();
+const same = (a: SavedPrinter, b: SavedPrinter) => a.kind === b.kind && a.key === b.key;
 
-  const setPaper = useCallback((next: PaperWidth) => {
+const failure = (error: unknown) =>
+  error instanceof PrintFailure ? error.message : `මුද්‍රණය අසාර්ථකයි: ${error instanceof Error ? error.message : String(error)}`;
+
+/**
+ * The print button of a bill's modal. It opens the print popup — paper, and
+ * which printer — and the bill goes straight to that printer from there, with
+ * no browser print dialog, as in the phone app. [container] holds the bill
+ * (its `.print-sheet`). In a browser that cannot reach a printer (Firefox,
+ * Safari) the button opens the browser's own print dialog instead.
+ */
+export function PrintBillButton({ container, disabled }: { container: RefObject<HTMLElement | null>; disabled?: boolean }) {
+  const [open, setOpen] = useState(false);
+  const getSheet = useCallback(() => container.current?.querySelector<HTMLElement>('.print-sheet') ?? null, [container]);
+
+  return (
+    <>
+      <Button
+        icon={<Printer className="size-4" />}
+        disabled={disabled}
+        onClick={() => (supportedKinds().length === 0 ? window.print() : setOpen(true))}
+      >
+        මුද්‍රණය කරන්න
+      </Button>
+      {open && <PrintDialog getSheet={getSheet} onClose={() => setOpen(false)} />}
+    </>
+  );
+}
+
+function PrintDialog({ getSheet, onClose }: { getSheet: () => HTMLElement | null; onClose: () => void }) {
+  const toast = useToast();
+  const kinds = supportedKinds();
+  const [paper, setPaperState] = useState<PaperWidth>(loadPaper);
+  const [printers, setPrinters] = useState<SavedPrinter[] | null>(null);
+  const [selected, setSelected] = useState<SavedPrinter | null>(null);
+  const [busy, setBusy] = useState<'adding' | 'printing' | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setPrinters(null);
+    const last = loadSaved();
+    const known = await knownPrinters();
+    // The one used last stays listed even when the browser has forgotten it:
+    // printing then asks for it again.
+    const list = last && !known.some((p) => same(p, last)) ? [last, ...known] : known;
+    setPrinters(list);
+    setSelected((now) => now ?? list.find((p) => last && same(p, last)) ?? (list.length === 1 ? list[0] : null));
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  // Escape closes this popup only — not the bill under it, which would also hear it.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.stopPropagation();
+      onClose();
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [onClose]);
+
+  const setPaper = (next: PaperWidth) => {
     setPaperState(next);
     try {
       localStorage.setItem(PAPER_KEY, next);
     } catch {
       // Remembering is a convenience.
     }
-  }, []);
+  };
 
-  /** Prints the bill; [choose] opens the browser's picker for that kind of printer first. */
-  const print = useCallback(
-    async (choose?: TransportKind) => {
-      if (kinds.length === 0) {
-        window.print();
-        return;
+  /** Opens the browser's picker for a printer it has not let this page use yet. */
+  const add = async (kind: TransportKind) => {
+    setBusy('adding');
+    setProblem(null);
+    try {
+      // Opened once here, so a printer the browser cannot reach says so now.
+      const { link, saved } = await pickPrinter(kind);
+      await link.close().catch(() => {});
+      setPrinters((list) => [...(list ?? []).filter((p) => !same(p, saved)), saved]);
+      setSelected(saved);
+    } catch (error) {
+      if (!isCancelled(error)) setProblem(failure(error));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const print = async () => {
+    const sheet = getSheet();
+    if (!selected || !sheet || busy) return;
+    setBusy('printing');
+    setProblem(null);
+    let link: PrinterLink | null = null;
+    try {
+      let used = selected;
+      link = await reopenPrinter(selected);
+      if (!link) {
+        // The browser no longer lets this page at it: ask again.
+        const picked = await pickPrinter(selected.kind);
+        link = picked.link;
+        used = picked.saved;
       }
-      if (busy.current) return;
-      const sheet = getSheet();
-      const kind = choose ?? saved?.kind;
-      if (!sheet) return;
-      if (!kind) {
-        setProblem('ප්‍රින්ටරය තවම තෝරා නැත — පහත බොත්තමකින් ප්‍රින්ටරය තෝරන්න.');
-        return;
+      await sendJob(link, await billToEscPos(sheet, paper));
+      saveRemembered(used);
+      toast.success('බිල්පත මුද්‍රණය කළා.');
+      onClose();
+    } catch (error) {
+      if (!isCancelled(error)) setProblem(failure(error));
+    } finally {
+      await link?.close().catch(() => {});
+      setBusy(null);
+    }
+  };
+
+  // Two printers the browser names alike are told apart by number.
+  const label = (printer: SavedPrinter) => {
+    const alike = (printers ?? []).filter((p) => p.name === printer.name);
+    return alike.length > 1 ? `${printer.name} ${alike.indexOf(printer) + 1}` : printer.name;
+  };
+
+  return createPortal(
+    <Modal
+      open
+      size="sm"
+      title="බිල්පත මුද්‍රණය"
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>
+            වසන්න
+          </Button>
+          <Button
+            icon={<Printer className="size-4" />}
+            busy={busy === 'printing'}
+            disabled={!selected || busy === 'adding'}
+            onClick={() => void print()}
+          >
+            {busy === 'printing' ? 'මුද්‍රණය වෙමින්...' : 'මුද්‍රණය කරන්න'}
+          </Button>
+        </>
       }
-
-      busy.current = true;
-      setPrinting(true);
-      setProblem(null);
-      let link: PrinterLink | null = null;
-      try {
-        // The one used last, when the browser still lets us at it; else ask.
-        if (!choose && saved) link = await reopenPrinter(saved);
-        if (!link) {
-          const picked = await pickPrinter(kind);
-          link = picked.link;
-          saveRemembered(picked.saved);
-          setSaved(picked.saved);
-        }
-        await sendJob(link, await billToEscPos(sheet, paper));
-        toast.success('බිල්පත මුද්‍රණය කළා.');
-      } catch (error) {
-        if (!isCancelled(error)) {
-          setProblem(error instanceof PrintFailure ? error.message : `මුද්‍රණය අසාර්ථකයි: ${String(error)}`);
-        }
-      } finally {
-        await link?.close().catch(() => {});
-        busy.current = false;
-        setPrinting(false);
-      }
-    },
-    [kinds.length, getSheet, saved, paper, toast],
-  );
-
-  return { kinds, paper, setPaper, saved, printing, problem, print };
-}
-
-export type BillPrint = ReturnType<typeof useBillPrint>;
-
-/** The modal's print button: one click and the bill is on paper. */
-export function PrintButton({ printer, disabled }: { printer: BillPrint; disabled?: boolean }) {
-  return (
-    <Button
-      icon={<Printer className="size-4" />}
-      busy={printer.printing}
-      disabled={disabled}
-      onClick={() => void printer.print()}
     >
-      {printer.printing ? 'මුද්‍රණය වෙමින්...' : 'මුද්‍රණය කරන්න'}
-    </Button>
-  );
-}
+      <div className="space-y-4 text-[13px]">
+        <Segmented
+          value={paper}
+          disabled={busy !== null}
+          onChange={setPaper}
+          options={(Object.keys(PAPER) as PaperWidth[]).map((value) => ({ value, label: `කඩදාසි ${PAPER[value].label}` }))}
+        />
 
-/** Which printer and which paper — below the bill, out of the way once chosen. */
-export function PrinterSettings({ printer }: { printer: BillPrint }) {
-  const { kinds, paper, setPaper, saved, printing, problem, print } = printer;
+        <div>
+          <div className="mb-1.5 flex items-center justify-between">
+            <p className="font-semibold text-white/80">ප්‍රින්ටරය තෝරන්න</p>
+            <IconButton label="නැවත සොයන්න" onClick={() => void load()}>
+              <RefreshCw className="size-4" />
+            </IconButton>
+          </div>
+          {printers === null ? (
+            <Loading />
+          ) : printers.length === 0 ? (
+            <p className="rounded-control bg-white/[0.05] px-3 py-3 text-white/70">
+              ප්‍රින්ටරයක් තවම එකතු කර නැත. පහත බොත්තමකින් ප්‍රින්ටරය එකතු කරන්න.
+            </p>
+          ) : (
+            <div role="radiogroup" className="space-y-1.5">
+              {printers.map((printer) => {
+                const active = selected !== null && same(printer, selected);
+                return (
+                  <button
+                    key={`${printer.kind}|${printer.key}`}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    disabled={busy !== null}
+                    onClick={() => setSelected(printer)}
+                    className={cx(
+                      'flex w-full items-center gap-3 rounded-control px-3 py-2.5 text-left ring-1 transition',
+                      active ? 'bg-white/15 ring-amber-hi' : 'bg-white/[0.05] ring-hairline hover:bg-white/10',
+                    )}
+                  >
+                    <Printer className="size-5 shrink-0 text-white/70" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-semibold">{label(printer)}</span>
+                      <span className="block text-[11.5px] text-white/55">{TRANSPORT_LABEL[printer.kind]}</span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
 
-  return (
-    <div className="mt-4 space-y-3 text-[13px]">
-      <Segmented
-        value={paper}
-        disabled={printing}
-        onChange={setPaper}
-        options={(Object.keys(PAPER) as PaperWidth[]).map((value) => ({ value, label: `කඩදාසි ${PAPER[value].label}` }))}
-      />
-
-      {kinds.length === 0 ? (
-        <p className="text-white/70">
-          මෙම බ්‍රවුසරයෙන් ප්‍රින්ටරයට කෙලින්ම යැවිය නොහැක — Chrome, Edge හෝ Brave භාවිතා කරන්න. දැනට බ්‍රවුසරයේ මුද්‍රණ කවුළුව
-          විවෘත වේ.
-        </p>
-      ) : (
-        <div className="space-y-2">
-          <p className="text-white/70">
-            ප්‍රින්ටරය:{' '}
-            <span className="font-semibold text-white">
-              {saved ? `${saved.name} (${TRANSPORT_LABEL[saved.kind]})` : 'තවම තෝරා නැත'}
-            </span>
-          </p>
+        <div>
+          <p className="mb-1.5 font-semibold text-white/80">අලුත් ප්‍රින්ටරයක් එකතු කරන්න</p>
           <div className="flex flex-wrap gap-2">
             {kinds.map((kind) => (
-              <Button key={kind} variant="secondary" size="sm" disabled={printing} onClick={() => void print(kind)}>
-                {saved?.kind === kind
-                  ? `වෙනත් ${TRANSPORT_LABEL[kind]} ප්‍රින්ටරයක්`
-                  : `${TRANSPORT_LABEL[kind]} ප්‍රින්ටරයක් තෝරා මුද්‍රණය කරන්න`}
+              <Button key={kind} variant="secondary" size="sm" disabled={busy !== null} busy={busy === 'adding'} onClick={() => void add(kind)}>
+                {TRANSPORT_LABEL[kind]}
               </Button>
             ))}
           </div>
           <button
             type="button"
-            disabled={printing}
+            disabled={busy !== null}
             onClick={() => window.print()}
-            className="text-[12px] text-white/55 underline underline-offset-2 hover:text-white"
+            className="mt-3 text-left text-[12px] text-white/55 underline underline-offset-2 hover:text-white"
           >
             WiFi හෝ Windows හි ස්ථාපිත ප්‍රින්ටරයකට — බ්‍රවුසරයේ මුද්‍රණ කවුළුවෙන්
           </button>
         </div>
-      )}
 
-      {problem && <ErrorNote>{problem}</ErrorNote>}
-    </div>
+        {problem && <ErrorNote>{problem}</ErrorNote>}
+      </div>
+    </Modal>,
+    document.body,
   );
 }

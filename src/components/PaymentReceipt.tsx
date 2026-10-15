@@ -1,8 +1,8 @@
-import { useCallback, useRef } from 'react';
+import { useRef } from 'react';
 
 import { DEVELOPED_BY } from '../lib/company';
 import { rupees } from '../lib/format';
-import { PrintButton, PrinterSettings, useBillPrint } from './BillPrint';
+import { PrintBillButton } from './BillPrint';
 import { Letterhead } from './Letterhead';
 import { ReceiptRow, StarRule } from './ReceiptParts';
 import { PRINT_CSS } from './SaleReceipt';
@@ -24,7 +24,6 @@ export interface PaymentSlip {
 /** The receipt for a payment just taken, with a print button. */
 export function PaymentReceiptModal({ slip, onClose }: { slip: PaymentSlip; onClose: () => void }) {
   const body = useRef<HTMLDivElement>(null);
-  const printer = useBillPrint(useCallback(() => body.current?.querySelector<HTMLElement>('.print-sheet') ?? null, []));
 
   return (
     <Modal
@@ -37,7 +36,7 @@ export function PaymentReceiptModal({ slip, onClose }: { slip: PaymentSlip; onCl
           <Button variant="secondary" onClick={onClose}>
             වසන්න
           </Button>
-          <PrintButton printer={printer} />
+          <PrintBillButton container={body} />
         </>
       }
     >
@@ -45,7 +44,6 @@ export function PaymentReceiptModal({ slip, onClose }: { slip: PaymentSlip; onCl
       <div ref={body}>
         <PaymentSheet slip={slip} />
       </div>
-      <PrinterSettings printer={printer} />
     </Modal>
   );
 }
