@@ -128,6 +128,42 @@ open it, because Spark has no scheduled functions.
 Nothing is ever deleted. Every sale stays on the list as verified, pending
 or cancelled, with who wrote it, who verified it and when.
 
+#### Printing a bill
+
+The print button on a bill (and on a credit-payment receipt) opens a popup:
+the paper (58mm or 80mm), the printers to choose from, and a way to add a new
+one. The bill goes straight to the printer — no browser print dialog — the way
+the phone app prints: drawn as a black-and-white picture and sent as ESC/POS
+(`src/lib/billImage.ts`, `src/lib/escpos.ts`), because a receipt printer has no
+Sinhala font. The phone app (`SCM/lib/services/bill_printer.dart`) does the
+same, so a bill prints alike from either.
+
+Three ways to reach a printer, in both the panel and the app:
+
+| | Panel | App |
+| --- | --- | --- |
+| **USB** | WebUSB — Chrome, Edge, Brave. On Windows the printer needs the WinUSB driver (Zadig); its own driver keeps the browser out. | Android USB host, through an OTG adapter. |
+| **Bluetooth** | Web Serial (a printer paired in Windows shows up as a COM port) or Web Bluetooth (LE printers) — Chrome, Edge, Brave. | A printer paired in Android's Bluetooth settings. |
+| **WiFi** | Through the **print bridge** below — any browser. | A plain TCP connection to the printer's IP address, port 9100. |
+
+A browser can list only the printers it has already been allowed to use, so a
+USB or Bluetooth printer is added once with the browser's own picker; a WiFi
+printer is added by its IP address.
+
+**The print bridge.** A web page cannot open a network connection to a printer,
+so for WiFi the panel hands the job to a small program on the same PC, which
+sends it on. Start it, and leave its window open while printing:
+
+```
+npm run print-bridge
+```
+
+It listens on `127.0.0.1:9101` only, takes jobs only from the panel's own
+address (`scm-thrimaa.web.app`, `scm-thrimaa.firebaseapp.com` and the local dev
+server — `SCM_BRIDGE_ORIGINS`, comma separated, replaces that list) and only
+for printers on the local network (private addresses and `.local` names).
+Chrome asks once whether the page may reach programs on this PC; choose Allow.
+
 ### The finance page
 
 The admin's **මූල්‍ය** page shows a month's money: income, expenses, and what

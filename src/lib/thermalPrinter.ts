@@ -7,12 +7,15 @@
  *  - `serial` Web Serial: a Bluetooth printer paired in Windows, which shows
  *             up as a COM port, or a USB printer that is a COM port.
  *  - `ble`    Web Bluetooth: a Bluetooth Low Energy printer.
- *
- * A browser cannot open a network socket, so a WiFi printer is not reachable
- * from here.
+ *  - `wifi`   A printer on the network, at an IP address. A browser cannot
+ *             open a network connection itself, so the job goes through the
+ *             SCM print bridge (scripts/print-bridge.mjs) running on this PC.
  */
 
-export type TransportKind = 'usb' | 'serial' | 'ble';
+export type TransportKind = 'usb' | 'serial' | 'ble' | 'wifi';
+
+/** The kinds the browser itself asks the person to pick a device for. */
+export type PickedKind = Exclude<TransportKind, 'wifi'>;
 
 /** The printer a person picked last, so a repeat print is one click. */
 export interface SavedPrinter {
@@ -27,6 +30,8 @@ export interface PrinterLink {
   name: string;
   /** Sends one piece of the print job and returns once the printer has taken it. */
   write(chunk: Uint8Array): Promise<void>;
+  /** Sends a whole job in one go, where the way to the printer would rather have it so. */
+  sendAll?(chunks: Uint8Array[]): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -37,17 +42,23 @@ export const TRANSPORT_LABEL: Record<TransportKind, string> = {
   usb: 'USB',
   serial: 'Bluetooth',
   ble: 'Bluetooth LE',
+  wifi: 'WiFi',
 };
 
 const STORAGE_KEY = 'scm.printer.device';
+const WIFI_KEY = 'scm.printer.wifi';
 
-/** The ways this browser can reach a printer — none in Firefox or Safari. */
+/** Where the SCM print bridge listens, on this PC. */
+export const BRIDGE_URL = 'http://127.0.0.1:9101';
+
+/** The ways this browser can reach a printer. USB and Bluetooth are Chrome, Edge and Brave only; WiFi works in any. */
 export function supportedKinds(): TransportKind[] {
   if (typeof navigator === 'undefined') return [];
   const kinds: TransportKind[] = [];
   if ('usb' in navigator) kinds.push('usb');
   if ('serial' in navigator) kinds.push('serial');
   if ('bluetooth' in navigator) kinds.push('ble');
+  if (typeof fetch === 'function') kinds.push('wifi');
   return kinds;
 }
 
@@ -56,7 +67,11 @@ export function loadSaved(): SavedPrinter | null {
     const value: unknown = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null');
     if (value && typeof value === 'object') {
       const { kind, name, key } = value as Partial<SavedPrinter>;
-      if ((kind === 'usb' || kind === 'serial' || kind === 'ble') && typeof name === 'string' && typeof key === 'string') {
+      if (
+        (kind === 'usb' || kind === 'serial' || kind === 'ble' || kind === 'wifi') &&
+        typeof name === 'string' &&
+        typeof key === 'string'
+      ) {
         return { kind, name, key };
       }
     }
@@ -83,7 +98,7 @@ export function isCancelled(error: unknown): boolean {
 }
 
 /** Opens the browser's device picker for [kind] — needs a click to have just happened. */
-export async function pickPrinter(kind: TransportKind): Promise<{ link: PrinterLink; saved: SavedPrinter }> {
+export async function pickPrinter(kind: PickedKind): Promise<{ link: PrinterLink; saved: SavedPrinter }> {
   if (kind === 'usb') return openUsb(await navigator.usb.requestDevice({ filters: [] }));
   if (kind === 'serial') return openSerial(await navigator.serial.requestPort());
   return openBle(
@@ -93,6 +108,8 @@ export async function pickPrinter(kind: TransportKind): Promise<{ link: PrinterL
 
 /** Opens [saved] again without asking, when the browser still has permission for it; else null. */
 export async function reopenPrinter(saved: SavedPrinter): Promise<PrinterLink | null> {
+  // A network printer needs no permission: it is only ever reached through the bridge.
+  if (saved.kind === 'wifi') return wifiLink(saved);
   try {
     if (saved.kind === 'usb') {
       const device = (await navigator.usb.getDevices()).find((d) => usbKey(d) === saved.key);
@@ -121,7 +138,7 @@ export async function reopenPrinter(saved: SavedPrinter): Promise<PrinterLink | 
  * [pickPrinter].
  */
 export async function knownPrinters(): Promise<SavedPrinter[]> {
-  const found: SavedPrinter[] = [];
+  const found: SavedPrinter[] = [...savedWifi()];
   const collect = async (list: () => Promise<SavedPrinter[]>) => {
     try {
       found.push(...(await list()));
@@ -303,8 +320,118 @@ async function openBle(device: BluetoothDevice): Promise<{ link: PrinterLink; sa
   };
 }
 
+// ---- WiFi (through the print bridge) ---------------------------------------
+
+/** The port receipt printers listen on for raw print jobs. */
+export const WIFI_PORT = 9100;
+
+/**
+ * `192.168.1.50` or `192.168.1.50:9100` as a host and a port — [WIFI_PORT]
+ * when none is given. Null when it is neither an address nor a name.
+ */
+export function parseWifiAddress(text: string): { host: string; port: number } | null {
+  const value = text.trim();
+  if (!value) return null;
+  const colon = value.lastIndexOf(':');
+  const host = colon < 0 ? value : value.slice(0, colon);
+  const port = colon < 0 ? WIFI_PORT : /^\d+$/.test(value.slice(colon + 1)) ? Number(value.slice(colon + 1)) : NaN;
+  if (!Number.isInteger(port) || port < 1 || port > 65535) return null;
+  if (!/^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$/.test(host)) return null;
+  return { host, port };
+}
+
+/** The network printers added on this PC — the network does not announce them, so they are kept by address. */
+export function savedWifi(): SavedPrinter[] {
+  try {
+    const value: unknown = JSON.parse(localStorage.getItem(WIFI_KEY) ?? '[]');
+    if (!Array.isArray(value)) return [];
+    return value.flatMap((entry: unknown) => {
+      const { name, key } = (entry ?? {}) as { name?: unknown; key?: unknown };
+      return typeof key === 'string' ? [{ kind: 'wifi' as const, name: typeof name === 'string' && name ? name : key, key }] : [];
+    });
+  } catch {
+    return [];
+  }
+}
+
+function storeWifi(printers: SavedPrinter[]): void {
+  try {
+    localStorage.setItem(WIFI_KEY, JSON.stringify(printers.map(({ name, key }) => ({ name, key }))));
+  } catch {
+    throw new PrintFailure('ප්‍රින්ටරය සුරැකිය නොහැකි විය.');
+  }
+}
+
+/** Saves a network printer, replacing one at the same address. Throws a [PrintFailure] for an address that is not one. */
+export function addWifi(name: string, address: string): SavedPrinter {
+  const target = parseWifiAddress(address);
+  if (!target) throw new PrintFailure('IP ලිපිනය වැරදියි — උදා: 192.168.1.50');
+  const printer: SavedPrinter = {
+    kind: 'wifi',
+    name: name.trim() || 'WiFi ප්‍රින්ටරය',
+    key: `${target.host}:${target.port}`,
+  };
+  storeWifi([...savedWifi().filter((p) => p.key !== printer.key), printer]);
+  return printer;
+}
+
+export function removeWifi(printer: SavedPrinter): void {
+  storeWifi(savedWifi().filter((p) => p.key !== printer.key));
+}
+
+const BRIDGE_DOWN =
+  'WiFi මුද්‍රණය සඳහා මෙම PC එකේ SCM print bridge ධාවනය වී තිබිය යුතුය — ' +
+  '"npm run print-bridge" ධාවනය කර (එහි කවුළුව විවෘතව තබා) නැවත උත්සාහ කරන්න. ' +
+  'බ්‍රවුසරය අවසරය ඉල්ලුවොත් "Allow" ඔබන්න.';
+
+function wifiLink(printer: SavedPrinter): PrinterLink {
+  const target = parseWifiAddress(printer.key);
+
+  const post = async (chunks: Uint8Array[]) => {
+    if (!target) throw new PrintFailure('ප්‍රින්ටරයේ IP ලිපිනය වැරදියි.');
+    const job = new Uint8Array(chunks.reduce((sum, chunk) => sum + chunk.length, 0));
+    let at = 0;
+    for (const chunk of chunks) {
+      job.set(chunk, at);
+      at += chunk.length;
+    }
+
+    let response: Response;
+    try {
+      response = await fetch(`${BRIDGE_URL}/print?host=${encodeURIComponent(target.host)}&port=${target.port}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/octet-stream' },
+        body: job as BodyInit,
+        // Chrome asks the person once before a web page may reach this PC's own programs.
+        targetAddressSpace: 'loopback',
+      } as RequestInit);
+    } catch {
+      throw new PrintFailure(BRIDGE_DOWN);
+    }
+    if (response.ok) return;
+
+    const reason = ((await response.json().catch(() => null)) as { error?: string } | null)?.error;
+    if (reason === 'timeout' || reason === 'unreachable') {
+      throw new PrintFailure(
+        `${printer.name} සමඟ සම්බන්ධ විය නොහැකි විය. ප්‍රින්ටරය ඔන් කර, මෙම PC එකත් ප්‍රින්ටරයත් එකම ජාලයේදැයි බලා නැවත උත්සාහ කරන්න.`,
+      );
+    }
+    if (reason === 'host-not-local') throw new PrintFailure('ප්‍රින්ටරයේ ලිපිනය ගෙදර/කඩේ ජාලයේ (192.168.x.x, 10.x.x.x) ලිපිනයක් විය යුතුය.');
+    if (reason === 'origin') throw new PrintFailure('මෙම පිටුවට print bridge හි අවසරය නැත — bridge හි SCM_BRIDGE_ORIGINS බලන්න.');
+    throw new PrintFailure('print bridge මගින් බිල්පත මුද්‍රණය කළ නොහැකි විය.');
+  };
+
+  return {
+    name: printer.name,
+    write: (chunk) => post([chunk]),
+    sendAll: post,
+    async close() {},
+  };
+}
+
 /** Sends a whole print job: each band in pieces a printer's buffer can hold, with a breath between. */
 export async function sendJob(link: PrinterLink, chunks: Uint8Array[]): Promise<void> {
+  if (link.sendAll) return link.sendAll(chunks);
   for (const chunk of chunks) {
     for (let at = 0; at < chunk.length; at += 4096) await link.write(chunk.subarray(at, at + 4096));
     await sleep(40);

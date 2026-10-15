@@ -105,11 +105,23 @@ export function rateAt(history: readonly LandownerRate[], moment: Date, material
   return found.rates[material];
 }
 
-/** What a sale sends to the landowner, at the figure in force when its bill was written. */
+/**
+ * The figure a sale is worked out at: the one in force at the end of the month
+ * it belongs to. For the running month that is the figure set now, so a figure
+ * staff set or changed today applies to all of this month's loads, not only to
+ * bills written after — and a month that is over keeps the figures it ended
+ * with, so setting a new one never moves a month already reported or paid.
+ */
+export function rateFor(sale: Pick<Sale, 'date'>, material: LandownerMaterial, history: readonly LandownerRate[]): number {
+  const [year, month] = sale.date.split('-').map(Number);
+  // The first moment of the next month; month is 1-based here, 0-based in Date.
+  return rateAt(history, new Date(year, month, 1), material);
+}
+
+/** What a sale sends to the landowner: its loads at the figure of its month — see {@link rateFor}. */
 export function landownerChargeOf(sale: Sale, history: readonly LandownerRate[]): number {
   if (!paysLandowner(sale)) return 0;
-  const written = sale.createdAt ?? new Date(`${sale.date}T00:00:00`);
-  return saleLoads(sale) * rateAt(history, written, sale.material);
+  return saleLoads(sale) * rateFor(sale, sale.material, history);
 }
 
 export interface MaterialShare {

@@ -98,7 +98,7 @@ export function LandownerPage() {
     setError(null);
     try {
       await saveLandownerRates(next, everSet ? current : null, profile);
-      toast.success('ඉඩම් හිමියාගේ ගාස්තු යාවත්කාලීන කළා. මෙතැන් සිට සෑදෙන බිල්පත් මෙම ගාස්තුවෙන් ගණනය වේ.');
+      toast.success('ඉඩම් හිමියාගේ ගාස්තු යාවත්කාලීන කළා. මෙම මාසයේ සියලුම බිල්පත් මෙම ගාස්තුවෙන් ගණනය වේ.');
       setDrafts({});
     } catch (failure) {
       setError(errorMessage(failure));
@@ -157,7 +157,7 @@ export function LandownerPage() {
                 ))}
                 <p className="text-xs text-white/60">
                   {everSet
-                    ? 'වෙනස් කළ පසු සෑදෙන බිල්පත්වලට පමණි. දැනටමත් සෑදූ බිල්පත්වල ගාස්තුව වෙනස් නොවේ.'
+                    ? 'වෙනස් කළ ගාස්තුව මෙම මාසයේ සියලුම බිල්පත්වලට යෙදේ. අවසන් වූ මාසවල ගණන වෙනස් නොවේ.'
                     : 'තවම ගාස්තු සකසා නැත. පළමු වතාවට සුරැකූ පසු එය සහ ඉන් පසු හැම වෙනසක්ම ඉතිහාසයට ඇතුළත් වේ.'}
                 </p>
                 {error && <ErrorNote>{error}</ErrorNote>}

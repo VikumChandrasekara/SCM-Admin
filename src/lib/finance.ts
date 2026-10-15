@@ -365,7 +365,7 @@ export function financeFor({
   store: readonly StoreItem[];
   /** Rupees charged for each hour the excavator worked — one figure, applied to every month. */
   machineHourly: number;
-  /** Every setting of the landowner's per-load figure — each sale is worked out at the one in force when it was written. */
+  /** Every setting of the landowner's per-load figure — each sale is worked out at the one in force at the end of its month. */
   landownerRates?: readonly LandownerRate[];
   /** What the රාජ භාගය is worked out at — see royalty.ts. */
   royaltyRates?: RoyaltyRates;
@@ -409,7 +409,7 @@ export function financeFor({
       });
 
       // The landowner's share goes with the expenses, in the month it was paid,
-      // at the figure that was set when the bill was written.
+      // at the figure in force at the end of that month.
       const share = landownerChargeOf(sale, landownerRates);
       if (paysLandowner(sale)) landownerLoads += saleLoads(sale);
       landownerTotal += share;
@@ -439,7 +439,7 @@ export function financeFor({
   spend('landowner', landownerTotal);
   details.set(
     'landowner',
-    `6/9, සක්කර, කෝරි ඩස්ට් ලෝඩ් ${quantity(landownerLoads)} — බිල්පත සෑදූ වේලාවේ ගාස්තුවෙන්`,
+    `6/9, සක්කර, කෝරි ඩස්ට් ලෝඩ් ${quantity(landownerLoads)} — මාසය අවසන් වන විට ඇති ගාස්තුවෙන්`,
   );
 
   const creditPayments = { count: 0, amount: 0 };

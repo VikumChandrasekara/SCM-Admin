@@ -28,9 +28,9 @@ const setting = (
   previousRates: MaterialRates | null = null,
 ): LandownerRate => ({ id, rates, previousRates, setBy: 'sup1', setByName: 'Nimal', at: when ? at(when) : null });
 
-/** From 1 October 6/9 500, සක්කර 400, කෝරි ඩස්ට් 300; from 15 October 6/9 800, the others as they were; from 1 November all 700. */
+/** From 1 October 6/9 500, සක්කර 400, කෝරි ඩස්ට් 300; from 15 October 6/9 800, the others as they were; from 3 November all 700. */
 const history = [
-  setting('c', figures(700, 700, 700), '2026-11-01T08:00:00Z', figures(800, 400, 300)),
+  setting('c', figures(700, 700, 700), '2026-11-03T08:00:00Z', figures(800, 400, 300)),
   setting('a', figures(500, 400, 300), '2026-10-01T08:00:00Z'),
   setting('b', figures(800, 400, 300), '2026-10-15T08:00:00Z', figures(500, 400, 300)),
 ];
@@ -123,9 +123,33 @@ describe('what a sale sends to the landowner', () => {
     expect(landownerChargeOf(sale('TRAC2345', { type: 'tractor', quantity: 2, material: 'kory_dust' }), history)).toBe(600);
   });
 
-  it('is worked out at the figure in force when the bill was written, not today’s', () => {
-    expect(landownerChargeOf(sale('EARL2345', { material: 'six_nine', createdAt: at('2026-10-05T06:00:00Z') }), history)).toBe(500);
+  it('is worked out at the figure in force at the end of its month, however early in it the bill was written', () => {
+    // 6/9 went from 500 to 800 on 15 October: a bill from 5 October is worked out at 800 too.
+    expect(landownerChargeOf(sale('EARL2345', { material: 'six_nine', createdAt: at('2026-10-05T06:00:00Z') }), history)).toBe(800);
     expect(landownerChargeOf(sale('LATE2345', { material: 'six_nine' }), history)).toBe(800);
+  });
+
+  it('keeps a month that is over at the figures it ended with, whatever is set after', () => {
+    // All 700 from 3 November; October's bills stay at October's.
+    expect(landownerChargeOf(sale('OCTS2345', { material: 'six_nine', date: '2026-10-31' }), history)).toBe(800);
+    expect(landownerChargeOf(sale('NOVS2345', { material: 'six_nine', date: '2026-11-20' }), history)).toBe(700);
+    expect(landownerChargeOf(sale('DECS2345', { material: 'sakka', date: '2026-12-02' }), history)).toBe(700);
+  });
+
+  it('counts a material whose figure was only set later in the month for all of that month’s loads', () => {
+    // 6/9 had its figure from the first; සක්කර and කෝරි ඩස්ට් were left at 0 until the 10th.
+    const late = [
+      setting('a', figures(1500, 0, 0), '2026-10-01T08:00:00Z'),
+      setting('b', figures(1500, 500, 400), '2026-10-10T08:00:00Z', figures(1500, 0, 0)),
+    ];
+    const early = (material: 'sakka' | 'kory_dust') =>
+      sale('EARL2345', { material, date: '2026-10-03', createdAt: at('2026-10-03T06:00:00Z') });
+    expect(landownerChargeOf(early('sakka'), late)).toBe(500);
+    expect(landownerChargeOf(early('kory_dust'), late)).toBe(400);
+    expect(landownerShare([early('sakka'), early('sakka'), early('kory_dust')], late, at('2026-10-25T12:00:00Z').getTime())).toMatchObject({
+      loads: 3,
+      amount: 500 + 500 + 400,
+    });
   });
 
   it('with no figure ever set sends nothing', () => {
@@ -145,13 +169,13 @@ describe('the month’s share, worked out from the bills', () => {
     sale('PEND2345', { status: 'pending', verifiedAt: null, createdAt: new Date(now - 60 * 60 * 1000) }),
   ];
 
-  it('adds up loads and money by material, each bill at its own figure', () => {
+  it('adds up loads and money by material, every bill at its month’s figure', () => {
     const share = landownerShare(sales, history, now);
-    expect(share.byMaterial.six_nine).toEqual({ loads: 2, amount: 800 + 500 });
+    expect(share.byMaterial.six_nine).toEqual({ loads: 2, amount: 800 + 800 });
     expect(share.byMaterial.sakka).toEqual({ loads: 2, amount: 2 * 400 });
     expect(share.byMaterial.kory_dust).toEqual({ loads: 1, amount: 300 });
     expect(share.loads).toBe(5);
-    expect(share.amount).toBe(1300 + 800 + 300);
+    expect(share.amount).toBe(1600 + 800 + 300);
   });
 
   it('is nothing for a month with no such bills or no figures', () => {
@@ -178,16 +202,21 @@ describe('the month’s share, worked out from the bills', () => {
     expect(finance.ledger.filter((entry) => entry.kind === 'landowner')).toHaveLength(4);
   });
 
-  it('a figure changed later leaves a bill already written at its old one', () => {
+  it('a figure changed during the month applies to the bills already written that month', () => {
     const early = [sale('EARL2345', { material: 'six_nine', createdAt: at('2026-10-05T06:00:00Z') })];
-    const before = landownerShare(early, [setting('a', figures(500, 400, 300), '2026-10-01T08:00:00Z')], now);
-    const after = landownerShare(
-      early,
-      [setting('a', figures(500, 400, 300), '2026-10-01T08:00:00Z'), setting('b', figures(900, 400, 300), '2026-10-20T08:00:00Z')],
-      now,
-    );
+    const first = setting('a', figures(500, 400, 300), '2026-10-01T08:00:00Z');
+    const before = landownerShare(early, [first], now);
+    const after = landownerShare(early, [first, setting('b', figures(900, 400, 300), '2026-10-20T08:00:00Z')], now);
     expect(before.amount).toBe(500);
-    expect(after.amount).toBe(500);
+    expect(after.amount).toBe(900);
+  });
+
+  it('a figure set after the month ended leaves that month as it was', () => {
+    const october = [sale('OCTS2345', { material: 'six_nine', date: '2026-10-20' })];
+    const first = setting('a', figures(500, 400, 300), '2026-10-01T08:00:00Z');
+    const later = setting('b', figures(900, 400, 300), '2026-11-04T08:00:00Z');
+    expect(landownerShare(october, [first], now).amount).toBe(500);
+    expect(landownerShare(october, [first, later], now).amount).toBe(500);
   });
 });
 

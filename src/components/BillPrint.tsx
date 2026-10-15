@@ -1,4 +1,4 @@
-import { Printer, RefreshCw } from 'lucide-react';
+import { Printer, RefreshCw, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useState, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 
@@ -7,10 +7,12 @@ import { PAPER, type PaperWidth } from '../lib/escpos';
 import {
   PrintFailure,
   TRANSPORT_LABEL,
+  addWifi,
   isCancelled,
   knownPrinters,
   loadSaved,
   pickPrinter,
+  removeWifi,
   reopenPrinter,
   saveRemembered,
   sendJob,
@@ -20,7 +22,7 @@ import {
   type TransportKind,
 } from '../lib/thermalPrinter';
 import { useToast } from './Toasts';
-import { Button, ErrorNote, IconButton, Loading, Modal, Segmented, cx } from './ui';
+import { Button, ErrorNote, IconButton, Input, Loading, Modal, Segmented, cx } from './ui';
 
 const PAPER_KEY = 'scm.printer.paper';
 
@@ -72,6 +74,8 @@ function PrintDialog({ getSheet, onClose }: { getSheet: () => HTMLElement | null
   const [selected, setSelected] = useState<SavedPrinter | null>(null);
   const [busy, setBusy] = useState<'adding' | 'printing' | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
+  // The network printer being typed in: its address, and the name it is shown under.
+  const [wifiForm, setWifiForm] = useState<{ name: string; address: string } | null>(null);
 
   const load = useCallback(async () => {
     setPrinters(null);
@@ -108,8 +112,28 @@ function PrintDialog({ getSheet, onClose }: { getSheet: () => HTMLElement | null
     }
   };
 
+  /** Saves the network printer typed in, and selects it. */
+  const saveWifi = () => {
+    if (!wifiForm) return;
+    setProblem(null);
+    try {
+      const saved = addWifi(wifiForm.name, wifiForm.address);
+      setPrinters((list) => [...(list ?? []).filter((p) => !same(p, saved)), saved]);
+      setSelected(saved);
+      setWifiForm(null);
+    } catch (error) {
+      setProblem(failure(error));
+    }
+  };
+
+  const forgetWifi = (printer: SavedPrinter) => {
+    removeWifi(printer);
+    setPrinters((list) => (list ?? []).filter((p) => !same(p, printer)));
+    setSelected((now) => (now && same(now, printer) ? null : now));
+  };
+
   /** Opens the browser's picker for a printer it has not let this page use yet. */
-  const add = async (kind: TransportKind) => {
+  const add = async (kind: Exclude<TransportKind, 'wifi'>) => {
     setBusy('adding');
     setProblem(null);
     try {
@@ -135,7 +159,9 @@ function PrintDialog({ getSheet, onClose }: { getSheet: () => HTMLElement | null
       let used = selected;
       link = await reopenPrinter(selected);
       if (!link) {
-        // The browser no longer lets this page at it: ask again.
+        // The browser no longer lets this page at it: ask again. (A network
+        // printer is never refused, so it is not here.)
+        if (selected.kind === 'wifi') throw new PrintFailure('ප්‍රින්ටරය සොයා ගත නොහැකි විය.');
         const picked = await pickPrinter(selected.kind);
         link = picked.link;
         used = picked.saved;
@@ -206,24 +232,36 @@ function PrintDialog({ getSheet, onClose }: { getSheet: () => HTMLElement | null
               {printers.map((printer) => {
                 const active = selected !== null && same(printer, selected);
                 return (
-                  <button
+                  <div
                     key={`${printer.kind}|${printer.key}`}
-                    type="button"
-                    role="radio"
-                    aria-checked={active}
-                    disabled={busy !== null}
-                    onClick={() => setSelected(printer)}
                     className={cx(
-                      'flex w-full items-center gap-3 rounded-control px-3 py-2.5 text-left ring-1 transition',
+                      'flex items-center rounded-control ring-1 transition',
                       active ? 'bg-white/15 ring-amber-hi' : 'bg-white/[0.05] ring-hairline hover:bg-white/10',
                     )}
                   >
-                    <Printer className="size-5 shrink-0 text-white/70" />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate font-semibold">{label(printer)}</span>
-                      <span className="block text-[11.5px] text-white/55">{TRANSPORT_LABEL[printer.kind]}</span>
-                    </span>
-                  </button>
+                    <button
+                      type="button"
+                      role="radio"
+                      aria-checked={active}
+                      disabled={busy !== null}
+                      onClick={() => setSelected(printer)}
+                      className="flex min-w-0 flex-1 items-center gap-3 px-3 py-2.5 text-left"
+                    >
+                      <Printer className="size-5 shrink-0 text-white/70" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate font-semibold">{label(printer)}</span>
+                        <span className="block truncate text-[11.5px] text-white/55">
+                          {TRANSPORT_LABEL[printer.kind]}
+                          {printer.kind === 'wifi' && ` · ${printer.key}`}
+                        </span>
+                      </span>
+                    </button>
+                    {printer.kind === 'wifi' && (
+                      <IconButton label="ඉවත් කරන්න" className="mr-1" onClick={() => forgetWifi(printer)}>
+                        <Trash2 className="size-4" />
+                      </IconButton>
+                    )}
+                  </div>
                 );
               })}
             </div>
@@ -234,18 +272,54 @@ function PrintDialog({ getSheet, onClose }: { getSheet: () => HTMLElement | null
           <p className="mb-1.5 font-semibold text-white/80">අලුත් ප්‍රින්ටරයක් එකතු කරන්න</p>
           <div className="flex flex-wrap gap-2">
             {kinds.map((kind) => (
-              <Button key={kind} variant="secondary" size="sm" disabled={busy !== null} busy={busy === 'adding'} onClick={() => void add(kind)}>
+              <Button
+                key={kind}
+                variant="secondary"
+                size="sm"
+                disabled={busy !== null}
+                onClick={() => (kind === 'wifi' ? setWifiForm((form) => form ?? { name: '', address: '' }) : void add(kind))}
+              >
                 {TRANSPORT_LABEL[kind]}
               </Button>
             ))}
           </div>
+          {wifiForm && (
+            <div className="mt-3 space-y-2 rounded-control bg-white/[0.05] p-3">
+              <Input
+                autoFocus
+                inputMode="decimal"
+                placeholder="IP ලිපිනය — උදා: 192.168.1.50"
+                value={wifiForm.address}
+                onChange={(event) => setWifiForm({ ...wifiForm, address: event.target.value })}
+                onKeyDown={(event) => event.key === 'Enter' && saveWifi()}
+              />
+              <Input
+                placeholder="නම (විකල්ප) — උදා: කවුන්ටරය"
+                value={wifiForm.name}
+                onChange={(event) => setWifiForm({ ...wifiForm, name: event.target.value })}
+                onKeyDown={(event) => event.key === 'Enter' && saveWifi()}
+              />
+              <p className="text-[11.5px] text-white/55">
+                Port එක නොදුන්නොත් 9100 භාවිතා වේ. WiFi මුද්‍රණයට මෙම PC එකේ SCM print bridge ධාවනය වී තිබිය යුතුය
+                (<span className="font-mono">npm run print-bridge</span>).
+              </p>
+              <div className="flex justify-end gap-2">
+                <Button variant="ghost" size="sm" onClick={() => setWifiForm(null)}>
+                  අවලංගු
+                </Button>
+                <Button size="sm" disabled={!wifiForm.address.trim()} onClick={saveWifi}>
+                  එකතු කරන්න
+                </Button>
+              </div>
+            </div>
+          )}
           <button
             type="button"
             disabled={busy !== null}
             onClick={() => window.print()}
             className="mt-3 text-left text-[12px] text-white/55 underline underline-offset-2 hover:text-white"
           >
-            WiFi හෝ Windows හි ස්ථාපිත ප්‍රින්ටරයකට — බ්‍රවුසරයේ මුද්‍රණ කවුළුවෙන්
+            Windows හි ස්ථාපිත ප්‍රින්ටරයකට — බ්‍රවුසරයේ මුද්‍රණ කවුළුවෙන්
           </button>
         </div>
 
