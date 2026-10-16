@@ -62,6 +62,12 @@ deployed (or if they cannot be read) both apps fall back to the built-in two.
   `meterUnit` on the machine, picked next to the meter in the machine form (a
   type with no crew defaults to km). Staff can put the meter and its unit right
   by hand at any time; a crew's next reading moves it on from there.
+- A machine has a charge — `rate` rupees for each `rateBasis` (`hour`, `load` or
+  `foot`), set in the machine form (යන්ත්‍රයට ගාස්තුව). The finance report's
+  "යන්ත්‍රයට" expense is each crew member's month — hours, loads or අඩි to match —
+  × the rate of the machine they are on. A machine with no rate falls back, for an
+  excavator only, to the old hourly figure in the sales settings (no longer
+  editable on the finance page); a driller's machine with none is not charged.
 - A machine's type is fixed once it has one; its number never changes. An admin
   can delete a machine (the bin icon on the යන්ත්‍ර page): that removes the
   machine and every day and month it kept, so it is for a machine set up by

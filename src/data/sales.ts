@@ -64,28 +64,6 @@ export async function saveSalesPrices(prices: SalesPrices, by: Person): Promise<
   await commit(batch);
 }
 
-/**
- * What the machine is charged for each hour the loading excavator worked — an
- * expense on the finance report. Kept in the same document as the sale prices,
- * which it leaves exactly as they are.
- */
-export async function saveMachineHourly(prices: SalesPrices, machineHourly: number, by: Person): Promise<void> {
-  const batch = writeBatch(db);
-  batch.set(pricesRef(), { ...prices, machineHourly, updatedAt: serverTimestamp(), updatedBy: by.id });
-  batch.set(
-    doc(collection(db, 'auditLog')),
-    auditEntry(
-      'sales.machineHourly',
-      'settings',
-      'sales',
-      'යන්ත්‍ර ගාස්තුව',
-      `යන්ත්‍රයට පැයකට රු.${prices.machineHourly} → රු.${machineHourly}`,
-      by,
-    ),
-  );
-  await commit(batch);
-}
-
 /** Every sale dated inside `yyyy-MM`, newest first. */
 export function useMonthSales(month: string) {
   const { from, to } = monthBounds(month);

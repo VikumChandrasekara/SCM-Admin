@@ -28,8 +28,12 @@ import {
 import {
   MACHINE_KINDS,
   MACHINE_KIND_LABEL,
+  FUEL_LABEL,
+  FUEL_TYPES,
   METER_UNITS,
   METER_UNIT_LABEL,
+  RATE_BASES,
+  RATE_BASIS_LABEL,
   ROLES,
   machineTitle,
   machineTypeDef,
@@ -37,11 +41,13 @@ import {
   meterReading,
   nameOf,
   pickableTypes,
+  type FuelType,
   type Machine,
   type MachineKind,
   type MachineType,
   type MachineTypeDef,
   type MeterUnit,
+  type RateBasis,
 } from '../lib/model';
 import { useToday } from '../lib/useToday';
 import { useToast } from './Toasts';
@@ -94,6 +100,11 @@ export function MachineModal({ machine, onClose }: { machine: Machine | null; on
   // the type, and a machine already set up keeps the one it has.
   const [unit, setUnit] = useState<MeterUnit>(machine?.meterUnit ?? 'h');
   const [unitPicked, setUnitPicked] = useState(false);
+  // What the machine is charged, and per what. Empty says nothing: a rate is not set, or not changed.
+  const [rate, setRate] = useState(machine?.rate != null ? String(machine.rate) : '');
+  const [rateBasis, setRateBasis] = useState<RateBasis>(machine?.rateBasis ?? 'hour');
+  // A new machine is taken to run on diesel; one set up before fuel was kept has none until it is said.
+  const [fuel, setFuel] = useState<FuelType | ''>(machine ? (machine.fuel ?? '') : 'diesel');
   const [meter, setMeter] = useState(machine ? String(machine.totalHours) : '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -107,7 +118,18 @@ export function MachineModal({ machine, onClose }: { machine: Machine | null; on
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    const details = { type, meterUnit: unit, name, model, registrationNo, notes, active };
+    const details = {
+      type,
+      meterUnit: unit,
+      fuel: fuel || undefined,
+      rate: rate.trim() === '' ? undefined : Number(rate),
+      rateBasis,
+      name,
+      model,
+      registrationNo,
+      notes,
+      active,
+    };
     setBusy(true);
     setError(null);
     try {
@@ -214,6 +236,16 @@ export function MachineModal({ machine, onClose }: { machine: Machine | null; on
           <Field label="ලියාපදිංචි / සීරීස් අංකය">
             <Input value={registrationNo} maxLength={40} onChange={(event) => setRegistrationNo(event.target.value)} />
           </Field>
+          <Field label="ඉන්ධන වර්ගය" hint="යන්ත්‍රය ධාවනය වන්නේ පෙට්‍රල් ද ඩීසල් ද යන්න.">
+            <Select value={fuel} onChange={(event) => setFuel(event.target.value as FuelType | '')}>
+              <option value="">— තෝරා නැත —</option>
+              {FUEL_TYPES.map((value) => (
+                <option key={value} value={value}>
+                  {FUEL_LABEL[value]}
+                </option>
+              ))}
+            </Select>
+          </Field>
         </div>
 
         <Field
@@ -245,6 +277,31 @@ export function MachineModal({ machine, onClose }: { machine: Machine | null; on
                 options={METER_UNITS.map((value) => ({ value, label: METER_UNIT_LABEL[value] }))}
               />
             )}
+          </div>
+        </Field>
+
+        <Field
+          label="යන්ත්‍රයට ගාස්තුව (රු.)"
+          hint={`මෙම යන්ත්‍රයේ කණ්ඩායම වැඩ කළ ${RATE_BASIS_LABEL[rateBasis].unit} ගණන × මෙම ගාස්තුව, මූල්‍ය වාර්තාවේ වියදමක් ලෙස අඩු වේ.${
+            machine && machine.rate == null ? ' තවම නොදුන් නම් පැරණි පැයකට ගාස්තුව භාවිතා වේ.' : ''
+          }`}
+        >
+          <div className="flex flex-wrap gap-2">
+            <Input
+              className="min-w-0 flex-1"
+              type="number"
+              inputMode="decimal"
+              min="0"
+              step="any"
+              placeholder="0"
+              value={rate}
+              onChange={(event) => setRate(event.target.value)}
+            />
+            <Segmented
+              value={rateBasis}
+              onChange={setRateBasis}
+              options={RATE_BASES.map((value) => ({ value, label: RATE_BASIS_LABEL[value].per }))}
+            />
           </div>
         </Field>
 

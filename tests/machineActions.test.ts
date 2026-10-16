@@ -559,6 +559,16 @@ describe('the meter of a machine, put right by hand', () => {
   });
 });
 
+describe('what a machine runs on, when it is set up', () => {
+  it('is kept with the machine and can be put right', async () => {
+    signIn('sup1');
+    await createMachine('pt1', { ...excavator, fuel: 'petrol' }, 0, BUILT_IN_TYPES, supervisor);
+    expect(await data('machines/pt1')).toMatchObject({ fuel: 'petrol' });
+    await updateMachine(await machineNow('pt1'), { ...excavator, fuel: 'diesel' }, [], BUILT_IN_TYPES, supervisor);
+    expect(await data('machines/pt1')).toMatchObject({ fuel: 'diesel' });
+  });
+});
+
 describe('removing a machine', () => {
   async function seedHistory(id: string, days: number) {
     await direct(async (db) => {

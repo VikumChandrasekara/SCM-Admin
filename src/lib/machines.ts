@@ -1,5 +1,7 @@
 import { hours } from './format';
 import {
+  FUEL_LABEL,
+  RATE_BASIS_LABEL,
   ROLES,
   dayOffHours,
   dayOnHours,
@@ -16,6 +18,7 @@ import {
   type MachineTypes,
   type MonthTally,
   type Person,
+  type RateBasis,
   type RoleId,
 } from './model';
 
@@ -112,8 +115,11 @@ export function typeNameError(label: string, english: string): string | null {
 
 /** Why [details] cannot be saved, or null when they can. */
 export function detailsError(
-  details: Pick<MachineDetails, 'name' | 'model' | 'registrationNo' | 'notes'>,
+  details: Pick<MachineDetails, 'name' | 'model' | 'registrationNo' | 'notes' | 'rate'>,
 ): string | null {
+  if (details.rate != null && !(Number.isFinite(details.rate) && details.rate >= 0)) {
+    return 'යන්ත්‍රයේ ගාස්තුව ඍණ නොවන සංඛ්‍යාවක් විය යුතුය.';
+  }
   if (details.name.trim().length > DETAIL_LIMITS.name) return `නම අකුරු ${DETAIL_LIMITS.name}ට වඩා දිග නොවිය යුතුය.`;
   if (details.model.trim().length > DETAIL_LIMITS.model) {
     return `මාදිලිය අකුරු ${DETAIL_LIMITS.model}ට වඩා දිග නොවිය යුතුය.`;
@@ -133,6 +139,9 @@ export function cleanDetails(details: MachineDetails): MachineDetails {
     type: details.type,
     // Only when it is set: firestore refuses an undefined field.
     ...(details.meterUnit ? { meterUnit: details.meterUnit } : {}),
+    ...(details.fuel ? { fuel: details.fuel } : {}),
+    ...(details.rate != null ? { rate: details.rate } : {}),
+    ...(details.rateBasis ? { rateBasis: details.rateBasis } : {}),
     name: details.name.trim(),
     model: details.model.trim(),
     registrationNo: details.registrationNo.trim(),
@@ -164,6 +173,14 @@ export function machineDiff(
   if (next.type !== before.type) {
     lines.push(`වර්ගය: ${machineTypeLabel(types, before.type)} → ${machineTypeLabel(types, next.type)}`);
   }
+  if (next.fuel && next.fuel !== before.fuel) {
+    lines.push(`ඉන්ධන: ${before.fuel ? FUEL_LABEL[before.fuel] : '—'} → ${FUEL_LABEL[next.fuel]}`);
+  }
+  const basis = next.rateBasis ?? before.rateBasis;
+  if ((next.rate != null && next.rate !== before.rate) || basis !== before.rateBasis) {
+    const shown = (rate: number | null, per: RateBasis) => (rate == null ? '—' : `රු.${rate} ${RATE_BASIS_LABEL[per].per}`);
+    lines.push(`ගාස්තුව: ${shown(before.rate, before.rateBasis)} → ${shown(next.rate ?? before.rate, basis)}`);
+  }
   const unit = next.meterUnit ?? before.meterUnit;
   if (unit !== before.meterUnit && meterHours == null) lines.push(`මීටර ඒකකය: ${before.meterUnit} → ${unit}`);
   if (meterHours != null && (meterHours !== before.totalHours || unit !== before.meterUnit)) {
@@ -186,7 +203,15 @@ export function newMachineSummary(details: MachineDetails, meterHours: number, t
   const next = cleanDetails(details);
   // Hours read as before — `මීටරය පැය 12` — and kilometres say so.
   const meter = next.meterUnit === 'km' ? `මීටරය km ${hours(meterHours)}` : `මීටරය පැය ${hours(meterHours)}`;
-  return [machineTypeLabel(types, next.type), next.name, next.model, next.registrationNo, meter]
+  return [
+    machineTypeLabel(types, next.type),
+    next.fuel ? FUEL_LABEL[next.fuel] : '',
+    next.rate != null ? `රු.${next.rate} ${RATE_BASIS_LABEL[next.rateBasis ?? 'hour'].per}` : '',
+    next.name,
+    next.model,
+    next.registrationNo,
+    meter,
+  ]
     .filter(Boolean)
     .join(' · ');
 }

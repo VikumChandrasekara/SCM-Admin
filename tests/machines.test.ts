@@ -267,6 +267,63 @@ describe('what a machine’s meter counts', () => {
   });
 });
 
+describe('what a machine runs on', () => {
+  const details: MachineDetails = { type: 'excavator', name: '', model: '', registrationNo: '', notes: '', active: true };
+
+  it('is petrol or diesel, and none until someone says', () => {
+    expect(machineFrom('a', { fuel: 'petrol' }).fuel).toBe('petrol');
+    expect(machineFrom('a', { fuel: 'diesel' }).fuel).toBe('diesel');
+    expect(machineFrom('a', {}).fuel).toBeNull();
+    expect(machineFrom('a', { fuel: 'coal' }).fuel).toBeNull();
+  });
+
+  it('is stored only when it is set, and logged by name', () => {
+    expect('fuel' in cleanDetails(details)).toBe(false);
+    expect(cleanDetails({ ...details, fuel: 'petrol' }).fuel).toBe('petrol');
+    const before = machine('a', { type: 'excavator' });
+    expect(machineDiff(before, { ...details, fuel: 'diesel' }, BUILT_IN_TYPES)).toBe('ඉන්ධන: — → ඩීසල්');
+    expect(newMachineSummary({ ...details, fuel: 'petrol' }, 5, BUILT_IN_TYPES)).toBe(
+      'එක්ස්කවේටර් · පෙට්‍රල් · මීටරය පැය 5',
+    );
+  });
+});
+
+describe('what a machine is charged', () => {
+  const details: MachineDetails = { type: 'excavator', name: '', model: '', registrationNo: '', notes: '', active: true };
+
+  it('is a rate per hour, load or foot — none until someone says, and per hour by default', () => {
+    expect(machineFrom('a', {})).toMatchObject({ rate: null, rateBasis: 'hour' });
+    expect(machineFrom('a', { rate: 6000, rateBasis: 'load' })).toMatchObject({ rate: 6000, rateBasis: 'load' });
+    expect(machineFrom('a', { rate: -5 }).rate).toBeNull();
+    expect(machineFrom('a', { rate: '6000' }).rate).toBeNull();
+    expect(machineFrom('a', { rateBasis: 'mile' }).rateBasis).toBe('hour');
+  });
+
+  it('is stored only when it is set — even a rate of nothing', () => {
+    expect('rate' in cleanDetails(details)).toBe(false);
+    expect(cleanDetails({ ...details, rate: 0 }).rate).toBe(0);
+    expect(cleanDetails({ ...details, rate: 500, rateBasis: 'foot' })).toMatchObject({ rate: 500, rateBasis: 'foot' });
+  });
+
+  it('is refused when negative or not a number', () => {
+    expect(detailsError({ ...details, rate: 0 })).toBeNull();
+    expect(detailsError({ ...details, rate: 6000 })).toBeNull();
+    expect(detailsError({ ...details, rate: -1 })).not.toBeNull();
+    expect(detailsError({ ...details, rate: Number.NaN })).not.toBeNull();
+  });
+
+  it('is logged with what it is for', () => {
+    const before = machine('a', { type: 'excavator', rate: 6000 });
+    expect(machineDiff(before, { ...details, rate: 500, rateBasis: 'load' }, BUILT_IN_TYPES)).toBe(
+      'ගාස්තුව: රු.6000 පැයකට → රු.500 ලෝඩ් එකකට',
+    );
+    expect(machineDiff(machine('b', { type: 'excavator' }), { ...details, rate: 2500 }, BUILT_IN_TYPES)).toBe(
+      'ගාස්තුව: — → රු.2500 පැයකට',
+    );
+    expect(newMachineSummary({ ...details, rate: 20, rateBasis: 'foot' }, 0, BUILT_IN_TYPES)).toContain('රු.20 අඩියකට');
+  });
+});
+
 describe('the details of a machine', () => {
   const details: MachineDetails = {
     type: 'excavator',

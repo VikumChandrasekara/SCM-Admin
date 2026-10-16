@@ -4,6 +4,7 @@ import { landownerChargeOf, paysLandowner, saleLoads, type LandownerRate } from 
 import {
   BILL,
   DEFAULT_SHELLS_PER_KG,
+  RATE_BASIS_LABEL,
   SALE_MATERIAL,
   SALE_TYPE,
   saleNumber,
@@ -15,9 +16,11 @@ import {
   sourceLabel,
   type Bill,
   type BillCategory,
+  type Machine,
   type Movement,
   type Payment,
   type Person,
+  type RateBasis,
   type Sale,
   type SaleMaterial,
   type SaleType,
@@ -349,6 +352,7 @@ export function financeFor({
   crewMonths,
   payments = [],
   store,
+  machines = new Map<string, Machine>(),
   machineHourly,
   landownerRates = [],
   royaltyRates = DEFAULT_ROYALTY_RATES,
@@ -363,7 +367,9 @@ export function financeFor({
   /** Every payment against a credit account — only this month's are counted. */
   payments?: readonly Payment[];
   store: readonly StoreItem[];
-  /** Rupees charged for each hour the excavator worked — one figure, applied to every month. */
+  /** Every machine, for the rate each was given. */
+  machines?: ReadonlyMap<string, Machine>;
+  /** What an excavator with no rate of its own is charged for each hour it worked — one figure, applied to every month. */
   machineHourly: number;
   /** Every setting of the landowner's per-load figure — each sale is worked out at the one in force at the end of its month. */
   landownerRates?: readonly LandownerRate[];
@@ -481,27 +487,50 @@ export function financeFor({
   );
 
   // ---- the machine ----
-  // Charged for the hours the loading excavator worked, whatever was sold.
+  // Each machine is charged at the rate it was given — per hour its crew worked,
+  // per load it moved or per foot it drilled — whatever was sold. A machine that
+  // was never given one is, for an excavator, charged by the hour at the figure in
+  // the sales settings, as every excavator was before machines had a rate.
   let machineHours = 0;
+  let machineLoads = 0;
+  let machineFeet = 0;
   let machineTotal = 0;
   for (const { person, tally } of crewMonths) {
-    if (person.role !== 'operator' || !(tally.hours > 0)) continue;
-    const charge = tally.hours * machineHourly;
-    machineHours += tally.hours;
+    const machine = machines.get(person.machineId);
+    const own = machine?.rate != null;
+    const rate = own ? (machine?.rate ?? 0) : person.role === 'operator' ? machineHourly : 0;
+    const basis: RateBasis = own ? (machine?.rateBasis ?? 'hour') : 'hour';
+    if (!own && person.role !== 'operator') continue;
+    const counted = basis === 'hour' ? tally.hours : basis === 'load' ? tally.loads : tally.feet;
+    if (!(counted > 0)) continue;
+
+    const charge = counted * rate;
+    if (basis === 'hour') machineHours += counted;
+    else if (basis === 'load') machineLoads += counted;
+    else machineFeet += counted;
     machineTotal += charge;
     if (charge > 0) {
       ledger.push({
         date: monthEnd,
         kind: 'machine',
         category: 'machine',
-        description: `යන්ත්‍රයට · පැය ${quantity(tally.hours)} · ${nameOf(person)}`,
+        description: `යන්ත්‍රයට · ${RATE_BASIS_LABEL[basis].unit} ${quantity(counted)} · ${nameOf(person)}`,
         income: 0,
         expense: charge,
       });
     }
   }
   spend('machine', machineTotal);
-  details.set('machine', `එක්ස්කවේටර් වැඩ කළ පැය ${quantity(machineHours)}`);
+  details.set(
+    'machine',
+    [
+      machineHours > 0 || (machineLoads === 0 && machineFeet === 0) ? `එක්ස්කවේටර් වැඩ කළ පැය ${quantity(machineHours)}` : '',
+      machineLoads > 0 ? `ලෝඩ් ${quantity(machineLoads)}` : '',
+      machineFeet > 0 ? `අඩි ${quantity(machineFeet)}` : '',
+    ]
+      .filter(Boolean)
+      .join(' · '),
+  );
   for (const row of salaries) {
     ledger.push({
       date: monthEnd,

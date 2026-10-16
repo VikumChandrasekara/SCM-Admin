@@ -520,6 +520,34 @@ describe('what a machine’s meter counts', () => {
   });
 });
 
+describe('what a machine runs on', () => {
+  it('is petrol or diesel, and nothing else', async () => {
+    const machine = { totalHours: 0, serviceDueAt: {} };
+    const create = (id: string, data: object) => setDoc(doc(as('sup1'), 'machines', id), data);
+    await assertSucceeds(create('f1', { ...machine, fuel: 'petrol' }));
+    await assertSucceeds(create('f2', { ...machine, fuel: 'diesel' }));
+    await assertFails(create('f3', { ...machine, fuel: 'coal' }));
+    await assertFails(create('f4', { ...machine, fuel: 1 }));
+    await assertSucceeds(updateDoc(doc(as('admin1'), 'machines', 'f1'), { fuel: 'diesel' }));
+    await assertFails(updateDoc(doc(as('op1'), 'machines', 'ex1'), { fuel: 'petrol' }));
+  });
+});
+
+describe('what a machine is charged', () => {
+  it('is a rate of nothing or more, per hour, load or foot', async () => {
+    const machine = { totalHours: 0, serviceDueAt: {} };
+    const create = (id: string, data: object) => setDoc(doc(as('sup1'), 'machines', id), data);
+    await assertSucceeds(create('r1', { ...machine, rate: 6000, rateBasis: 'hour' }));
+    await assertSucceeds(create('r2', { ...machine, rate: 0, rateBasis: 'foot' }));
+    await assertSucceeds(create('r3', { ...machine, rate: 500, rateBasis: 'load' }));
+    await assertFails(create('r4', { ...machine, rate: -1 }));
+    await assertFails(create('r5', { ...machine, rate: '6000' }));
+    await assertFails(create('r6', { ...machine, rate: 5, rateBasis: 'mile' }));
+    await assertSucceeds(updateDoc(doc(as('admin1'), 'machines', 'r1'), { rate: 7000 }));
+    await assertFails(updateDoc(doc(as('op1'), 'machines', 'ex1'), { rate: 1 }));
+  });
+});
+
 describe('the machine types', () => {
   const type = (overrides: object = {}) => ({ label: 'Lorry', english: 'Truck', kind: 'none', ...overrides });
   const ref = (uid: string, id = 'lorry1') => doc(as(uid), 'machineTypes', id);

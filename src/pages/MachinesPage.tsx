@@ -26,9 +26,11 @@ import {
 import { useLiveDocs } from '../data/live';
 import { useLiveData } from '../data/LiveData';
 import { monthRef } from '../data/machines';
-import { hours, monthLabel } from '../lib/format';
+import { hours, money, monthLabel } from '../lib/format';
 import { crewOn, machineKindOf, machineTypeOf } from '../lib/machines';
 import {
+  FUEL_LABEL,
+  RATE_BASIS_LABEL,
   machineTypeLabel,
   meterReading,
   monthFrom,
@@ -153,7 +155,14 @@ export function MachinesPage() {
                         <span className="font-bold">{machine.id}</span>
                         {machine.name && <span className="block text-xs text-white/80">{machine.name}</span>}
                         <span className="block text-xs text-white/55">
-                          {[machine.model, machine.registrationNo].filter(Boolean).join(' · ') || '—'}
+                          {[
+                            machine.model,
+                            machine.registrationNo,
+                            machine.fuel ? FUEL_LABEL[machine.fuel] : '',
+                            machine.rate != null ? `රු.${money(machine.rate)} ${RATE_BASIS_LABEL[machine.rateBasis].per}` : '',
+                          ]
+                            .filter(Boolean)
+                            .join(' · ') || '—'}
                         </span>
                       </td>
                       <td className={td}>

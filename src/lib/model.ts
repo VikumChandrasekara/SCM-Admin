@@ -584,8 +584,47 @@ export function meterReading(value: number, unit: MeterUnit): string {
   return `${Number.isInteger(value) ? value : Number(value.toFixed(1))} ${unit}`;
 }
 
+/** What a machine runs on. */
+export type FuelType = 'petrol' | 'diesel';
+
+export const FUEL_TYPES: readonly FuelType[] = ['petrol', 'diesel'];
+
+export const FUEL_LABEL: Record<FuelType, string> = {
+  petrol: 'පෙට්‍රල්',
+  diesel: 'ඩීසල්',
+};
+
+/** Null for a machine that has none recorded — set up before this was kept. */
+export function fuelTypeById(value: unknown): FuelType | null {
+  return value === 'petrol' || value === 'diesel' ? value : null;
+}
+
+/** What a machine's charge is counted per: each hour it works, each load it moves, each foot it drills. */
+export type RateBasis = 'hour' | 'load' | 'foot';
+
+export const RATE_BASES: readonly RateBasis[] = ['hour', 'load', 'foot'];
+
+export const RATE_BASIS_LABEL: Record<RateBasis, { per: string; unit: string }> = {
+  hour: { per: 'පැයකට', unit: 'පැය' },
+  load: { per: 'ලෝඩ් එකකට', unit: 'ලෝඩ්' },
+  foot: { per: 'අඩියකට', unit: 'අඩි' },
+};
+
+export function rateBasisById(value: unknown): RateBasis {
+  return value === 'load' || value === 'foot' ? value : 'hour';
+}
+
 export interface Machine {
   id: string;
+  /** Null until someone says. */
+  fuel: FuelType | null;
+  /**
+   * What the machine is charged, in rupees for each [rateBasis] its crew record
+   * — one of the finance report's expenses. Null until someone says: an
+   * excavator then falls back to the hourly figure kept in the sales settings.
+   */
+  rate: number | null;
+  rateBasis: RateBasis;
   /**
    * The running meter, in [meterUnit]. Named for the hour meter it began as: a
    * machine with a crew counts hours, and the field holds whatever the unit says.
@@ -616,6 +655,11 @@ export interface MachineDetails {
   type: MachineType;
   /** Left out by callers that do not set it: the machine's unit is then not touched. */
   meterUnit?: MeterUnit;
+  /** Left out by callers that do not set it: the machine's fuel is then not touched. */
+  fuel?: FuelType;
+  /** Left out by callers that do not set them: the machine's rate is then not touched. */
+  rate?: number;
+  rateBasis?: RateBasis;
   name: string;
   model: string;
   registrationNo: string;
@@ -628,6 +672,9 @@ export function machineFrom(id: string, data: DocumentData): Machine {
     id,
     totalHours: num(data.totalHours),
     meterUnit: meterUnitById(data.meterUnit),
+    fuel: fuelTypeById(data.fuel),
+    rate: typeof data.rate === 'number' && data.rate >= 0 ? data.rate : null,
+    rateBasis: rateBasisById(data.rateBasis),
     serviceDueAt: amountsFrom(data.serviceDueAt, SERVICE_TASKS),
     type: typeof data.type === 'string' && data.type !== '' ? data.type : null,
     name: str(data.name),

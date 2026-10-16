@@ -3,7 +3,17 @@ import { describe, expect, it } from 'vitest';
 import type { CrewMonth } from '../src/data/finance';
 import { financeFor, stockGroupOf } from '../src/lib/finance';
 import type { LandownerRate } from '../src/lib/landowner';
-import { billFrom, dayFrom, movementFrom, type Movement, type Person, type Sale, type StoreItem } from '../src/lib/model';
+import {
+  billFrom,
+  dayFrom,
+  machineFrom,
+  movementFrom,
+  type Machine,
+  type Movement,
+  type Person,
+  type Sale,
+  type StoreItem,
+} from '../src/lib/model';
 import { DEFAULT_ROYALTY_RATES } from '../src/lib/royalty';
 
 const now = new Date('2026-10-06T12:00:00Z').getTime();
@@ -99,6 +109,73 @@ describe('machine charge in finance', () => {
     const free = finance([], [crewMonth(person('op1', 'operator'), 5)], 0);
     expect(free.machineTotal).toBe(0);
     expect(free.ledger.some((entry) => entry.kind === 'machine')).toBe(false);
+  });
+});
+
+describe('machine charge at the rate each machine was given', () => {
+  const machine = (id: string, extra: object = {}) => machineFrom(id, { totalHours: 100, ...extra });
+  const money = (month: CrewMonth[], machines: Machine[], hourly = 6000) =>
+    financeFor({
+      month: '2026-10',
+      sales: [],
+      bills: [],
+      movements: [],
+      crewMonths: month,
+      store: [],
+      machines: new Map(machines.map((entry) => [entry.id, entry])),
+      machineHourly: hourly,
+      now,
+      today: '2026-10-06',
+    });
+  const tallied = (who: Person, tally: { loads?: number; feet?: number; hours?: number }): CrewMonth => ({
+    person: who,
+    days: [],
+    tally: { month: '2026-10', loads: 0, feet: 0, hours: 0, ...tally },
+  });
+
+  it('is the machine’s own rate for each hour its crew worked', () => {
+    const op = person('op1', 'operator');
+    const report = money([tallied(op, { hours: 10 })], [machine(op.machineId, { rate: 8000, rateBasis: 'hour' })]);
+    expect(report.machineTotal).toBe(80000);
+    expect(report.machineHours).toBe(10);
+  });
+
+  it('can be for each load, or each foot', () => {
+    const op = person('op1', 'operator');
+    const dr = person('dr1', 'compressor');
+    const report = money(
+      [tallied(op, { loads: 40, hours: 12 }), tallied(dr, { feet: 300, hours: 9 })],
+      [machine(op.machineId, { rate: 500, rateBasis: 'load' }), machine(dr.machineId, { rate: 20, rateBasis: 'foot' })],
+    );
+    expect(report.machineTotal).toBe(40 * 500 + 300 * 20);
+    // Hours do not count when the charge is not by the hour.
+    expect(report.machineHours).toBe(0);
+    expect(report.ledger.filter((entry) => entry.kind === 'machine').map((entry) => entry.description)).toEqual([
+      expect.stringContaining('ලෝඩ් 40'),
+      expect.stringContaining('අඩි 300'),
+    ]);
+  });
+
+  it('is charged for a driller too, once their machine has a rate', () => {
+    const dr = person('dr1', 'compressor');
+    const report = money([tallied(dr, { hours: 8 })], [machine(dr.machineId, { rate: 2500 })]);
+    expect(report.machineTotal).toBe(20000);
+  });
+
+  it('falls back to the old hourly figure for an excavator with no rate of its own, and for none else', () => {
+    const op = person('op1', 'operator');
+    const dr = person('dr1', 'compressor');
+    const report = money(
+      [tallied(op, { hours: 4 }), tallied(dr, { hours: 8 })],
+      [machine(op.machineId), machine(dr.machineId)],
+    );
+    expect(report.machineTotal).toBe(4 * 6000);
+  });
+
+  it('a rate of nothing is free, and an excavator’s own rate beats the old figure', () => {
+    const op = person('op1', 'operator');
+    expect(money([tallied(op, { hours: 5 })], [machine(op.machineId, { rate: 0 })]).machineTotal).toBe(0);
+    expect(money([tallied(op, { hours: 5 })], [machine(op.machineId, { rate: 100 })], 6000).machineTotal).toBe(500);
   });
 });
 

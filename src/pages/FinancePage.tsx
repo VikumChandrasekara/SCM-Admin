@@ -2,7 +2,6 @@ import { ChevronDown, ChevronLeft, ChevronRight, RefreshCw, TrendingDown, Trendi
 import { useMemo, useState, type ReactNode } from 'react';
 
 import { DataError } from '../components/DataError';
-import { MachineRateModal } from '../components/MachineRateModal';
 import { Pagination, usePagination } from '../components/Pagination';
 import { RoyaltyModal } from '../components/RoyaltyModal';
 import { Button, IconButton, Loading, PageHeader, Panel, SectionLabel, TableFrame, cx, td, th } from '../components/ui';
@@ -29,7 +28,7 @@ import {
 } from '../lib/finance';
 import { addMonths, money, monthKey, monthLabel, quantity, rupees } from '../lib/format';
 import type { Pager } from '../lib/paginate';
-import { ROLES, SALE_MATERIAL, SALE_TYPE, SALE_TYPES, nameOf, type SalesPrices } from '../lib/model';
+import { ROLES, SALE_MATERIAL, SALE_TYPE, SALE_TYPES, nameOf } from '../lib/model';
 import { payFor } from '../lib/pay';
 import { useToday } from '../lib/useToday';
 
@@ -41,7 +40,7 @@ import { useToday } from '../lib/useToday';
  * each material cost is worked out from the two, by load.
  */
 export function FinancePage() {
-  const { crew, store } = useLiveData();
+  const { crew, store, machines } = useLiveData();
   const now = useNow();
   const today = useToday();
   const current = monthKey(new Date());
@@ -88,6 +87,7 @@ export function FinancePage() {
             crewMonths: crewMonths.data,
             payments: payments.data,
             store,
+            machines,
             machineHourly: prices.data.machineHourly,
             landownerRates: landowner.data,
             royaltyRates: royaltyRates.data,
@@ -106,6 +106,7 @@ export function FinancePage() {
       landowner.data,
       royaltyRates.data,
       store,
+      machines,
       now,
       today,
     ],
@@ -144,7 +145,7 @@ export function FinancePage() {
       ) : !finance || !prices.data ? (
         <Loading />
       ) : (
-        <FinanceReport finance={finance} previousGross={previousGross} prices={prices.data} />
+        <FinanceReport finance={finance} previousGross={previousGross} />
       )}
     </>
   );
@@ -155,19 +156,10 @@ const perLoad = (value: number | null) => (value == null ? '—' : money(value))
 /** A totals row covers the whole month, however many pages its rows run to. */
 const totalLabel = (pager: Pager) => ((pager.pages ?? 1) > 1 ? 'මුළු එකතුව' : 'එකතුව');
 
-function FinanceReport({
-  finance,
-  previousGross,
-  prices,
-}: {
-  finance: Finance;
-  previousGross: number | null;
-  prices: SalesPrices;
-}) {
+function FinanceReport({ finance, previousGross }: { finance: Finance; previousGross: number | null }) {
   const crew = crewSummaryFor(finance.salaries);
   const change = previousGross ? finance.salaryTotal - previousGross : null;
   const [open, setOpen] = useState<ExpenseCategory | null>(null);
-  const [editingMachine, setEditingMachine] = useState(false);
   const { allocation } = finance;
   // The totals rows and headline figures cover the whole month; only the rows are paged.
   const salaryPages = usePagination(finance.salaries);
@@ -312,15 +304,7 @@ function FinanceReport({
 
       {/* ---- expenses ---- */}
       <section className="mb-8">
-        <SectionLabel
-          trailing={
-            <Button variant="secondary" onClick={() => setEditingMachine(true)}>
-              යන්ත්‍රයට පැයකට රු. {money(prices.machineHourly)} — වෙනස් කරන්න
-            </Button>
-          }
-        >
-          වියදම් — වර්ග අනුව
-        </SectionLabel>
+        <SectionLabel>වියදම් — වර්ග අනුව</SectionLabel>
         <Panel className="p-4 sm:p-5">
           {finance.expenseRows.length === 0 ? (
             <p className="py-4 text-center text-sm text-white/60">මෙම මාසයේ වියදමක් නැත.</p>
@@ -382,7 +366,6 @@ function FinanceReport({
             </p>
           </div>
         </Panel>
-        {editingMachine && <MachineRateModal prices={prices} onClose={() => setEditingMachine(false)} />}
       </section>
 
       <RoyaltySection royalty={finance.royalty} />
