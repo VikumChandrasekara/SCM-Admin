@@ -27,7 +27,7 @@ import { useLiveData } from '../data/LiveData';
 import { USERNAME_PATTERN, changePassword, createAccount, removeAccount, updateAccount } from '../data/users';
 import { USERNAME_DOMAIN } from '../firebase';
 import { errorMessage } from '../lib/errors';
-import { hours, money } from '../lib/format';
+import { money } from '../lib/format';
 import {
   MACHINE_ID_PATTERN,
   assignableMachines,
@@ -37,7 +37,6 @@ import {
   machineTypeOf,
 } from '../lib/machines';
 import {
-  MACHINE_TYPE,
   ROLES,
   ROLE_IDS,
   WAGE_BASES,
@@ -45,6 +44,8 @@ import {
   hasWageRate,
   machineTitle,
   machineTypeForRole,
+  machineTypeLabel,
+  meterReading,
   nameOf,
   paidPerLoad,
   type Machine,
@@ -187,7 +188,7 @@ function number(value: string): number {
 
 function UserModal({ person, onClose }: { person: Person | null; onClose: () => void }) {
   const { profile } = useSession();
-  const { machines, people } = useLiveData();
+  const { machines, people, machineTypes } = useLiveData();
   const toast = useToast();
 
   const [name, setName] = useState(person?.name ?? '');
@@ -230,7 +231,8 @@ function UserModal({ person, onClose }: { person: Person | null; onClose: () => 
     role,
     machines.values(),
     people,
-    current && machineFitsRole(current, role, people) ? current.id : '',
+    machineTypes,
+    current && machineFitsRole(current, role, people, machineTypes) ? current.id : '',
   );
   const newKind = machineTypeForRole(role);
 
@@ -241,7 +243,7 @@ function UserModal({ person, onClose }: { person: Person | null; onClose: () => 
     else if (wageBasis === 'month') setWageBasis('day');
     // A machine of the other kind no longer suits.
     const picked = machines.get(machineChoice);
-    if (picked && !machineFitsRole(picked, next, people)) setMachineChoice('');
+    if (picked && !machineFitsRole(picked, next, people, machineTypes)) setMachineChoice('');
   }
 
   async function submit(event: FormEvent) {
@@ -285,6 +287,7 @@ function UserModal({ person, onClose }: { person: Person | null; onClose: () => 
             meterHours: number(meter),
           },
           machines,
+          machineTypes,
           profile,
         );
         toast.success(`${name.trim()} යාවත්කාලීන කළා.`);
@@ -292,6 +295,7 @@ function UserModal({ person, onClose }: { person: Person | null; onClose: () => 
         await createAccount(
           { ...fields, username, password: secret, meterHours: number(meter) },
           machines,
+          machineTypes,
           profile,
         );
         toast.success(`${name.trim()} සඳහා ගිණුම සෑදුවා — පරිශීලක නාමය: ${username.trim().toLowerCase()}`);
@@ -395,7 +399,7 @@ function UserModal({ person, onClose }: { person: Person | null; onClose: () => 
               <div className="space-y-4 rounded-card bg-well p-4">
                 {settingUp && newKind && (
                   <p className="text-xs font-semibold text-white/70">
-                    නව {MACHINE_TYPE[newKind].label} යන්ත්‍රය — {ROLES[role].label} කණ්ඩායමකට ගැළපේ.
+                    නව {machineTypeLabel(machineTypes, newKind)} යන්ත්‍රය — {ROLES[role].label} කණ්ඩායමකට ගැළපේ.
                   </p>
                 )}
                 <div className="grid gap-4 sm:grid-cols-2">
@@ -482,14 +486,14 @@ function UserModal({ person, onClose }: { person: Person | null; onClose: () => 
 
 /** A line about the machine picked: what it is, its meter, and who is on it already. */
 function ChosenMachine({ machine }: { machine: Machine }) {
-  const { people } = useLiveData();
+  const { people, machineTypes } = useLiveData();
   const type = machineTypeOf(machine, people);
   const onIt = crewOn(machine.id, people);
   return (
     <div className="space-y-1 self-end rounded-control bg-well px-3 py-2.5 text-xs text-white/75 ring-1 ring-hairline">
       <p>
-        {type ? MACHINE_TYPE[type].label : '—'}
-        {machine.model && ` · ${machine.model}`} · මීටරය පැය {hours(machine.totalHours)}
+        {machineTypeLabel(machineTypes, type)}
+        {machine.model && ` · ${machine.model}`} · මීටරය {meterReading(machine.totalHours, machine.meterUnit)}
       </p>
       <p className="text-white/60">
         {onIt.length === 0 ? 'දැනට කිසිවෙකු නැත' : `දැන් සිටින්නේ: ${onIt.map(nameOf).join(', ')}`}

@@ -1,7 +1,14 @@
-import { Clock, Pencil, Plus, Tractor, Users } from 'lucide-react';
+import { Clock, Pencil, Plus, Settings2, Tractor, Trash2, Users } from 'lucide-react';
 import { useState } from 'react';
 
-import { AssignCrewModal, MachineHoursModal, MachineModal } from '../components/MachineModals';
+import { useSession } from '../auth/AuthContext';
+import {
+  AssignCrewModal,
+  DeleteMachineModal,
+  MachineHoursModal,
+  MachineModal,
+  MachineTypesModal,
+} from '../components/MachineModals';
 import { Pagination, usePagination } from '../components/Pagination';
 import {
   Badge,
@@ -20,14 +27,15 @@ import { useLiveDocs } from '../data/live';
 import { useLiveData } from '../data/LiveData';
 import { monthRef } from '../data/machines';
 import { hours, monthLabel } from '../lib/format';
-import { crewOn, machineTypeOf } from '../lib/machines';
+import { crewOn, machineKindOf, machineTypeOf } from '../lib/machines';
 import {
-  MACHINE_TYPE,
-  ROLES,
+  machineTypeLabel,
+  meterReading,
   monthFrom,
   nameOf,
   serviceAlerts,
   serviceMessage,
+  serviceTasksOfKind,
   type Machine,
 } from '../lib/model';
 import { useToday } from '../lib/useToday';
@@ -39,13 +47,16 @@ import { useToday } from '../lib/useToday';
  * member onto it.
  */
 export function MachinesPage() {
-  const { machines, people, crew, ready } = useLiveData();
+  const { machines, people, crew, ready, machineTypes } = useLiveData();
+  const { profile } = useSession();
   const today = useToday();
   const month = today.slice(0, 7);
 
   const [editing, setEditing] = useState<Machine | 'new' | null>(null);
   const [assigning, setAssigning] = useState<Machine | null>(null);
   const [viewing, setViewing] = useState<Machine | null>(null);
+  const [deleting, setDeleting] = useState<Machine | null>(null);
+  const [managingTypes, setManagingTypes] = useState(false);
 
   // Machines in use first, retired ones after, each by number.
   const list = [...machines.values()].sort((a, b) => Number(b.active) - Number(a.active) || a.id.localeCompare(b.id));
@@ -71,9 +82,16 @@ export function MachinesPage() {
         title="යන්ත්‍ර"
         subtitle="යන්ත්‍රවල විස්තර, ඒවායේ සිටින කණ්ඩායම් සහ වැඩ කර ඇති පැය. සුපවයිසර්ගේ ෆෝනයෙනුත් මෙය කළ හැක."
         actions={
-          <Button icon={<Plus className="size-4" />} onClick={() => setEditing('new')}>
-            නව යන්ත්‍රයක්
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            {profile.role === 'admin' && (
+              <Button variant="secondary" icon={<Settings2 className="size-4" />} onClick={() => setManagingTypes(true)}>
+                වර්ග
+              </Button>
+            )}
+            <Button icon={<Plus className="size-4" />} onClick={() => setEditing('new')}>
+              නව යන්ත්‍රයක්
+            </Button>
+          </div>
         }
       />
 
@@ -112,7 +130,7 @@ export function MachinesPage() {
                   <th className={th}>යන්ත්‍රය</th>
                   <th className={th}>වර්ගය</th>
                   <th className={th}>කණ්ඩායම</th>
-                  <th className={cx(th, 'text-right')}>මීටරය (පැය)</th>
+                  <th className={cx(th, 'text-right')}>මීටරය</th>
                   <th className={cx(th, 'text-right')}>මේ මාසය (පැය)</th>
                   <th className={th}>සේවා</th>
                   <th className={cx(th, 'text-right')}>ක්‍රියා</th>
@@ -122,7 +140,8 @@ export function MachinesPage() {
                 {rows.map((machine) => {
                   const type = machineTypeOf(machine, people);
                   const onMachine = crewOn(machine.id, people);
-                  const tasks = type ? ROLES[MACHINE_TYPE[type].role].serviceTasks : [];
+                  const kind = machineKindOf(machine, people, machineTypes);
+                  const tasks = kind ? serviceTasksOfKind(kind) : [];
                   const [alert] = serviceAlerts(machine, tasks);
                   const setUp = tasks.some((task) => machine.serviceDueAt[task] != null);
                   return (
@@ -139,7 +158,9 @@ export function MachinesPage() {
                       </td>
                       <td className={td}>
                         {type ? (
-                          <Badge tone={type === 'compressor' ? 'ok' : 'amber'}>{MACHINE_TYPE[type].label}</Badge>
+                          <Badge tone={kind === 'compressor' ? 'ok' : kind === 'none' ? 'info' : 'amber'}>
+                            {machineTypeLabel(machineTypes, type)}
+                          </Badge>
                         ) : (
                           <span className="text-white/45">—</span>
                         )}
@@ -148,8 +169,13 @@ export function MachinesPage() {
                       <td className={cx(td, 'text-white/80')}>
                         {onMachine.length === 0 ? <span className="text-white/45">කිසිවෙකු නැත</span> : onMachine.map(nameOf).join(', ')}
                       </td>
-                      <td className={cx(td, 'text-right tabular-nums')}>{hours(machine.totalHours)}</td>
-                      <td className={cx(td, 'text-right font-bold tabular-nums')}>{hours(hoursThisMonth(machine))}</td>
+                      <td className={cx(td, 'text-right tabular-nums')}>
+                        {meterReading(machine.totalHours, machine.meterUnit)}
+                      </td>
+                      <td className={cx(td, 'text-right font-bold tabular-nums')}>
+                        {/* A kilometre meter has no hours worked in a month to add up. */}
+                        {machine.meterUnit === 'km' ? '—' : hours(hoursThisMonth(machine))}
+                      </td>
                       <td className={td}>
                         {!type || tasks.length === 0 ? (
                           <span className="text-white/45">—</span>
@@ -172,6 +198,11 @@ export function MachinesPage() {
                           <IconButton label="විස්තර සංස්කරණය" onClick={() => setEditing(machine)}>
                             <Pencil className="size-4" />
                           </IconButton>
+                          {profile.role === 'admin' && (
+                            <IconButton label="යන්ත්‍රය මකන්න" onClick={() => setDeleting(machine)}>
+                              <Trash2 className="size-4" />
+                            </IconButton>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -197,6 +228,8 @@ export function MachinesPage() {
       )}
       {assigning && <AssignCrewModal machine={liveOf(assigning)} onClose={() => setAssigning(null)} />}
       {viewing && <MachineHoursModal machine={liveOf(viewing)} onClose={() => setViewing(null)} />}
+      {deleting && <DeleteMachineModal machine={liveOf(deleting)} onClose={() => setDeleting(null)} />}
+      {managingTypes && <MachineTypesModal onClose={() => setManagingTypes(false)} />}
     </>
   );
 }

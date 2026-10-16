@@ -451,32 +451,148 @@ export function byCrewThenName(a: Person, b: Person): number {
 // ---- machines ---------------------------------------------------------------
 
 /**
- * What a machine is. A crew works one kind or the other — the excavator crew
- * an excavator, the compressor crew a compressor — so this is what decides who
- * may be put on it. Mirrors MachineType in the operator app.
+ * What a machine is — the id of an entry in the machine types: the two built-in
+ * ones, an excavator and a compressor, or one an admin added (a lorry, a
+ * loader, ...). Mirrors MachineType in the operator app.
  */
-export type MachineType = 'excavator' | 'compressor';
+export type MachineType = string;
 
-export const MACHINE_TYPES: readonly MachineType[] = ['excavator', 'compressor'];
+/**
+ * How a type behaves, which is what decides who may be put on a machine of it:
+ * like an excavator (the excavator crew, loads) or like a compressor (the
+ * compressor crew, feet), or with no crew at all — a vehicle that is only kept
+ * in the list, with its details and its hour meter.
+ */
+export type MachineKind = 'excavator' | 'compressor' | 'none';
 
-export const MACHINE_TYPE: Record<MachineType, { label: string; english: string; role: RoleId }> = {
-  excavator: { label: 'එක්ස්කවේටර්', english: 'Excavator', role: 'operator' },
-  compressor: { label: 'කම්පසර්', english: 'Compressor', role: 'compressor' },
+export const MACHINE_KINDS: readonly MachineKind[] = ['excavator', 'compressor', 'none'];
+
+export const MACHINE_KIND_LABEL: Record<MachineKind, string> = {
+  excavator: 'එක්ස්කවේටරයක් මෙන් (ඔපරේටර් කණ්ඩායම)',
+  compressor: 'කම්පසරයක් මෙන් (කම්පසර් කණ්ඩායම)',
+  none: 'කණ්ඩායමක් නැත (විස්තර සහ මීටරය පමණි)',
 };
 
-export function machineTypeById(value: unknown): MachineType | null {
-  return value === 'excavator' || value === 'compressor' ? value : null;
+export interface MachineTypeDef {
+  id: MachineType;
+  label: string;
+  english: string;
+  kind: MachineKind;
+  /** What the meter of a machine of this type counts to begin with. */
+  meterUnit: MeterUnit;
+  /** The excavator and the compressor: there from the start, and not renamed. */
+  builtIn: boolean;
+  /**
+   * A built-in type an admin has removed: gone from the lists to pick from, but
+   * still known, so machines already of it keep their name. Only ever set on a
+   * built-in one — an added type that is removed is simply deleted.
+   */
+  hidden: boolean;
+}
+
+export const BUILT_IN_MACHINE_TYPES: readonly MachineTypeDef[] = [
+  { id: 'excavator', label: 'එක්ස්කවේටර්', english: 'Excavator', kind: 'excavator', meterUnit: 'h', builtIn: true, hidden: false },
+  { id: 'compressor', label: 'කම්පසර්', english: 'Compressor', kind: 'compressor', meterUnit: 'h', builtIn: true, hidden: false },
+];
+
+/** Every machine type by id. */
+export type MachineTypes = ReadonlyMap<string, MachineTypeDef>;
+
+/**
+ * The built-in types first, then those that were added, each by name. A stored
+ * entry with a built-in id is that type removed (`{hidden: true}`), never a
+ * replacement for it.
+ */
+export function machineTypesFrom(added: readonly MachineTypeDef[]): MachineTypes {
+  const isBuiltIn = (id: string) => BUILT_IN_MACHINE_TYPES.some((builtIn) => builtIn.id === id);
+  const removed = new Set(added.filter((type) => isBuiltIn(type.id) && type.hidden).map((type) => type.id));
+  const custom = added.filter((type) => !isBuiltIn(type.id)).sort((a, b) => a.label.localeCompare(b.label));
+  const builtIns = BUILT_IN_MACHINE_TYPES.map((type) => (removed.has(type.id) ? { ...type, hidden: true } : type));
+  return new Map([...builtIns, ...custom].map((type) => [type.id, type]));
+}
+
+/** The types to pick from: those not removed, plus [keepId], the one already chosen. */
+export function pickableTypes(types: MachineTypes, keepId?: MachineType): MachineTypeDef[] {
+  return [...types.values()].filter((type) => !type.hidden || type.id === keepId);
+}
+
+/** What the panel knows before the types that were added have loaded — and without them. */
+export const BUILT_IN_TYPES: MachineTypes = machineTypesFrom([]);
+
+function machineKindById(value: unknown): MachineKind {
+  return value === 'excavator' || value === 'compressor' ? value : 'none';
+}
+
+export function machineTypeDefFrom(id: string, data: DocumentData): MachineTypeDef {
+  return {
+    id,
+    label: str(data.label),
+    english: str(data.english),
+    kind: machineKindById(data.kind),
+    meterUnit: meterUnitById(data.meterUnit),
+    builtIn: false,
+    hidden: data.hidden === true,
+  };
+}
+
+/** The type [id] names — or, for one that has since been removed, a stand-in that works no crew. */
+export function machineTypeDef(types: MachineTypes, id: MachineType): MachineTypeDef {
+  return types.get(id) ?? { id, label: id, english: '', kind: 'none', meterUnit: 'h', builtIn: false, hidden: false };
+}
+
+/** What a type is called, or a dash for a machine that has none yet. */
+export function machineTypeLabel(types: MachineTypes, id: MachineType | null): string {
+  return id ? machineTypeDef(types, id).label : '—';
+}
+
+/** The crew that works a machine of [kind] — null when it works none. */
+export function crewRoleOfKind(kind: MachineKind): RoleId | null {
+  return kind === 'excavator' ? 'operator' : kind === 'compressor' ? 'compressor' : null;
+}
+
+/** The parts a machine of [kind] is serviced for — none when it has no crew to service them. */
+export function serviceTasksOfKind(kind: MachineKind): readonly ServiceTask[] {
+  const role = crewRoleOfKind(kind);
+  return role ? ROLES[role].serviceTasks : [];
 }
 
 /** The kind of machine [role] works — null for staff, who work none. */
-export function machineTypeForRole(role: RoleId): MachineType | null {
-  return MACHINE_TYPES.find((type) => MACHINE_TYPE[type].role === role) ?? null;
+export function machineTypeForRole(role: RoleId): 'excavator' | 'compressor' | null {
+  return role === 'operator' ? 'excavator' : role === 'compressor' ? 'compressor' : null;
+}
+
+/**
+ * What a machine's meter counts: hours for a machine with a crew — its hour
+ * meter, read each morning — and, for a lorry or any other vehicle with no crew,
+ * the kilometres on its odometer or the hours on its meter, whichever it has.
+ */
+export type MeterUnit = 'h' | 'km';
+
+export const METER_UNITS: readonly MeterUnit[] = ['h', 'km'];
+
+export const METER_UNIT_LABEL: Record<MeterUnit, string> = {
+  h: 'පැය (h)',
+  km: 'කිලෝමීටර් (km)',
+};
+
+export function meterUnitById(value: unknown): MeterUnit {
+  return value === 'km' ? 'km' : 'h';
+}
+
+/** A meter reading with its unit — `6833.3 h`, `1204 km`. */
+export function meterReading(value: number, unit: MeterUnit): string {
+  return `${Number.isInteger(value) ? value : Number(value.toFixed(1))} ${unit}`;
 }
 
 export interface Machine {
   id: string;
-  /** වැඩ කර ඇති මුළු පැය ගණන — the running hour meter. */
+  /**
+   * The running meter, in [meterUnit]. Named for the hour meter it began as: a
+   * machine with a crew counts hours, and the field holds whatever the unit says.
+   */
   totalHours: number;
+  /** What the meter counts. A machine from before this was kept counts hours. */
+  meterUnit: MeterUnit;
   /** Meter reading each part is next due at. */
   serviceDueAt: Partial<Record<ServiceTask, number>>;
   /** Null on a machine set up before its details were kept — see machineTypeOf. */
@@ -498,6 +614,8 @@ export interface Machine {
 /** What is kept about a machine besides its meter and its service. */
 export interface MachineDetails {
   type: MachineType;
+  /** Left out by callers that do not set it: the machine's unit is then not touched. */
+  meterUnit?: MeterUnit;
   name: string;
   model: string;
   registrationNo: string;
@@ -509,8 +627,9 @@ export function machineFrom(id: string, data: DocumentData): Machine {
   return {
     id,
     totalHours: num(data.totalHours),
+    meterUnit: meterUnitById(data.meterUnit),
     serviceDueAt: amountsFrom(data.serviceDueAt, SERVICE_TASKS),
-    type: machineTypeById(data.type),
+    type: typeof data.type === 'string' && data.type !== '' ? data.type : null,
     name: str(data.name),
     model: str(data.model),
     registrationNo: str(data.registrationNo),
@@ -976,6 +1095,10 @@ export type AuditAction =
   | 'service.set'
   | 'machine.create'
   | 'machine.update'
+  | 'machine.delete'
+  | 'machine.typeCreate'
+  | 'machine.typeUpdate'
+  | 'machine.typeDelete'
   | 'machine.assign'
   | 'leave.workday'
   | 'payment.add'
@@ -1018,6 +1141,10 @@ export const AUDIT_LABEL: Record<AuditAction, string> = {
   'service.set': 'ඊළඟ සේවා මීටරය සකස් කළා',
   'machine.create': 'යන්ත්‍රයක් එකතු කළා',
   'machine.update': 'යන්ත්‍රයේ විස්තර වෙනස් කළා',
+  'machine.delete': 'යන්ත්‍රයක් මැකුවා',
+  'machine.typeCreate': 'යන්ත්‍ර වර්ගයක් එකතු කළා',
+  'machine.typeUpdate': 'යන්ත්‍ර වර්ගයක නම වෙනස් කළා',
+  'machine.typeDelete': 'යන්ත්‍ර වර්ගයක් මැකුවා',
   'machine.assign': 'කණ්ඩායම් සාමාජිකයෙක් යන්ත්‍රයකට යෙදුවා',
   'leave.workday': 'නිවාඩු දිනයක් වැඩ කළ දිනයක් ලෙස සුරැකුණා',
   'payment.add': 'ණය ගෙවීමක් එකතු කළා',

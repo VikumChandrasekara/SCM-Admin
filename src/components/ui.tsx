@@ -337,6 +337,9 @@ export function ErrorNote({ children }: { children: ReactNode }) {
 
 // ---- dialogs ----------------------------------------------------------------
 
+/** The dialogs open now, the last one on top — Escape closes only that one. */
+const openDialogs: symbol[] = [];
+
 export function Modal({
   open,
   title,
@@ -356,13 +359,16 @@ export function Modal({
 }) {
   useEffect(() => {
     if (!open) return;
+    const self = Symbol('dialog');
+    openDialogs.push(self);
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
+      if (event.key === 'Escape' && openDialogs[openDialogs.length - 1] === self) onClose();
     };
     window.addEventListener('keydown', onKey);
     const overflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => {
+      openDialogs.splice(openDialogs.indexOf(self), 1);
       window.removeEventListener('keydown', onKey);
       document.body.style.overflow = overflow;
     };

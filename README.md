@@ -19,7 +19,7 @@ React 19 · TypeScript · Vite · Tailwind CSS 4 · Firebase JS SDK 12
 | මූල්‍ය | A month's income, expenses and profit, with every entry behind them | Not shown |
 | වෙඩි බඩු | Each compressor crew's sheet for a day, the month's totals, and the explosives left in the store | Same |
 | ඉතිහාසය | One crew member's days over a range | Same |
-| යන්ත්‍ර | Every machine with what it is (kind, name, make and model, plate), who is on it, its hour meter, the hours it has worked this month and its service state. Set a machine up, put its details right, retire it, move a crew member onto it, and see its hours by month and by day | Same — and the same list is in the app's supervisor console |
+| යන්ත්‍ර | Every machine with what it is (type, name, make and model, plate), who is on it, its hour meter, the hours it has worked this month and its service state. Set a machine up, put its details right, retire it, delete one set up by mistake (admin), move a crew member onto it, see its hours by month and by day, and (admin) add, rename or remove machine types | Same — and the same list is in the app's supervisor console |
 | පරිශීලකයින් | Create, edit and delete accounts, and change passwords. A new crew account picks its machine from the list, or sets up a new one — with its details — in the same form | Not shown |
 
 Operator and compressor crews cannot sign in here. They use the app.
@@ -30,17 +30,43 @@ An admin who signs in to the app gets the supervisor console.
 ### Machines
 
 A machine is `machines/{id}`: its meter and service (as before) plus, optionally,
-`type` (`excavator` or `compressor`), `name`, `model`, `registrationNo`, `notes`
-and `active`. A machine set up before these existed has none and is read as the
-kind of the crew on it.
+`type`, `name`, `model`, `registrationNo`, `notes` and `active`. A machine set up
+before these existed has none and is read as the kind of the crew on it.
 
-- A crew member can only be put on a machine of their kind: an operator on an
-  excavator, a compressor driller on a compressor. A retired machine takes no
+`type` is the id of a machine type. `excavator` and `compressor` are built in;
+an admin adds any other — a lorry, a loader, a roller — in the `machineTypes`
+collection (the වර්ග button on the යන්ත්‍ර page, or the gear next to වර්ගය in
+the machine form). A type is `{label, english, kind}`, where `kind` says what it
+behaves like:
+
+| kind | crew | service parts | tally |
+| --- | --- | --- | --- |
+| `excavator` | the excavator (operator) crew | engine oil, diesel filter, hydraulic filter, 10,000 h | loads |
+| `compressor` | the compressor crew | engine oil, diesel filter, 10,000 h | අඩි |
+| `none` | no crew — a vehicle kept in the list with its details and hour meter | none | none |
+
+A type's kind is fixed when it is added; only its names change afterwards, and a
+type a machine is still of cannot be removed. The built-in two can be removed
+too (kept as `machineTypes/excavator` = `{hidden: true}`; they disappear from the
+lists to pick from, and "ආපසු ගන්න" in the type manager brings them back). Admin only to add, rename or
+remove; everyone signed in reads them. Until the `machineTypes` rules are
+deployed (or if they cannot be read) both apps fall back to the built-in two.
+
+- A crew member can only be put on a machine whose type behaves like their
+  kind: an operator on an excavator-kind machine, a compressor driller on a
+  compressor-kind one; no crew on a `none` machine. A retired machine takes no
   one new. Both the panel and the app check this, and `firestore.rules` holds
-  the line for the app (a machine with no kind yet suits either, as far as the
+  the line for the app (a machine with no type yet suits either, as far as the
   rules can tell).
-- A machine's kind is fixed once it has one; its number never changes; it is
-  never deleted — retire it instead, and its history stays.
+- A machine's meter counts hours (`h`, the default) or kilometres (`km`) —
+  `meterUnit` on the machine, picked next to the meter in the machine form (a
+  type with no crew defaults to km). Staff can put the meter and its unit right
+  by hand at any time; a crew's next reading moves it on from there.
+- A machine's type is fixed once it has one; its number never changes. An admin
+  can delete a machine (the bin icon on the යන්ත්‍ර page): that removes the
+  machine and every day and month it kept, so it is for a machine set up by
+  mistake — retire one that really worked. It is refused while a crew member is
+  still on it, and logged.
 - Hours belong to the machine. They are the month's `hours` (a day counts once
   the next morning's ON has closed it) and the running meter. Moving a crew
   member to another machine leaves the hours they worked with the machine they

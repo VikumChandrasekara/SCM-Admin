@@ -1,15 +1,19 @@
 import { hours } from './format';
 import {
-  MACHINE_TYPE,
   ROLES,
   dayOffHours,
   dayOnHours,
+  machineTypeDef,
   machineTypeForRole,
+  machineTypeLabel,
+  meterReading,
   workedHours,
   type Day,
   type Machine,
   type MachineDetails,
+  type MachineKind,
   type MachineType,
+  type MachineTypes,
   type MonthTally,
   type Person,
   type RoleId,
@@ -47,19 +51,34 @@ export function machineTypeOf(machine: Pick<Machine, 'id' | 'type'>, people: rea
 }
 
 /**
- * Whether a [role] crew member can work [machine]: an excavator operator an
- * excavator, a compressor driller a compressor. A machine with no kind yet
- * suits either; staff work none.
+ * How [machine] behaves — the kind of its type, which says which crew works
+ * it. Null while it has no type yet.
+ */
+export function machineKindOf(
+  machine: Pick<Machine, 'id' | 'type'>,
+  people: readonly Person[],
+  types: MachineTypes,
+): MachineKind | null {
+  const type = machineTypeOf(machine, people);
+  return type ? machineTypeDef(types, type).kind : null;
+}
+
+/**
+ * Whether a [role] crew member can work [machine]: an excavator operator a
+ * machine that behaves like an excavator, a compressor driller one that
+ * behaves like a compressor. A machine with no type yet suits either; staff
+ * work none, and neither does a crew work a machine of a type with no crew.
  */
 export function machineFitsRole(
   machine: Pick<Machine, 'id' | 'type'>,
   role: RoleId,
   people: readonly Person[],
+  types: MachineTypes,
 ): boolean {
   const wanted = machineTypeForRole(role);
   if (!wanted) return false;
-  const type = machineTypeOf(machine, people);
-  return type == null || type === wanted;
+  const kind = machineKindOf(machine, people, types);
+  return kind == null || kind === wanted;
 }
 
 /**
@@ -71,11 +90,24 @@ export function assignableMachines(
   role: RoleId,
   machines: Iterable<Machine>,
   people: readonly Person[],
+  types: MachineTypes,
   keepId = '',
 ): Machine[] {
   return [...machines]
-    .filter((machine) => machine.id === keepId || (machine.active && machineFitsRole(machine, role, people)))
+    .filter((machine) => machine.id === keepId || (machine.active && machineFitsRole(machine, role, people, types)))
     .sort((a, b) => a.id.localeCompare(b.id));
+}
+
+/** The longest a machine type's name may be — firestore.rules refuses more. */
+export const TYPE_NAME_LIMIT = 40;
+
+/** Why a machine type with these names cannot be saved, or null when it can. */
+export function typeNameError(label: string, english: string): string | null {
+  if (label.trim() === '') return 'වර්ගයේ නම ඇතුළත් කරන්න.';
+  if (label.trim().length > TYPE_NAME_LIMIT || english.trim().length > TYPE_NAME_LIMIT) {
+    return `නම අකුරු ${TYPE_NAME_LIMIT}ට වඩා දිග නොවිය යුතුය.`;
+  }
+  return null;
 }
 
 /** Why [details] cannot be saved, or null when they can. */
@@ -99,6 +131,8 @@ export function detailsError(
 export function cleanDetails(details: MachineDetails): MachineDetails {
   return {
     type: details.type,
+    // Only when it is set: firestore refuses an undefined field.
+    ...(details.meterUnit ? { meterUnit: details.meterUnit } : {}),
     name: details.name.trim(),
     model: details.model.trim(),
     registrationNo: details.registrationNo.trim(),
@@ -109,12 +143,31 @@ export function cleanDetails(details: MachineDetails): MachineDetails {
 
 const dash = (value: string) => value || '—';
 
-/** What changed between the stored machine and the details about to be saved — the audit line. */
-export function machineDiff(before: Machine, after: MachineDetails): string {
+/** Why a meter reading cannot be saved, or null when it can. */
+export function meterError(reading: number): string | null {
+  return Number.isFinite(reading) && reading >= 0 ? null : 'මීටර් අගය ඍණ නොවන සංඛ්‍යාවක් විය යුතුය.';
+}
+
+/**
+ * What changed between the stored machine and the details about to be saved —
+ * the audit line. [meterHours], when the meter is being put right too, adds its
+ * line.
+ */
+export function machineDiff(
+  before: Machine,
+  after: MachineDetails,
+  types: MachineTypes,
+  meterHours?: number,
+): string {
   const next = cleanDetails(after);
   const lines: string[] = [];
   if (next.type !== before.type) {
-    lines.push(`වර්ගය: ${before.type ? MACHINE_TYPE[before.type].label : '—'} → ${MACHINE_TYPE[next.type].label}`);
+    lines.push(`වර්ගය: ${machineTypeLabel(types, before.type)} → ${machineTypeLabel(types, next.type)}`);
+  }
+  const unit = next.meterUnit ?? before.meterUnit;
+  if (unit !== before.meterUnit && meterHours == null) lines.push(`මීටර ඒකකය: ${before.meterUnit} → ${unit}`);
+  if (meterHours != null && (meterHours !== before.totalHours || unit !== before.meterUnit)) {
+    lines.push(`මීටරය: ${meterReading(before.totalHours, before.meterUnit)} → ${meterReading(meterHours, unit)}`);
   }
   if (next.name !== before.name) lines.push(`නම: ${dash(before.name)} → ${dash(next.name)}`);
   if (next.model !== before.model) lines.push(`මාදිලිය: ${dash(before.model)} → ${dash(next.model)}`);
@@ -129,9 +182,11 @@ export function machineDiff(before: Machine, after: MachineDetails): string {
 }
 
 /** The audit line for a machine that has just been set up. */
-export function newMachineSummary(details: MachineDetails, meterHours: number): string {
+export function newMachineSummary(details: MachineDetails, meterHours: number, types: MachineTypes): string {
   const next = cleanDetails(details);
-  return [MACHINE_TYPE[next.type].label, next.name, next.model, next.registrationNo, `මීටරය පැය ${hours(meterHours)}`]
+  // Hours read as before — `මීටරය පැය 12` — and kilometres say so.
+  const meter = next.meterUnit === 'km' ? `මීටරය km ${hours(meterHours)}` : `මීටරය පැය ${hours(meterHours)}`;
+  return [machineTypeLabel(types, next.type), next.name, next.model, next.registrationNo, meter]
     .filter(Boolean)
     .join(' · ');
 }

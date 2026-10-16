@@ -9,18 +9,28 @@ import {
   detailsError,
   machineDiff,
   machineFitsRole,
+  machineKindOf,
   machineTypeOf,
+  meterError,
   monthsNewestFirst,
   newMachineSummary,
   recordedHours,
+  typeNameError,
   workedDayRows,
 } from '../src/lib/machines';
 import {
+  BUILT_IN_TYPES,
   dayFrom,
   machineFrom,
   machineTitle,
+  machineTypeDef,
+  machineTypeDefFrom,
   machineTypeForRole,
+  machineTypesFrom,
+  meterReading,
   monthFrom,
+  pickableTypes,
+  serviceTasksOfKind,
   type Machine,
   type MachineDetails,
   type Person,
@@ -54,7 +64,7 @@ describe('reading a machine', () => {
     expect(old.totalHours).toBe(6789.7);
   });
 
-  it('reads the details it is given, and ignores a type it does not know', () => {
+  it('reads the details it is given, and keeps the id of a type it is not told about', () => {
     const full = machineFrom('cp1', {
       type: 'compressor',
       name: 'Atlas',
@@ -64,7 +74,10 @@ describe('reading a machine', () => {
       active: false,
     });
     expect(full).toMatchObject({ type: 'compressor', name: 'Atlas', model: 'XAS 185', registrationNo: 'LB-1234', active: false });
-    expect(machineFrom('x', { type: 'dozer' }).type).toBeNull();
+    // A type an admin added is stored by its id; the registry says what it is.
+    expect(machineFrom('x', { type: 'lorry123' }).type).toBe('lorry123');
+    expect(machineFrom('x', { type: '' }).type).toBeNull();
+    expect(machineFrom('x', { type: 7 }).type).toBeNull();
   });
 
   it('titles a machine by its name when it has one', () => {
@@ -102,22 +115,22 @@ describe('which machine a crew member may be put on', () => {
   it('fits an operator to an excavator and a compressor driller to a compressor', () => {
     const excavator = machine('ex2', { type: 'excavator' });
     const compressor = machine('cp2', { type: 'compressor' });
-    expect(machineFitsRole(excavator, 'operator', people)).toBe(true);
-    expect(machineFitsRole(excavator, 'compressor', people)).toBe(false);
-    expect(machineFitsRole(compressor, 'compressor', people)).toBe(true);
-    expect(machineFitsRole(compressor, 'operator', people)).toBe(false);
+    expect(machineFitsRole(excavator, 'operator', people, BUILT_IN_TYPES)).toBe(true);
+    expect(machineFitsRole(excavator, 'compressor', people, BUILT_IN_TYPES)).toBe(false);
+    expect(machineFitsRole(compressor, 'compressor', people, BUILT_IN_TYPES)).toBe(true);
+    expect(machineFitsRole(compressor, 'operator', people, BUILT_IN_TYPES)).toBe(false);
   });
 
   it('lets a machine with no kind yet take either, but not once its crew give it one', () => {
-    expect(machineFitsRole(machine('fresh'), 'operator', people)).toBe(true);
-    expect(machineFitsRole(machine('fresh'), 'compressor', people)).toBe(true);
+    expect(machineFitsRole(machine('fresh'), 'operator', people, BUILT_IN_TYPES)).toBe(true);
+    expect(machineFitsRole(machine('fresh'), 'compressor', people, BUILT_IN_TYPES)).toBe(true);
     // ex1 has an excavator operator on it, so it is an excavator.
-    expect(machineFitsRole(machine('ex1'), 'compressor', people)).toBe(false);
+    expect(machineFitsRole(machine('ex1'), 'compressor', people, BUILT_IN_TYPES)).toBe(false);
   });
 
   it('puts staff on no machine at all', () => {
-    expect(machineFitsRole(machine('fresh', { type: 'excavator' }), 'supervisor', people)).toBe(false);
-    expect(machineFitsRole(machine('fresh'), 'admin', people)).toBe(false);
+    expect(machineFitsRole(machine('fresh', { type: 'excavator' }), 'supervisor', people, BUILT_IN_TYPES)).toBe(false);
+    expect(machineFitsRole(machine('fresh'), 'admin', people, BUILT_IN_TYPES)).toBe(false);
   });
 
   it('offers only machines in use and of the right kind, by number', () => {
@@ -127,13 +140,130 @@ describe('which machine a crew member may be put on', () => {
       machine('cp2', { type: 'compressor' }),
       machine('ex9', { type: 'excavator', active: false }),
     ];
-    expect(assignableMachines('operator', all, people).map((m) => m.id)).toEqual(['ex2', 'ex3']);
-    expect(assignableMachines('compressor', all, people).map((m) => m.id)).toEqual(['cp2']);
+    expect(assignableMachines('operator', all, people, BUILT_IN_TYPES).map((m) => m.id)).toEqual(['ex2', 'ex3']);
+    expect(assignableMachines('compressor', all, people, BUILT_IN_TYPES).map((m) => m.id)).toEqual(['cp2']);
   });
 
   it('keeps the machine a person is on in the list even once it is retired', () => {
     const all = [machine('ex2', { type: 'excavator' }), machine('ex9', { type: 'excavator', active: false })];
-    expect(assignableMachines('operator', all, people, 'ex9').map((m) => m.id)).toEqual(['ex2', 'ex9']);
+    expect(assignableMachines('operator', all, people, BUILT_IN_TYPES, 'ex9').map((m) => m.id)).toEqual(['ex2', 'ex9']);
+  });
+});
+
+describe('machine types an admin adds', () => {
+  const lorry = machineTypeDefFrom('lorry1', { label: 'ට්‍රක් රථය', english: 'Truck', kind: 'none' });
+  const loader = machineTypeDefFrom('loader1', { label: 'ලෝඩරය', english: 'Loader', kind: 'excavator' });
+  const roller = machineTypeDefFrom('roller1', { label: 'රෝලරය', english: '', kind: 'compressor' });
+  const types = machineTypesFrom([lorry, loader, roller]);
+
+  it('come after the built-in two, and never replace one', () => {
+    expect([...types.keys()].slice(0, 2)).toEqual(['excavator', 'compressor']);
+    expect(types.size).toBe(5);
+    const shadow = machineTypeDefFrom('excavator', { label: 'Mine', kind: 'none' });
+    expect(machineTypesFrom([shadow]).get('excavator')).toMatchObject({ label: 'එක්ස්කවේටර්', builtIn: true });
+  });
+
+  it('hide a built-in one when its record says so, and still know its name', () => {
+    const hidden = machineTypesFrom([machineTypeDefFrom('compressor', { hidden: true })]);
+    expect(hidden.get('compressor')).toMatchObject({ hidden: true, builtIn: true, label: 'කම්පසර්' });
+    expect(pickableTypes(hidden).map((type) => type.id)).toEqual(['excavator']);
+    // Unless it is the one a machine is already of.
+    expect(pickableTypes(hidden, 'compressor').map((type) => type.id)).toEqual(['excavator', 'compressor']);
+    // A record that does not say hidden hides nothing.
+    expect(machineTypesFrom([machineTypeDefFrom('compressor', {})]).get('compressor')?.hidden).toBe(false);
+  });
+
+  it('read a kind they do not know as no crew', () => {
+    expect(machineTypeDefFrom('x', { label: 'X', kind: 'dozer' }).kind).toBe('none');
+    expect(machineTypeDefFrom('x', {}).kind).toBe('none');
+  });
+
+  it('behave like the kind they were given', () => {
+    expect(machineKindOf(machine('l1', { type: 'loader1' }), people, types)).toBe('excavator');
+    expect(machineKindOf(machine('t1', { type: 'lorry1' }), people, types)).toBe('none');
+    expect(machineKindOf(machine('fresh'), people, types)).toBeNull();
+  });
+
+  it('take the crew of the kind they behave like — and none for a type with no crew', () => {
+    const asLoader = machine('l1', { type: 'loader1' });
+    const asRoller = machine('r1', { type: 'roller1' });
+    const asLorry = machine('t1', { type: 'lorry1' });
+    expect(machineFitsRole(asLoader, 'operator', people, types)).toBe(true);
+    expect(machineFitsRole(asLoader, 'compressor', people, types)).toBe(false);
+    expect(machineFitsRole(asRoller, 'compressor', people, types)).toBe(true);
+    expect(machineFitsRole(asLorry, 'operator', people, types)).toBe(false);
+    expect(machineFitsRole(asLorry, 'compressor', people, types)).toBe(false);
+  });
+
+  it('are offered no crew in the list of machines to put someone on', () => {
+    const all = [machine('l1', { type: 'loader1' }), machine('t1', { type: 'lorry1' }), machine('ex2', { type: 'excavator' })];
+    expect(assignableMachines('operator', all, people, types).map((m) => m.id)).toEqual(['ex2', 'l1']);
+    expect(assignableMachines('compressor', all, people, types)).toEqual([]);
+  });
+
+  it('read as no crew once the type has been removed, rather than failing', () => {
+    expect(machineTypeDef(types, 'gone')).toMatchObject({ id: 'gone', label: 'gone', kind: 'none' });
+    expect(machineFitsRole(machine('g1', { type: 'gone' }), 'operator', people, types)).toBe(false);
+  });
+
+  it('are serviced only for the parts of the crew they behave like', () => {
+    expect(serviceTasksOfKind('none')).toEqual([]);
+    expect(serviceTasksOfKind('excavator')).toContain('hydraulicFilter');
+    expect(serviceTasksOfKind('compressor')).not.toContain('hydraulicFilter');
+  });
+
+  it('are named in the audit log by what the admin called them', () => {
+    const details: MachineDetails = { type: 'lorry1', name: 'Tata', model: '', registrationNo: '', notes: '', active: true };
+    expect(newMachineSummary(details, 12, types)).toBe('ට්‍රක් රථය · Tata · මීටරය පැය 12');
+    expect(machineDiff(machine('t1'), details, types)).toContain('වර්ගය: — → ට්‍රක් රථය');
+  });
+
+  it('need a name that fits the rules', () => {
+    expect(typeNameError('ට්‍රක්', '')).toBeNull();
+    expect(typeNameError('   ', '')).toContain('නම');
+    expect(typeNameError('x'.repeat(41), '')).toContain('40');
+    expect(typeNameError('ok', 'x'.repeat(41))).toContain('40');
+    expect(typeNameError(`${'x'.repeat(40)}  `, '')).toBeNull();
+  });
+
+  it('leave the built-in two behaving as they always did', () => {
+    expect(machineFitsRole(machine('ex2', { type: 'excavator' }), 'operator', people, BUILT_IN_TYPES)).toBe(true);
+    expect(machineFitsRole(machine('cp2', { type: 'compressor' }), 'operator', people, BUILT_IN_TYPES)).toBe(false);
+  });
+});
+
+describe('what a machine’s meter counts', () => {
+  const details: MachineDetails = { type: 'excavator', name: '', model: '', registrationNo: '', notes: '', active: true };
+
+  it('reads hours unless a machine says kilometres', () => {
+    expect(machineFrom('a', { totalHours: 5 }).meterUnit).toBe('h');
+    expect(machineFrom('a', { totalHours: 5, meterUnit: 'km' }).meterUnit).toBe('km');
+    expect(machineFrom('a', { totalHours: 5, meterUnit: 'miles' }).meterUnit).toBe('h');
+  });
+
+  it('shows a reading with its unit', () => {
+    expect(meterReading(6833.3, 'h')).toBe('6833.3 h');
+    expect(meterReading(1204, 'km')).toBe('1204 km');
+  });
+
+  it('is stored only when it is set', () => {
+    expect('meterUnit' in cleanDetails(details)).toBe(false);
+    expect(cleanDetails({ ...details, meterUnit: 'km' }).meterUnit).toBe('km');
+  });
+
+  it('says in the audit log what the meter and its unit became', () => {
+    const before = machine('lr1', { type: 'excavator', totalHours: 100 });
+    expect(machineDiff(before, { ...details, meterUnit: 'km' }, BUILT_IN_TYPES)).toBe('මීටර ඒකකය: h → km');
+    expect(machineDiff(before, details, BUILT_IN_TYPES, 120)).toBe('මීටරය: 100 h → 120 h');
+    expect(machineDiff(before, { ...details, meterUnit: 'km' }, BUILT_IN_TYPES, 120)).toBe('මීටරය: 100 h → 120 km');
+    expect(newMachineSummary({ ...details, meterUnit: 'km' }, 12, BUILT_IN_TYPES)).toBe('එක්ස්කවේටර් · මීටරය km 12');
+  });
+
+  it('refuses a reading that is negative or not a number', () => {
+    expect(meterError(0)).toBeNull();
+    expect(meterError(1204.5)).toBeNull();
+    expect(meterError(-1)).not.toBeNull();
+    expect(meterError(Number.NaN)).not.toBeNull();
   });
 });
 
@@ -179,18 +309,18 @@ describe('the details of a machine', () => {
 
   it('read back, in the audit log, as exactly what moved', () => {
     const before = machine('ex1', { type: 'excavator', name: 'Old', model: 'Cat' });
-    expect(machineDiff(before, { ...details, name: 'Old', model: 'Cat', registrationNo: '', notes: '' })).toBe(
+    expect(machineDiff(before, { ...details, name: 'Old', model: 'Cat', registrationNo: '', notes: '' }, BUILT_IN_TYPES)).toBe(
       'වෙනසක් නැත',
     );
-    const diff = machineDiff(before, { ...details, name: 'New', model: 'Cat', registrationNo: 'LB-1', notes: '' });
+    const diff = machineDiff(before, { ...details, name: 'New', model: 'Cat', registrationNo: 'LB-1', notes: '' }, BUILT_IN_TYPES);
     expect(diff).toBe('නම: Old → New · ලියාපදිංචි අංකය: — → LB-1');
-    expect(machineDiff(before, { ...details, name: 'Old', model: 'Cat', registrationNo: '', notes: '', active: false })).toContain(
+    expect(machineDiff(before, { ...details, name: 'Old', model: 'Cat', registrationNo: '', notes: '', active: false }, BUILT_IN_TYPES)).toContain(
       'විශ්‍රාම',
     );
   });
 
   it('say what a new machine is, and what its meter starts at', () => {
-    expect(newMachineSummary({ ...details, name: 'CAT 320D', model: '320D', registrationNo: '' }, 6789.7)).toBe(
+    expect(newMachineSummary({ ...details, name: 'CAT 320D', model: '320D', registrationNo: '' }, 6789.7, BUILT_IN_TYPES)).toBe(
       'එක්ස්කවේටර් · CAT 320D · 320D · මීටරය පැය 6789.7',
     );
   });

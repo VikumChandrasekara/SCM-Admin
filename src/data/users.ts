@@ -11,16 +11,18 @@ import { db } from '../db';
 import { emailFor, provisioningAuth } from '../firebase';
 import { newMachineSummary } from '../lib/machines';
 import {
-  MACHINE_TYPE,
   ROLES,
   WAGE_BASIS_LABEL,
   hasWageRate,
   loadRateChanges,
+  machineTypeDef,
   machineTypeForRole,
+  machineTypeLabel,
   nameOf,
   paidPerLoad,
   type Machine,
   type MachineDetails,
+  type MachineTypes,
   type Person,
   type RoleId,
   type WageBasis,
@@ -72,6 +74,7 @@ function addMachineIfNew(
   batch: WriteBatch,
   fields: UserFields,
   machines: Map<string, Machine>,
+  types: MachineTypes,
   meterHours: number,
   by: Person,
 ) {
@@ -81,8 +84,8 @@ function addMachineIfNew(
   if (!type) return;
   const existing = machines.get(fields.machineId);
   if (existing) {
-    if (existing.type && existing.type !== type) {
-      throw new Error(`${fields.machineId} ${MACHINE_TYPE[existing.type].label} යන්ත්‍රයකි — ${ROLES[fields.role].label} කෙනෙකුට නොගැළපේ.`);
+    if (existing.type && machineTypeDef(types, existing.type).kind !== type) {
+      throw new Error(`${fields.machineId} ${machineTypeLabel(types, existing.type)} යන්ත්‍රයකි — ${ROLES[fields.role].label} කෙනෙකුට නොගැළපේ.`);
     }
     return;
   }
@@ -96,10 +99,17 @@ function addMachineIfNew(
     ...fields.newMachine,
     type,
   };
-  batch.set(doc(db, 'machines', fields.machineId), newMachineRecord(details, meterHours));
+  batch.set(doc(db, 'machines', fields.machineId), newMachineRecord(details, meterHours, types));
   batch.set(
     doc(collection(db, 'auditLog')),
-    auditEntry('machine.create', 'machine', fields.machineId, fields.machineId, newMachineSummary(details, meterHours), by),
+    auditEntry(
+      'machine.create',
+      'machine',
+      fields.machineId,
+      fields.machineId,
+      newMachineSummary(details, meterHours, types),
+      by,
+    ),
   );
 }
 
@@ -149,6 +159,7 @@ function accountDiff(before: Person, fields: UserFields & { advanceAmount: numbe
 export async function createAccount(
   fields: UserFields & { username: string; password: string; meterHours: number },
   machines: Map<string, Machine>,
+  types: MachineTypes,
   by: Person,
 ): Promise<void> {
   const secondary = provisioningAuth();
@@ -166,7 +177,7 @@ export async function createAccount(
       advanceAmount: 0,
       createdAt: serverTimestamp(),
     });
-    addMachineIfNew(batch, fields, machines, fields.meterHours, by);
+    addMachineIfNew(batch, fields, machines, types, fields.meterHours, by);
     batch.set(
       doc(collection(db, 'auditLog')),
       auditEntry(
@@ -197,6 +208,7 @@ export async function updateAccount(
     meterHours: number;
   },
   machines: Map<string, Machine>,
+  types: MachineTypes,
   by: Person,
 ): Promise<void> {
   const batch = writeBatch(db);
@@ -204,7 +216,7 @@ export async function updateAccount(
     ...recordFields(fields),
     advanceAmount: fields.advanceAmount,
   });
-  addMachineIfNew(batch, fields, machines, fields.meterHours, by);
+  addMachineIfNew(batch, fields, machines, types, fields.meterHours, by);
   batch.set(
     doc(collection(db, 'auditLog')),
     auditEntry('account.update', 'operator', person.id, nameOf(person), accountDiff(person, fields), by),

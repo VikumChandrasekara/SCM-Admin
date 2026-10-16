@@ -285,6 +285,32 @@ describe('accounts', () => {
       wrong.update(doc(db, 'operators', 'op1'), { machineId: 'cp5' });
       await assertFails(wrong.commit());
     });
+
+    it('follows what a type an admin added behaves like — and a type with no crew takes none', async () => {
+      await env.withSecurityRulesDisabled(async (context) => {
+        const db = context.firestore() as unknown as Firestore;
+        await setDoc(doc(db, 'machineTypes', 'loader1'), { label: 'Loader', english: '', kind: 'excavator' });
+        await setDoc(doc(db, 'machineTypes', 'roller1'), { label: 'Roller', english: '', kind: 'compressor' });
+        await setDoc(doc(db, 'machineTypes', 'lorry1'), { label: 'Lorry', english: '', kind: 'none' });
+        await setDoc(doc(db, 'machines', 'ld1'), { totalHours: 0, serviceDueAt: {}, type: 'loader1' });
+        await setDoc(doc(db, 'machines', 'rl1'), { totalHours: 0, serviceDueAt: {}, type: 'roller1' });
+        await setDoc(doc(db, 'machines', 'lr1'), { totalHours: 0, serviceDueAt: {}, type: 'lorry1' });
+        // Its type has since been removed.
+        await setDoc(doc(db, 'machines', 'gn1'), { totalHours: 0, serviceDueAt: {}, type: 'gone1' });
+      });
+
+      const operator = doc(as('sup1'), 'operators', 'op1');
+      const driller = doc(as('sup1'), 'operators', 'comp1');
+      // A loader behaves like an excavator, a roller like a compressor.
+      await assertSucceeds(updateDoc(operator, { machineId: 'ld1' }));
+      await assertFails(updateDoc(operator, { machineId: 'rl1' }));
+      await assertSucceeds(updateDoc(driller, { machineId: 'rl1' }));
+      await assertFails(updateDoc(driller, { machineId: 'ld1' }));
+      // A lorry has no crew, and nor does a machine whose type is gone.
+      await assertFails(updateDoc(operator, { machineId: 'lr1' }));
+      await assertFails(updateDoc(driller, { machineId: 'lr1' }));
+      await assertFails(updateDoc(operator, { machineId: 'gn1' }));
+    });
   });
 
   it('a supervisor cannot set the wage of a staff record, their own included', async () => {
@@ -449,9 +475,153 @@ describe('machines and days', () => {
     await assertSucceeds(updateDoc(machine('sup1'), { totalHours: 120, name: 'CAT' }));
   });
 
-  it('a machine’s history stays: it is never deleted', async () => {
-    await assertFails(deleteDoc(doc(as('admin1'), 'machines', 'ex1')));
+  it('only an admin deletes a machine — and the days it kept — and never a supervisor or a crew', async () => {
+    const day = (uid: string) => doc(as(uid), 'machines', 'ex1', 'days', '2026-09-10');
     await assertFails(deleteDoc(doc(as('sup1'), 'machines', 'ex1')));
+    await assertFails(deleteDoc(doc(as('op1'), 'machines', 'ex1')));
+    await assertFails(deleteDoc(day('sup1')));
+    await assertFails(deleteDoc(day('op1')));
+
+    await assertSucceeds(deleteDoc(day('admin1')));
+    await assertSucceeds(deleteDoc(doc(as('admin1'), 'machines', 'ex1')));
+  });
+
+  it('an admin clears a machine’s months as well', async () => {
+    await env.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore() as unknown as Firestore, 'machines', 'ex1', 'months', '2026-09'), {
+        month: '2026-09',
+        hours: 5,
+      });
+    });
+    const month = (uid: string) => doc(as(uid), 'machines', 'ex1', 'months', '2026-09');
+    await assertFails(deleteDoc(month('sup1')));
+    await assertFails(deleteDoc(month('op1')));
+    await assertSucceeds(deleteDoc(month('admin1')));
+  });
+});
+
+describe('what a machine’s meter counts', () => {
+  const machine = { totalHours: 0, serviceDueAt: {} };
+
+  it('is hours or kilometres, and nothing else', async () => {
+    const create = (id: string, data: object) => setDoc(doc(as('sup1'), 'machines', id), data);
+    await assertSucceeds(create('km1', { ...machine, meterUnit: 'km' }));
+    await assertSucceeds(create('h1', { ...machine, meterUnit: 'h' }));
+    await assertFails(create('bad1', { ...machine, meterUnit: 'miles' }));
+    await assertFails(create('bad2', { ...machine, meterUnit: 5 }));
+  });
+
+  it('is put right by staff, together with the meter, and not by a crew', async () => {
+    const ref = (uid: string) => doc(as(uid), 'machines', 'ex1');
+    await assertSucceeds(updateDoc(ref('sup1'), { meterUnit: 'km', totalHours: 5000 }));
+    await assertSucceeds(updateDoc(ref('admin1'), { meterUnit: 'h' }));
+    await assertFails(updateDoc(ref('sup1'), { meterUnit: 'miles' }));
+    await assertFails(updateDoc(ref('op1'), { meterUnit: 'km' }));
+  });
+});
+
+describe('the machine types', () => {
+  const type = (overrides: object = {}) => ({ label: 'Lorry', english: 'Truck', kind: 'none', ...overrides });
+  const ref = (uid: string, id = 'lorry1') => doc(as(uid), 'machineTypes', id);
+
+  async function seed(id = 'lorry1', data: object = type()) {
+    await env.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore() as unknown as Firestore, 'machineTypes', id), data);
+    });
+  }
+
+  it('are added by an admin alone', async () => {
+    await assertSucceeds(setDoc(ref('admin1'), type()));
+    await assertSucceeds(setDoc(ref('admin1', 'loader-2'), type({ label: 'Loader', kind: 'excavator' })));
+    await assertSucceeds(setDoc(ref('admin1', 'roller_3'), type({ label: 'Roller', english: '', kind: 'compressor' })));
+
+    await assertFails(setDoc(ref('sup1', 'lorry9'), type()));
+    await assertFails(setDoc(ref('op1', 'lorry9'), type()));
+    await assertFails(setDoc(ref('land1', 'lorry9'), type()));
+  });
+
+  it('are read by anyone signed in to the app, and by no one else', async () => {
+    await seed();
+    await assertSucceeds(getDoc(ref('admin1')));
+    await assertSucceeds(getDoc(ref('sup1')));
+    await assertSucceeds(getDoc(ref('op1')));
+    await assertFails(getDoc(doc(env.unauthenticatedContext().firestore() as unknown as Firestore, 'machineTypes', 'lorry1')));
+  });
+
+  it('cannot take the place of the built-in two', async () => {
+    await assertFails(setDoc(ref('admin1', 'excavator'), type({ kind: 'none' })));
+    await assertFails(setDoc(ref('admin1', 'compressor'), type({ kind: 'none' })));
+  });
+
+  it('can have the built-in two removed by an admin — a record that they are hidden — and brought back', async () => {
+    await assertSucceeds(setDoc(ref('admin1', 'compressor'), { hidden: true }));
+    await assertFails(setDoc(ref('sup1', 'excavator'), { hidden: true }));
+    await assertFails(setDoc(ref('admin1', 'excavator'), { hidden: false }));
+    await assertFails(setDoc(ref('admin1', 'excavator'), { hidden: true, label: 'Mine' }));
+    await assertFails(setDoc(ref('admin1', 'lorry9'), { hidden: true }));
+    await assertFails(deleteDoc(ref('sup1', 'compressor')));
+    await assertSucceeds(deleteDoc(ref('admin1', 'compressor')));
+  });
+
+  it('say whether their meter counts hours or kilometres — and nothing else', async () => {
+    await assertSucceeds(setDoc(ref('admin1'), type({ meterUnit: 'km' })));
+    await assertSucceeds(setDoc(ref('admin1', 'lorry2'), type({ meterUnit: 'h' })));
+    await assertFails(setDoc(ref('admin1', 'lorry3'), type({ meterUnit: 'miles' })));
+    await assertFails(setDoc(ref('admin1', 'lorry4'), type({ meterUnit: 3 })));
+  });
+
+  it('are added with a name, an English name and a kind — and nothing else', async () => {
+    await assertFails(setDoc(ref('admin1'), type({ kind: 'dozer' })));
+    await assertFails(setDoc(ref('admin1'), type({ kind: 7 })));
+    await assertFails(setDoc(ref('admin1'), type({ label: '' })));
+    await assertFails(setDoc(ref('admin1'), type({ label: 7 })));
+    await assertFails(setDoc(ref('admin1'), type({ label: 'x'.repeat(41) })));
+    await assertFails(setDoc(ref('admin1'), type({ english: 'x'.repeat(41) })));
+    await assertFails(setDoc(ref('admin1'), type({ colour: 'yellow' })));
+    await assertFails(setDoc(ref('admin1'), { label: 'Lorry', kind: 'none' }));
+    await assertFails(setDoc(ref('admin1'), { label: 'Lorry', english: '' }));
+    await assertFails(setDoc(ref('admin1', 'bad id'), type()));
+    await assertSucceeds(setDoc(ref('admin1'), type({ label: 'x'.repeat(40) })));
+  });
+
+  it('may be renamed by an admin, but what they behave like never changes', async () => {
+    await seed();
+    await assertFails(updateDoc(ref('sup1'), { label: 'Mine' }));
+    await assertFails(updateDoc(ref('op1'), { label: 'Mine' }));
+    await assertFails(updateDoc(ref('admin1'), { kind: 'excavator' }));
+    await assertFails(updateDoc(ref('admin1'), { label: '' }));
+    await assertFails(updateDoc(ref('admin1'), { label: 'x'.repeat(41) }));
+    await assertSucceeds(updateDoc(ref('admin1'), { label: 'Tipper', english: 'Tipper truck' }));
+  });
+
+  it('are removed by an admin alone', async () => {
+    await seed();
+    await assertFails(deleteDoc(ref('sup1')));
+    await assertFails(deleteDoc(ref('op1')));
+    await assertSucceeds(deleteDoc(ref('admin1')));
+  });
+
+  it('can be what a machine is, as long as they exist', async () => {
+    const machine = { totalHours: 0, serviceDueAt: {} };
+    await assertFails(setDoc(doc(as('sup1'), 'machines', 'lr1'), { ...machine, type: 'lorry1' }));
+
+    await seed();
+    await assertSucceeds(setDoc(doc(as('sup1'), 'machines', 'lr1'), { ...machine, type: 'lorry1' }));
+    // A type is never a path.
+    await assertFails(setDoc(doc(as('sup1'), 'machines', 'lr2'), { ...machine, type: 'lorry1/x' }));
+    await assertFails(setDoc(doc(as('sup1'), 'machines', 'lr2'), { ...machine, type: 7 }));
+    // The built-in two need no record.
+    await assertSucceeds(setDoc(doc(as('sup1'), 'machines', 'ex9'), { ...machine, type: 'excavator' }));
+  });
+
+  it('keep a machine’s type for good once it has one', async () => {
+    await seed();
+    await seed('loader1', type({ label: 'Loader', kind: 'excavator' }));
+    const machine = doc(as('sup1'), 'machines', 'lr1');
+    await assertSucceeds(setDoc(machine, { totalHours: 0, serviceDueAt: {}, type: 'lorry1' }));
+    await assertFails(updateDoc(machine, { type: 'loader1' }));
+    await assertFails(updateDoc(machine, { type: 'excavator' }));
+    await assertSucceeds(updateDoc(machine, { name: 'Tata' }));
   });
 });
 

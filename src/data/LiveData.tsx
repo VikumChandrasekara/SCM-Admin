@@ -6,13 +6,16 @@ import {
   ROLES,
   byCrewThenName,
   machineFrom,
+  machineTypesFrom,
   personFrom,
   storeItemFrom,
   type Machine,
+  type MachineTypes,
   type Person,
   type StoreItem,
 } from '../lib/model';
 import { useLiveQuery } from './live';
+import { useAddedMachineTypes } from './machineTypes';
 
 /**
  * The handful of collections nearly every page needs, subscribed once for
@@ -26,6 +29,11 @@ export interface LiveData {
   peopleById: Map<string, Person>;
   store: StoreItem[];
   machines: Map<string, Machine>;
+  /**
+   * Every machine type — the excavator and the compressor, then those an admin
+   * added. Not waited on: it is the built-in two until the rest arrive.
+   */
+  machineTypes: MachineTypes;
   ready: boolean;
   /**
    * Why one of the three could not be read. A refused listener never
@@ -52,6 +60,7 @@ export function LiveDataProvider({ children }: { children: ReactNode }) {
     () => collection(db, 'machines'),
     (snapshot) => machineFrom(snapshot.id, snapshot.data()),
   );
+  const addedTypes = useAddedMachineTypes();
 
   const value = useMemo<LiveData>(() => {
     const everyone = [...(people.data ?? [])].sort(byCrewThenName);
@@ -61,10 +70,11 @@ export function LiveDataProvider({ children }: { children: ReactNode }) {
       peopleById: new Map(everyone.map((person) => [person.id, person])),
       store: [...(store.data ?? [])].sort((a, b) => a.name.localeCompare(b.name)),
       machines: new Map((machines.data ?? []).map((machine) => [machine.id, machine])),
+      machineTypes: machineTypesFrom(addedTypes.data ?? []),
       ready: people.data !== undefined && store.data !== undefined && machines.data !== undefined,
       error: people.error ?? store.error ?? machines.error,
     };
-  }, [people, store, machines]);
+  }, [people, store, machines, addedTypes]);
 
   return <LiveDataContext.Provider value={value}>{children}</LiveDataContext.Provider>;
 }

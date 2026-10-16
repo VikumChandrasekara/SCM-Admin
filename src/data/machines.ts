@@ -21,24 +21,29 @@ import {
   cleanDetails,
   detailsError,
   machineDiff,
+  meterError,
   machineFitsRole,
   newMachineSummary,
 } from '../lib/machines';
 import {
-  MACHINE_TYPE,
   ROLES,
   SERVICE,
   WAGE_BASIS_LABEL,
   dayFrom,
   dayWorked,
   loadRateChanges,
+  machineTypeDef,
   machineTypeForRole,
+  machineTypeLabel,
+  meterReading,
   monthFrom,
   nameOf,
   serviceNextLabel,
+  serviceTasksOfKind,
   type Day,
   type Machine,
   type MachineDetails,
+  type MachineTypes,
   type Person,
   type ServiceTask,
   type StoreItem,
@@ -322,12 +327,12 @@ export async function setServiceDue(machine: Machine, task: ServiceTask, dueAt: 
  * Shared with the account form, which sets a machine up when its first
  * crew member is put on it.
  */
-export function newMachineRecord(details: MachineDetails, meterHours: number) {
-  const crewRole = ROLES[MACHINE_TYPE[details.type].role];
+export function newMachineRecord(details: MachineDetails, meterHours: number, types: MachineTypes) {
+  const tasks = serviceTasksOfKind(machineTypeDef(types, details.type).kind);
   return {
     ...cleanDetails(details),
     totalHours: meterHours,
-    serviceDueAt: Object.fromEntries(crewRole.serviceTasks.map((task) => [task, meterHours + SERVICE[task].interval])),
+    serviceDueAt: Object.fromEntries(tasks.map((task) => [task, meterHours + SERVICE[task].interval])),
   };
 }
 
@@ -340,9 +345,11 @@ export async function createMachine(
   id: string,
   details: MachineDetails,
   meterHours: number,
+  types: MachineTypes,
   by: Person,
 ): Promise<void> {
   const number = id.trim();
+  if (!types.has(details.type)) throw new Error('යන්ත්‍රයේ වර්ගය තෝරන්න.');
   if (!MACHINE_ID_PATTERN.test(number)) {
     throw new Error('යන්ත්‍ර අංකය අකුරු, ඉලක්කම්, - සහ _ පමණක් විය යුතුය (උදා: excavator-01).');
   }
@@ -353,10 +360,10 @@ export async function createMachine(
   const ref = doc(db, 'machines', number);
   await runTransaction(db, async (tx) => {
     if ((await tx.get(ref)).exists()) throw new Error(`${number} යන්ත්‍ර අංකය දැනටමත් භාවිතා වේ.`);
-    tx.set(ref, newMachineRecord(details, meterHours));
+    tx.set(ref, newMachineRecord(details, meterHours, types));
     tx.set(
       doc(collection(db, 'auditLog')),
-      auditEntry('machine.create', 'machine', number, number, newMachineSummary(details, meterHours), by),
+      auditEntry('machine.create', 'machine', number, number, newMachineSummary(details, meterHours, types), by),
     );
   });
 }
@@ -371,25 +378,82 @@ export async function updateMachine(
   machine: Machine,
   details: MachineDetails,
   crew: readonly Person[],
+  types: MachineTypes,
   by: Person,
+  /** The meter put right by hand, in the unit in [details]. Left out, the meter is not touched. */
+  meterHours?: number,
 ): Promise<void> {
   const problem = detailsError(details);
   if (problem) throw new Error(problem);
   if (machine.type && details.type !== machine.type) {
     throw new Error('යන්ත්‍රයක වර්ගය එක් වරක් තෝරා පසු වෙනස් කළ නොහැක.');
   }
-  if (crew.some((person) => machineTypeForRole(person.role) !== details.type)) {
-    throw new Error(`මෙම යන්ත්‍රයේ ඇත්තේ ${MACHINE_TYPE[details.type].label} නොවන කණ්ඩායමකි.`);
+  if (!types.has(details.type) && details.type !== machine.type) throw new Error('යන්ත්‍රයේ වර්ගය තෝරන්න.');
+  const kind = machineTypeDef(types, details.type).kind;
+  if (crew.some((person) => machineTypeForRole(person.role) !== kind)) {
+    throw new Error(`මෙම යන්ත්‍රයේ ඇත්තේ ${machineTypeLabel(types, details.type)} වර්ගයට නොගැළපෙන කණ්ඩායමකි.`);
   }
 
-  const summary = machineDiff(machine, details);
+  const meterMoves = meterHours != null && meterHours !== machine.totalHours;
+  if (meterHours != null) {
+    const bad = meterError(meterHours);
+    if (bad) throw new Error(bad);
+  }
+
+  const summary = machineDiff(machine, details, types, meterMoves ? meterHours : undefined);
   if (summary === 'වෙනසක් නැත') return;
 
   const batch = writeBatch(db);
-  batch.update(doc(db, 'machines', machine.id), { ...cleanDetails(details) });
+  batch.update(doc(db, 'machines', machine.id), {
+    ...cleanDetails(details),
+    ...(meterMoves ? { totalHours: meterHours } : {}),
+  });
   batch.set(
     doc(collection(db, 'auditLog')),
     auditEntry('machine.update', 'machine', machine.id, machine.id, summary, by),
+  );
+  await commit(batch);
+}
+
+/** A batch holds at most 500 writes; stay under it. */
+const DELETE_CHUNK = 400;
+
+/**
+ * Removes a machine for good — its record and every day and month it kept.
+ * Refused while a crew member is still on it: they would be left on a machine
+ * that is not there. Admin only; the rules agree.
+ *
+ * The days and months go first, the machine and its audit entry last, so a
+ * failure part-way leaves a machine that can simply be deleted again.
+ */
+export async function deleteMachine(machine: Machine, crew: readonly Person[], by: Person): Promise<void> {
+  if (crew.length > 0) {
+    throw new Error(`${machine.id} යන්ත්‍රයේ තවමත් කණ්ඩායමක් සිටී. ඔවුන්ව වෙනත් යන්ත්‍රයකට මාරු කර නැවත උත්සාහ කරන්න.`);
+  }
+
+  const [days, months] = await Promise.all([
+    getDocs(collection(db, 'machines', machine.id, 'days')),
+    getDocs(collection(db, 'machines', machine.id, 'months')),
+  ]);
+  const records = [...days.docs, ...months.docs];
+  for (let start = 0; start < records.length; start += DELETE_CHUNK) {
+    const batch = writeBatch(db);
+    for (const record of records.slice(start, start + DELETE_CHUNK)) batch.delete(record.ref);
+    await batch.commit();
+  }
+
+  const batch = writeBatch(db);
+  batch.delete(doc(db, 'machines', machine.id));
+  batch.set(
+    doc(collection(db, 'auditLog')),
+    auditEntry(
+      'machine.delete',
+      'machine',
+      machine.id,
+      machine.id,
+      `මීටරය ${meterReading(machine.totalHours, machine.meterUnit)} · දින ${days.size}ක් සහ මාස ${months.size}ක් සමග`,
+      by,
+    ),
   );
   await commit(batch);
 }
@@ -403,12 +467,13 @@ export async function assignMachine(
   person: Person,
   machine: Machine,
   people: readonly Person[],
+  types: MachineTypes,
   by: Person,
 ): Promise<void> {
   if (!ROLES[person.role].isCrew) throw new Error('යන්ත්‍රයකට යෙදිය හැක්කේ කණ්ඩායම් සාමාජිකයෙකු පමණි.');
   if (person.machineId === machine.id) return;
   if (!machine.active) throw new Error(`${machine.id} දැනට ක්‍රියාත්මක නොවේ.`);
-  if (!machineFitsRole(machine, person.role, people)) {
+  if (!machineFitsRole(machine, person.role, people, types)) {
     throw new Error(`${ROLES[person.role].label} කෙනෙකුට මෙම යන්ත්‍රයට යෙදිය නොහැක.`);
   }
 
