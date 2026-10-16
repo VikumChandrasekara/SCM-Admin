@@ -152,7 +152,10 @@ export function StockChangeModal({
           </div>
         )}
         {after != null && after < 0 && (
-          <ErrorNote>ගබඩාවේ ඇති ප්‍රමාණයට වඩා අඩු කරයි. ගණන නැවත පරීක්ෂා කරන්න.</ErrorNote>
+          // Allowed, not an error: what the crews have already used can be more than was counted.
+          <p className="rounded-xl px-4 py-3 text-sm font-semibold text-ink chip-amber">
+            ගබඩාවේ ඇති ප්‍රමාණයට වඩා අඩු කරයි — ශේෂය සෘණ වේ. සුරකින්න, පසුව ගණන් කර නිවැරදි කළ හැක.
+          </p>
         )}
 
         <Field label="සටහන">
@@ -202,13 +205,11 @@ export function ItemModal({ item, onClose }: { item: StoreItem | null; onClose: 
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    const quantityValue = parse(opening);
-    const minValue = parse(minimum) ?? 0;
-    const priceValue = parse(price) ?? 0;
+    // Only the name is needed: a count left empty is 0, and a unit left empty is "ගණන".
+    const quantityValue = parse(opening) ?? 0;
+    const minValue = Math.max(parse(minimum) ?? 0, 0);
+    const priceValue = Math.max(parse(price) ?? 0, 0);
     if (!name.trim()) return setError('අයිතමයේ නම ඇතුළත් කරන්න.');
-    if (!unit.trim()) return setError('ඒකකය තෝරන්න (උදා: L, kg, ගණන).');
-    if (!item && (quantityValue == null || quantityValue < 0)) return setError('දැනට ඇති ප්‍රමාණය ඇතුළත් කරන්න.');
-    if (minValue < 0 || priceValue < 0) return setError('අගයන් ඍණ විය නොහැක.');
     if (isShells && (perKgValue == null || perKgValue <= 0)) return setError('kg 1කට කරල් ගණන ශුන්‍යයට වඩා වැඩි විය යුතුය.');
 
     setBusy(true);
@@ -216,7 +217,7 @@ export function ItemModal({ item, onClose }: { item: StoreItem | null; onClose: 
     try {
       const details = {
         name,
-        unit,
+        unit: unit.trim() || 'ගණන',
         minQuantity: minValue,
         unitPrice: priceValue,
         piecesPerKg: isShells ? perKgValue : (item?.piecesPerKg ?? null),
@@ -297,7 +298,7 @@ export function ItemModal({ item, onClose }: { item: StoreItem | null; onClose: 
         <div className="grid gap-4 sm:grid-cols-3">
           {!item && (
             <Field label="දැනට ඇති ප්‍රමාණය">
-              <Input type="number" min="0" step="any" required value={opening} onChange={(event) => setOpening(event.target.value)} />
+              <Input type="number" min="0" step="any" placeholder="0" value={opening} onChange={(event) => setOpening(event.target.value)} />
             </Field>
           )}
           <Field label="අවම මට්ටම" hint="මෙයට අඩු වූ විට අනතුරු ඇඟවේ.">
