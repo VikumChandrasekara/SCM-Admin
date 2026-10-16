@@ -156,11 +156,11 @@ describe('machine types an admin adds', () => {
   const roller = machineTypeDefFrom('roller1', { label: 'රෝලරය', english: '', kind: 'compressor' });
   const types = machineTypesFrom([lorry, loader, roller]);
 
-  it('come after the built-in two, and never replace one', () => {
+  it('come after the built-in two, and a built-in one’s record never changes what it behaves like', () => {
     expect([...types.keys()].slice(0, 2)).toEqual(['excavator', 'compressor']);
     expect(types.size).toBe(5);
     const shadow = machineTypeDefFrom('excavator', { label: 'Mine', kind: 'none' });
-    expect(machineTypesFrom([shadow]).get('excavator')).toMatchObject({ label: 'එක්ස්කවේටර්', builtIn: true });
+    expect(machineTypesFrom([shadow]).get('excavator')).toMatchObject({ label: 'Mine', kind: 'excavator', builtIn: true });
   });
 
   it('hide a built-in one when its record says so, and still know its name', () => {
@@ -171,6 +171,25 @@ describe('machine types an admin adds', () => {
     expect(pickableTypes(hidden, 'compressor').map((type) => type.id)).toEqual(['excavator', 'compressor']);
     // A record that does not say hidden hides nothing.
     expect(machineTypesFrom([machineTypeDefFrom('compressor', {})]).get('compressor')?.hidden).toBe(false);
+  });
+
+  it('take a new name and meter unit for a built-in one from its record, and keep what it behaves like', () => {
+    const changed = machineTypesFrom([
+      machineTypeDefFrom('excavator', { label: 'ඩිගර්', english: 'Digger', meterUnit: 'km' }),
+    ]);
+    expect(changed.get('excavator')).toMatchObject({
+      label: 'ඩිගර්',
+      english: 'Digger',
+      meterUnit: 'km',
+      kind: 'excavator',
+      builtIn: true,
+      hidden: false,
+    });
+    // A record that only says it is hidden leaves the names as they come.
+    expect(machineTypesFrom([machineTypeDefFrom('compressor', { hidden: true })]).get('compressor')).toMatchObject({
+      label: 'කම්පසර්',
+      hidden: true,
+    });
   });
 
   it('read a kind they do not know as no crew', () => {

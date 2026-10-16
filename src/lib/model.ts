@@ -480,7 +480,7 @@ export interface MachineTypeDef {
   kind: MachineKind;
   /** What the meter of a machine of this type counts to begin with. */
   meterUnit: MeterUnit;
-  /** The excavator and the compressor: there from the start, and not renamed. */
+  /** The excavator and the compressor: there from the start, and what they behave like is fixed. */
   builtIn: boolean;
   /**
    * A built-in type an admin has removed: gone from the lists to pick from, but
@@ -500,14 +500,25 @@ export type MachineTypes = ReadonlyMap<string, MachineTypeDef>;
 
 /**
  * The built-in types first, then those that were added, each by name. A stored
- * entry with a built-in id is that type removed (`{hidden: true}`), never a
- * replacement for it.
+ * entry with a built-in id holds what an admin changed about that type — its
+ * name, its English name, its meter unit — and `hidden` when it was removed.
+ * What it behaves like does not change.
  */
 export function machineTypesFrom(added: readonly MachineTypeDef[]): MachineTypes {
-  const isBuiltIn = (id: string) => BUILT_IN_MACHINE_TYPES.some((builtIn) => builtIn.id === id);
-  const removed = new Set(added.filter((type) => isBuiltIn(type.id) && type.hidden).map((type) => type.id));
-  const custom = added.filter((type) => !isBuiltIn(type.id)).sort((a, b) => a.label.localeCompare(b.label));
-  const builtIns = BUILT_IN_MACHINE_TYPES.map((type) => (removed.has(type.id) ? { ...type, hidden: true } : type));
+  const stored = new Map(added.map((type) => [type.id, type]));
+  const custom = added
+    .filter((type) => !BUILT_IN_MACHINE_TYPES.some((builtIn) => builtIn.id === type.id))
+    .sort((a, b) => a.label.localeCompare(b.label));
+  const builtIns = BUILT_IN_MACHINE_TYPES.map((type) => {
+    const changed = stored.get(type.id);
+    if (!changed) return type;
+    return {
+      ...type,
+      ...(changed.label ? { label: changed.label, english: changed.english } : {}),
+      meterUnit: changed.meterUnit,
+      hidden: changed.hidden,
+    };
+  });
   return new Map([...builtIns, ...custom].map((type) => [type.id, type]));
 }
 

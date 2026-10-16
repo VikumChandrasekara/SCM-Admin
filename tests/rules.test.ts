@@ -450,7 +450,7 @@ describe('machines and days', () => {
     await assertSucceeds(create('ex6', { ...machine, notes: 'x'.repeat(1000) }));
   });
 
-  it('staff keep a machine’s details; a crew member cannot, and a kind once chosen stays', async () => {
+  it('staff keep a machine’s details, kind included; a crew member cannot', async () => {
     const machine = (uid: string) => doc(as(uid), 'machines', 'ex1');
 
     // ex1 was set up before machines had details.
@@ -460,10 +460,12 @@ describe('machines and days', () => {
     await assertSucceeds(updateDoc(machine('admin1'), { active: false }));
     await assertFails(updateDoc(machine('op1'), { name: 'mine' }));
 
-    // A machine with no kind yet is given one…
+    // A machine with no kind yet is given one, and the kind can be put right later —
+    // to one that exists, and only by staff.
     await assertSucceeds(updateDoc(machine('sup1'), { type: 'excavator' }));
-    // …and keeps it.
-    await assertFails(updateDoc(machine('sup1'), { type: 'compressor' }));
+    await assertSucceeds(updateDoc(machine('sup1'), { type: 'compressor' }));
+    await assertFails(updateDoc(machine('sup1'), { type: 'dozer' }));
+    await assertFails(updateDoc(machine('op1'), { type: 'excavator' }));
     await assertSucceeds(updateDoc(machine('sup1'), { type: 'excavator', name: 'again' }));
 
     // What is written has to be what a detail is, and only details.
@@ -585,7 +587,7 @@ describe('the machine types', () => {
     await assertSucceeds(setDoc(ref('admin1', 'compressor'), { hidden: true }));
     await assertFails(setDoc(ref('sup1', 'excavator'), { hidden: true }));
     await assertFails(setDoc(ref('admin1', 'excavator'), { hidden: false }));
-    await assertFails(setDoc(ref('admin1', 'excavator'), { hidden: true, label: 'Mine' }));
+    await assertFails(setDoc(ref('admin1', 'excavator'), { hidden: true, kind: 'none' }));
     await assertFails(setDoc(ref('admin1', 'lorry9'), { hidden: true }));
     await assertFails(deleteDoc(ref('sup1', 'compressor')));
     await assertSucceeds(deleteDoc(ref('admin1', 'compressor')));
@@ -612,14 +614,26 @@ describe('the machine types', () => {
     await assertSucceeds(setDoc(ref('admin1'), type({ label: 'x'.repeat(40) })));
   });
 
-  it('may be renamed by an admin, but what they behave like never changes', async () => {
+  it('can be put right by an admin at any time — names, what they behave like, what their meter counts', async () => {
     await seed();
     await assertFails(updateDoc(ref('sup1'), { label: 'Mine' }));
     await assertFails(updateDoc(ref('op1'), { label: 'Mine' }));
-    await assertFails(updateDoc(ref('admin1'), { kind: 'excavator' }));
     await assertFails(updateDoc(ref('admin1'), { label: '' }));
     await assertFails(updateDoc(ref('admin1'), { label: 'x'.repeat(41) }));
+    await assertFails(updateDoc(ref('admin1'), { kind: 'dozer' }));
+    await assertFails(updateDoc(ref('admin1'), { meterUnit: 'miles' }));
+    await assertFails(updateDoc(ref('admin1'), { colour: 'red' }));
     await assertSucceeds(updateDoc(ref('admin1'), { label: 'Tipper', english: 'Tipper truck' }));
+    await assertSucceeds(updateDoc(ref('admin1'), { kind: 'excavator', meterUnit: 'km' }));
+  });
+
+  it('keep, for the built-in two, only what was changed — and never what they behave like', async () => {
+    await assertSucceeds(setDoc(ref('admin1', 'excavator'), { label: 'Digger', english: 'Digger', meterUnit: 'km' }));
+    await assertSucceeds(updateDoc(ref('admin1', 'excavator'), { label: 'Bigger digger' }));
+    await assertFails(updateDoc(ref('sup1', 'excavator'), { label: 'Mine' }));
+    await assertFails(updateDoc(ref('admin1', 'excavator'), { kind: 'none' }));
+    await assertFails(updateDoc(ref('admin1', 'excavator'), { label: '' }));
+    await assertFails(updateDoc(ref('admin1', 'excavator'), { hidden: false }));
   });
 
   it('are removed by an admin alone', async () => {
@@ -642,13 +656,14 @@ describe('the machine types', () => {
     await assertSucceeds(setDoc(doc(as('sup1'), 'machines', 'ex9'), { ...machine, type: 'excavator' }));
   });
 
-  it('keep a machine’s type for good once it has one', async () => {
+  it('can be changed on a machine later, to another that exists', async () => {
     await seed();
     await seed('loader1', type({ label: 'Loader', kind: 'excavator' }));
     const machine = doc(as('sup1'), 'machines', 'lr1');
     await assertSucceeds(setDoc(machine, { totalHours: 0, serviceDueAt: {}, type: 'lorry1' }));
-    await assertFails(updateDoc(machine, { type: 'loader1' }));
-    await assertFails(updateDoc(machine, { type: 'excavator' }));
+    await assertSucceeds(updateDoc(machine, { type: 'loader1' }));
+    await assertSucceeds(updateDoc(machine, { type: 'excavator' }));
+    await assertFails(updateDoc(machine, { type: 'nothing-like-it' }));
     await assertSucceeds(updateDoc(machine, { name: 'Tata' }));
   });
 });

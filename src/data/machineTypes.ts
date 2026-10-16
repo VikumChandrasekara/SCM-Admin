@@ -1,11 +1,15 @@
-import { collection, doc, getDocs, limit, query, where, writeBatch } from 'firebase/firestore';
+import { collection, deleteField, doc, getDocs, limit, query, where, writeBatch } from 'firebase/firestore';
 
 import { db } from '../db';
-import { typeNameError } from '../lib/machines';
+import { crewOn, typeNameError } from '../lib/machines';
 import {
   MACHINE_KINDS,
+  MACHINE_KIND_LABEL,
   METER_UNITS,
   machineTypeDefFrom,
+  machineTypeForRole,
+  nameOf,
+  type Machine,
   type MeterUnit,
   type MachineKind,
   type MachineTypeDef,
@@ -41,9 +45,8 @@ function nameTaken(types: MachineTypes, label: string, exceptId: string): boolea
 }
 
 /**
- * Adds a machine type and returns its id. What it behaves like is fixed here —
- * its crew, its service parts and the machines made of it are all set up for
- * that kind, so the rules let only its names change afterwards.
+ * Adds a machine type and returns its id. What it behaves like and what its
+ * meter counts can be put right later — see [updateMachineType].
  */
 export async function createMachineType(
   label: string,
@@ -71,25 +74,67 @@ export async function createMachineType(
   return ref.id;
 }
 
-/** Renames a machine type. The names are all that can change. */
-export async function renameMachineType(
+/** What can be put right about a machine type. */
+export interface MachineTypeChanges {
+  label: string;
+  english: string;
+  kind: MachineKind;
+  meterUnit: MeterUnit;
+}
+
+/**
+ * Puts a machine type right — its names, what it behaves like and what its
+ * meter counts — at any time. The excavator and the compressor can have their
+ * names and meter unit changed too; what they behave like stays, as crew
+ * accounts are tied to the two. A change of behaviour is refused while a crew
+ * member is on a machine of the type that the new behaviour would not suit.
+ */
+export async function updateMachineType(
   type: MachineTypeDef,
-  label: string,
-  english: string,
+  next: MachineTypeChanges,
   types: MachineTypes,
+  machines: Iterable<Machine>,
+  people: readonly Person[],
   by: Person,
 ): Promise<void> {
-  if (type.builtIn) throw new Error('මෙම වර්ගය වෙනස් කළ නොහැක.');
-  const problem = typeNameError(label, english);
+  const problem = typeNameError(next.label, next.english);
   if (problem) throw new Error(problem);
-  if (nameTaken(types, label, type.id)) throw new Error(`${label.trim()} නමින් වර්ගයක් දැනටමත් ඇත.`);
-  if (label.trim() === type.label && english.trim() === type.english) return;
+  if (!MACHINE_KINDS.includes(next.kind)) throw new Error('වර්ගය ක්‍රියා කරන ආකාරය තෝරන්න.');
+  if (!METER_UNITS.includes(next.meterUnit)) throw new Error('මීටරය ගණන් කරන්නේ පැය ද කිලෝමීටර් ද යන්න තෝරන්න.');
+  if (nameTaken(types, next.label, type.id)) throw new Error(`${next.label.trim()} නමින් වර්ගයක් දැනටමත් ඇත.`);
+
+  const label = next.label.trim();
+  const english = next.english.trim();
+  if (next.kind !== type.kind) {
+    if (type.builtIn) throw new Error('මෙම වර්ගයේ ක්‍රියා කරන ආකාරය වෙනස් කළ නොහැක.');
+    for (const machine of machines) {
+      if (machine.type !== type.id) continue;
+      const unsuited = crewOn(machine.id, people).find((person) => machineTypeForRole(person.role) !== next.kind);
+      if (unsuited) {
+        throw new Error(
+          `${machine.id} යන්ත්‍රයේ ${nameOf(unsuited)} සිටී — නව ක්‍රියා කරන ආකාරයට ඔවුන් නොගැළපේ. ඔවුන්ව වෙනත් යන්ත්‍රයකට මාරු කර නැවත උත්සාහ කරන්න.`,
+        );
+      }
+    }
+  }
+
+  const changes = [
+    label !== type.label ? `නම: ${type.label} → ${label}` : '',
+    english !== type.english ? `English: ${type.english || '—'} → ${english || '—'}` : '',
+    next.kind !== type.kind ? `ක්‍රියා කරන ආකාරය: ${MACHINE_KIND_LABEL[type.kind]} → ${MACHINE_KIND_LABEL[next.kind]}` : '',
+    next.meterUnit !== type.meterUnit ? `මීටරය: ${type.meterUnit} → ${next.meterUnit}` : '',
+  ].filter(Boolean);
+  if (changes.length === 0) return;
 
   const batch = writeBatch(db);
-  batch.update(doc(db, 'machineTypes', type.id), { label: label.trim(), english: english.trim() });
+  const ref = doc(db, 'machineTypes', type.id);
+  // A built-in type is not stored until it is changed; its record holds only
+  // what differs from how it comes, so a record is merged, not replaced.
+  if (type.builtIn) batch.set(ref, { label, english, meterUnit: next.meterUnit }, { merge: true });
+  else batch.update(ref, { label, english, kind: next.kind, meterUnit: next.meterUnit });
   batch.set(
     doc(collection(db, 'auditLog')),
-    auditEntry('machine.typeUpdate', 'machine', type.id, label.trim(), `${type.label} → ${label.trim()}`, by),
+    auditEntry('machine.typeUpdate', 'machine', type.id, label, changes.join(' · '), by),
   );
   await commit(batch);
 }
@@ -107,7 +152,7 @@ export async function deleteMachineType(type: MachineTypeDef, by: Person): Promi
   const batch = writeBatch(db);
   // An added type is deleted. A built-in one is not stored, so removing it is
   // a record that it is hidden — which restoring takes away again.
-  if (type.builtIn) batch.set(doc(db, 'machineTypes', type.id), { hidden: true });
+  if (type.builtIn) batch.set(doc(db, 'machineTypes', type.id), { hidden: true }, { merge: true });
   else batch.delete(doc(db, 'machineTypes', type.id));
   batch.set(
     doc(collection(db, 'auditLog')),
@@ -120,7 +165,8 @@ export async function deleteMachineType(type: MachineTypeDef, by: Person): Promi
 export async function restoreMachineType(type: MachineTypeDef, by: Person): Promise<void> {
   if (!type.builtIn || !type.hidden) return;
   const batch = writeBatch(db);
-  batch.delete(doc(db, 'machineTypes', type.id));
+  // Only the removal is taken back; any name or unit it was given stays.
+  batch.update(doc(db, 'machineTypes', type.id), { hidden: deleteField() });
   batch.set(
     doc(collection(db, 'auditLog')),
     auditEntry('machine.typeCreate', 'machine', type.id, type.label, `${type.label} ආපසු ගත්තා`, by),

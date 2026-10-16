@@ -13,7 +13,7 @@ import {
 } from 'firebase/firestore';
 
 import { db } from '../db';
-import { addDays, hours, monthBounds } from '../lib/format';
+import { addDays, dateKey, hours, monthBounds } from '../lib/format';
 import { leaveWorkPlan, readingBounds, readingError } from '../lib/leaveWork';
 import {
   MACHINE_ID_PATTERN,
@@ -385,9 +385,6 @@ export async function updateMachine(
 ): Promise<void> {
   const problem = detailsError(details);
   if (problem) throw new Error(problem);
-  if (machine.type && details.type !== machine.type) {
-    throw new Error('යන්ත්‍රයක වර්ගය එක් වරක් තෝරා පසු වෙනස් කළ නොහැක.');
-  }
   if (!types.has(details.type) && details.type !== machine.type) throw new Error('යන්ත්‍රයේ වර්ගය තෝරන්න.');
   const kind = machineTypeDef(types, details.type).kind;
   if (crew.some((person) => machineTypeForRole(person.role) !== kind)) {
@@ -408,6 +405,17 @@ export async function updateMachine(
     ...cleanDetails(details),
     ...(meterMoves ? { totalHours: meterHours } : {}),
   });
+  // A machine with no crew has no days to add up, so what its meter has moved on
+  // since it was last put right is this month's use — hours or kilometres. Not
+  // when the unit changes with it (the two readings are not the same thing), nor
+  // when it falls back (a correction), nor on a crew's machine, whose hours come
+  // from the days they close.
+  const unitKept = (details.meterUnit ?? machine.meterUnit) === machine.meterUnit;
+  if (meterMoves && meterHours != null && meterHours > machine.totalHours && crew.length === 0 && unitKept) {
+    const used = Math.round((meterHours - machine.totalHours) * 1000) / 1000;
+    const month = dateKey(new Date()).slice(0, 7);
+    batch.set(monthRef(machine.id, month), { month, hours: increment(used) }, { merge: true });
+  }
   batch.set(
     doc(collection(db, 'auditLog')),
     auditEntry('machine.update', 'machine', machine.id, machine.id, summary, by),

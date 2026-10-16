@@ -1,9 +1,9 @@
-import { Check, Pencil, Plus, RotateCcw, Settings2, Trash2, UserPlus, X } from 'lucide-react';
+import { Check, Pencil, Plus, RotateCcw, Settings2, Trash2, UserPlus } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 
 import { useSession } from '../auth/AuthContext';
 import { useLiveData } from '../data/LiveData';
-import { createMachineType, deleteMachineType, renameMachineType, restoreMachineType } from '../data/machineTypes';
+import { createMachineType, deleteMachineType, restoreMachineType, updateMachineType } from '../data/machineTypes';
 import {
   assignMachine,
   createMachine,
@@ -83,10 +83,9 @@ export function MachineModal({ machine, onClose }: { machine: Machine | null; on
   const [managingTypes, setManagingTypes] = useState(false);
 
   const crew = machine ? crewOn(machine.id, people) : [];
-  // Once a machine has a kind — of its own, or from the crew on it — it keeps
-  // it: its crew, its service parts and its history were set up for that kind.
+  // The type it has now — its own, or read from the crew on it — is where the
+  // form starts. It can be changed, to one that suits the crew on it.
   const knownType = machine ? machineTypeOf(machine, people) : null;
-  const typeLocked = knownType != null;
 
   const [id, setId] = useState(machine?.id ?? '');
   const [type, setType] = useState<MachineType>(knownType ?? 'excavator');
@@ -111,9 +110,8 @@ export function MachineModal({ machine, onClose }: { machine: Machine | null; on
 
   function pickType(next: MachineType) {
     setType(next);
-    const chosen = machineTypeDef(machineTypes, next);
-    if (chosen.kind !== 'none') setUnit('h');
-    else if (!machine && !unitPicked) setUnit(chosen.meterUnit);
+    // A new machine starts with what its type counts; once picked by hand the unit stays.
+    if (!machine && !unitPicked) setUnit(machineTypeDef(machineTypes, next).meterUnit);
   }
 
   async function submit(event: FormEvent) {
@@ -160,9 +158,6 @@ export function MachineModal({ machine, onClose }: { machine: Machine | null; on
   const crewKind = crew.length > 0 ? machineTypeForRole(crew[0].role) : null;
   const typeChoices = pickableTypes(machineTypes, type).filter((choice) => !crewKind || choice.kind === crewKind);
   if (!typeChoices.some((choice) => choice.id === type)) typeChoices.push(machineTypeDef(machineTypes, type));
-  // Kilometres or hours is asked only of a vehicle with no crew; a machine with
-  // a crew counts hours. (One already set to kilometres keeps its choice.)
-  const askUnit = machineTypeDef(machineTypes, type).kind === 'none' || unit === 'km';
 
   return (
     <>
@@ -198,13 +193,16 @@ export function MachineModal({ machine, onClose }: { machine: Machine | null; on
           </Field>
           <Field
             label="වර්ගය"
-            hint={typeLocked ? 'වර්ගය එක් වරක් තෝරා පසු වෙනස් කළ නොහැක.' : 'මෙයින් තීරණය වන්නේ කුමන කණ්ඩායමකට යෙදිය හැකිද යන්නයි.'}
+            hint={
+              crew.length > 0
+                ? 'කණ්ඩායමක් සිටින නිසා, ඔවුන්ට ගැළපෙන වර්ග පමණක් පෙන්වයි.'
+                : 'මෙයින් තීරණය වන්නේ කුමන කණ්ඩායමකට යෙදිය හැකිද යන්නයි.'
+            }
           >
             <div className="flex gap-2">
               <Select
                 className="min-w-0 flex-1"
                 value={type}
-                disabled={typeLocked}
                 onChange={(event) => pickType(event.target.value)}
               >
                 {typeChoices.map((choice) => (
@@ -267,16 +265,14 @@ export function MachineModal({ machine, onClose }: { machine: Machine | null; on
               value={meter}
               onChange={(event) => setMeter(event.target.value)}
             />
-            {askUnit && (
-              <Segmented
-                value={unit}
-                onChange={(value) => {
-                  setUnit(value);
-                  setUnitPicked(true);
-                }}
-                options={METER_UNITS.map((value) => ({ value, label: METER_UNIT_LABEL[value] }))}
-              />
-            )}
+            <Segmented
+              value={unit}
+              onChange={(value) => {
+                setUnit(value);
+                setUnitPicked(true);
+              }}
+              options={METER_UNITS.map((value) => ({ value, label: METER_UNIT_LABEL[value] }))}
+            />
           </div>
         </Field>
 
@@ -341,8 +337,11 @@ export function MachineModal({ machine, onClose }: { machine: Machine | null; on
     {managingTypes && (
       <MachineTypesModal
         onClose={() => setManagingTypes(false)}
-        onCreated={(id) => {
-          if (!typeLocked) setType(id);
+        onCreated={(id, made) => {
+          // Only a machine with no crew on it can take a type just added.
+          if (crew.length > 0) return;
+          setType(id);
+          if (!unitPicked) setUnit(made.meterUnit);
         }}
       />
     )}
@@ -360,11 +359,11 @@ export function MachineTypesModal({
   onCreated,
 }: {
   onClose: () => void;
-  /** Told the id of a type just added, so a form can pick it. */
-  onCreated?: (id: string) => void;
+  /** Told the id and behaviour of a type just added, so a form can pick it. */
+  onCreated?: (id: string, made: { kind: MachineKind; meterUnit: MeterUnit }) => void;
 }) {
   const { profile } = useSession();
-  const { machineTypes } = useLiveData();
+  const { machineTypes, machines, people } = useLiveData();
   const toast = useToast();
 
   const [label, setLabel] = useState('');
@@ -372,7 +371,10 @@ export function MachineTypesModal({
   const [kind, setKind] = useState<MachineKind>('none');
   // What a no-crew vehicle's meter counts: kilometres, unless it is picked otherwise.
   const [typeUnit, setTypeUnit] = useState<MeterUnit>('km');
-  const [editing, setEditing] = useState<{ id: string; label: string; english: string } | null>(null);
+  const [typeUnitPicked, setTypeUnitPicked] = useState(false);
+  const [editing, setEditing] = useState<
+    { id: string; label: string; english: string; kind: MachineKind; meterUnit: MeterUnit } | null
+  >(null);
   const [removing, setRemoving] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -392,19 +394,20 @@ export function MachineTypesModal({
   function add(event: FormEvent) {
     event.preventDefault();
     void run(async () => {
-      const id = await createMachineType(label, english, kind, machineTypes, profile, kind === 'none' ? typeUnit : 'h');
+      const meterUnit = typeUnit;
+      const id = await createMachineType(label, english, kind, machineTypes, profile, meterUnit);
       toast.success(`${label.trim()} වර්ගය එකතු කළා.`);
       setLabel('');
       setEnglish('');
-      onCreated?.(id);
+      onCreated?.(id, { kind, meterUnit });
     });
   }
 
   function save(type: MachineTypeDef) {
     if (!editing) return;
     void run(async () => {
-      await renameMachineType(type, editing.label, editing.english, machineTypes, profile);
-      toast.success('වර්ගයේ නම සුරැකුණා.');
+      await updateMachineType(type, editing, machineTypes, machines.values(), people, profile);
+      toast.success(`${editing.label.trim()} වර්ගය සුරැකුණා.`);
       setEditing(null);
     });
   }
@@ -443,27 +446,47 @@ export function MachineTypesModal({
           return (
             <li key={type.id} className="px-4 py-3">
               {isEditing ? (
-                <div className="flex flex-wrap items-center gap-2">
-                  <Input
-                    autoFocus
-                    className="min-w-[8rem] flex-1"
-                    maxLength={40}
-                    value={editing.label}
-                    onChange={(event) => setEditing({ ...editing, label: event.target.value })}
+                <div className="space-y-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Input
+                      autoFocus
+                      className="min-w-[8rem] flex-1"
+                      maxLength={40}
+                      value={editing.label}
+                      onChange={(event) => setEditing({ ...editing, label: event.target.value })}
+                    />
+                    <Input
+                      className="min-w-[8rem] flex-1"
+                      maxLength={40}
+                      placeholder="English (optional)"
+                      value={editing.english}
+                      onChange={(event) => setEditing({ ...editing, english: event.target.value })}
+                    />
+                  </div>
+                  <Select
+                    value={editing.kind}
+                    disabled={type.builtIn}
+                    onChange={(event) => setEditing({ ...editing, kind: event.target.value as MachineKind })}
+                  >
+                    {MACHINE_KINDS.map((value) => (
+                      <option key={value} value={value}>
+                        {MACHINE_KIND_LABEL[value]}
+                      </option>
+                    ))}
+                  </Select>
+                  <Segmented
+                    value={editing.meterUnit}
+                    onChange={(value) => setEditing({ ...editing, meterUnit: value })}
+                    options={METER_UNITS.map((value) => ({ value, label: `මීටරය: ${METER_UNIT_LABEL[value]}` }))}
                   />
-                  <Input
-                    className="min-w-[8rem] flex-1"
-                    maxLength={40}
-                    placeholder="English (optional)"
-                    value={editing.english}
-                    onChange={(event) => setEditing({ ...editing, english: event.target.value })}
-                  />
-                  <IconButton label="සුරකින්න" disabled={busy} onClick={() => save(type)}>
-                    <Check className="size-4" />
-                  </IconButton>
-                  <IconButton label="අවලංගු" onClick={() => setEditing(null)}>
-                    <X className="size-4" />
-                  </IconButton>
+                  <div className="flex justify-end gap-2">
+                    <Button variant="secondary" onClick={() => setEditing(null)}>
+                      අවලංගු
+                    </Button>
+                    <Button busy={busy} icon={<Check className="size-4" />} onClick={() => save(type)}>
+                      සුරකින්න
+                    </Button>
+                  </div>
                 </div>
               ) : (
                 <div className="flex items-center gap-3">
@@ -489,17 +512,21 @@ export function MachineTypesModal({
                     </div>
                   ) : (
                     <div className="flex gap-1">
-                      {!type.builtIn && (
-                        <IconButton
-                          label="නම වෙනස් කරන්න"
-                          onClick={() => {
-                            setRemoving(null);
-                            setEditing({ id: type.id, label: type.label, english: type.english });
-                          }}
-                        >
-                          <Pencil className="size-4" />
-                        </IconButton>
-                      )}
+                      <IconButton
+                        label="වර්ගය සංස්කරණය"
+                        onClick={() => {
+                          setRemoving(null);
+                          setEditing({
+                            id: type.id,
+                            label: type.label,
+                            english: type.english,
+                            kind: type.kind,
+                            meterUnit: type.meterUnit,
+                          });
+                        }}
+                      >
+                        <Pencil className="size-4" />
+                      </IconButton>
                       <IconButton
                         label="වර්ගය මකන්න"
                         onClick={() => {
@@ -550,7 +577,15 @@ export function MachineTypesModal({
           label="ක්‍රියා කරන ආකාරය"
           hint="කණ්ඩායමක් යෙදිය හැක්කේද, සේවා කොටස් ගණන් කරන්නේ කුමක් සඳහාද යන්න මෙයින් තීරණය වේ. එක් වරක් දුන් පසු වෙනස් නොවේ."
         >
-          <Select value={kind} onChange={(event) => setKind(event.target.value as MachineKind)}>
+          <Select
+            value={kind}
+            onChange={(event) => {
+              const next = event.target.value as MachineKind;
+              setKind(next);
+              // Until picked by hand, a vehicle with no crew counts kilometres and a crewed machine hours.
+              if (!typeUnitPicked) setTypeUnit(next === 'none' ? 'km' : 'h');
+            }}
+          >
             {MACHINE_KINDS.map((value) => (
               <option key={value} value={value}>
                 {MACHINE_KIND_LABEL[value]}
@@ -558,18 +593,19 @@ export function MachineTypesModal({
             ))}
           </Select>
         </Field>
-        {kind === 'none' && (
-          <Field
-            label="මීටරය බලන්නේ"
-            hint="මෙම වර්ගයේ යන්ත්‍ර / වාහනවල මීටරය ගණන් කරන්නේ කිලෝමීටර් ද පැය ද යන්න. එක් එක් යන්ත්‍රයේදී වෙනස් කළ හැක."
-          >
-            <Segmented
-              value={typeUnit}
-              onChange={setTypeUnit}
-              options={METER_UNITS.map((value) => ({ value, label: METER_UNIT_LABEL[value] }))}
-            />
-          </Field>
-        )}
+        <Field
+          label="මීටරය බලන්නේ"
+          hint="මෙම වර්ගයේ යන්ත්‍ර / වාහනවල මීටරය ගණන් කරන්නේ කිලෝමීටර් ද පැය ද යන්න. එක් එක් යන්ත්‍රයේදී වෙනස් කළ හැක."
+        >
+          <Segmented
+            value={typeUnit}
+            onChange={(value) => {
+              setTypeUnit(value);
+              setTypeUnitPicked(true);
+            }}
+            options={METER_UNITS.map((value) => ({ value, label: METER_UNIT_LABEL[value] }))}
+          />
+        </Field>
         <Button type="submit" icon={<Plus className="size-4" />} busy={busy && !editing && !removing}>
           වර්ගය එකතු කරන්න
         </Button>
@@ -771,8 +807,8 @@ export function MachineHoursModal({ machine, onClose }: { machine: Machine; onCl
           label={machine.meterUnit === 'km' ? 'මීටරය (කිලෝමීටර්)' : 'මීටරය (මුළු පැය)'}
           value={meterReading(machine.totalHours, machine.meterUnit)}
         />
-        <Figure label={`මේ මාසය (${monthLabel(month)})`} value={hours(thisMonth?.hours ?? 0)} />
-        <Figure label="මාස වාර්තා වල එකතුව" value={hours(recordedHours(all))} />
+        <Figure label={`මේ මාසය (${monthLabel(month)})`} value={meterReading(thisMonth?.hours ?? 0, machine.meterUnit)} />
+        <Figure label="මාස වාර්තා වල එකතුව" value={meterReading(recordedHours(all), machine.meterUnit)} />
       </div>
       <p className="mt-2 px-1 text-xs text-white/55">
         පැය ගණනය වන්නේ ඊළඟ උදේ ON මීටරය ඇතුළත් කළ විට දවස වැසෙන ආකාරයටයි — එබැවින් අද දවසේ පැය හෙට සම්පූර්ණ වේ. මීටරය

@@ -72,7 +72,10 @@ export function MachinesPage() {
   if (!ready) return <Loading />;
 
   const hoursThisMonth = (machine: Machine) => monthly[monthRef(machine.id, month).path]?.hours ?? 0;
-  const monthTotal = list.reduce((total, machine) => total + hoursThisMonth(machine), 0);
+  // The tile adds up hours only; a machine counted in kilometres has its own.
+  const monthTotal = list
+    .filter((machine) => machine.meterUnit === 'h')
+    .reduce((total, machine) => total + hoursThisMonth(machine), 0);
   // Crew whose machine has no record of its own — set up before machines were kept.
   const unlisted = crew.filter((person) => person.machineId && !machines.has(person.machineId));
   // The page may have been told of a machine since it was opened.
@@ -133,7 +136,7 @@ export function MachinesPage() {
                   <th className={th}>වර්ගය</th>
                   <th className={th}>කණ්ඩායම</th>
                   <th className={cx(th, 'text-right')}>මීටරය</th>
-                  <th className={cx(th, 'text-right')}>මේ මාසය (පැය)</th>
+                  <th className={cx(th, 'text-right')}>මේ මාසය (පැය / km)</th>
                   <th className={th}>සේවා</th>
                   <th className={cx(th, 'text-right')}>ක්‍රියා</th>
                 </tr>
@@ -182,8 +185,8 @@ export function MachinesPage() {
                         {meterReading(machine.totalHours, machine.meterUnit)}
                       </td>
                       <td className={cx(td, 'text-right font-bold tabular-nums')}>
-                        {/* A kilometre meter has no hours worked in a month to add up. */}
-                        {machine.meterUnit === 'km' ? '—' : hours(hoursThisMonth(machine))}
+                        {/* Hours its crew worked, or the kilometres its meter has moved on, this month. */}
+                        {meterReading(hoursThisMonth(machine), machine.meterUnit)}
                       </td>
                       <td className={td}>
                         {!type || tasks.length === 0 ? (

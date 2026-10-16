@@ -5,7 +5,13 @@ import { initializeTestEnvironment, type RulesTestEnvironment } from '@firebase/
 import { collection, deleteDoc, doc, getDoc, getDocs, setDoc, writeBatch, type Firestore } from 'firebase/firestore';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createMachineType, deleteMachineType, renameMachineType, restoreMachineType } from '../src/data/machineTypes';
+import {
+  createMachineType,
+  deleteMachineType,
+  restoreMachineType,
+  updateMachineType,
+  type MachineTypeChanges,
+} from '../src/data/machineTypes';
 import {
   assignMachine,
   createMachine,
@@ -266,10 +272,10 @@ describe('putting a machine’s details right', () => {
     // The meter and the service are left as they were.
     expect(await data('machines/ex1')).toMatchObject({ totalHours: 6789.7, serviceDueAt: { engineOil: 7000 } });
 
-    // Its kind cannot be changed once it has one.
+    // Its kind can be put right later, once no crew are on it.
     const typed = await machineNow('ex1');
-    await expect(updateMachine(typed, { ...excavator, type: 'compressor' }, [], BUILT_IN_TYPES, supervisor)).rejects.toThrow();
-    expect((await data('machines/ex1'))?.type).toBe('excavator');
+    await updateMachine(typed, { ...excavator, type: 'compressor' }, [], BUILT_IN_TYPES, supervisor);
+    expect((await data('machines/ex1'))?.type).toBe('compressor');
   });
 
   it('refuses a kind that its crew do not work', async () => {
@@ -446,29 +452,84 @@ describe('machine types an admin adds', () => {
     expect(await data('machines/lr1')).toBeUndefined();
   });
 
-  it('are renamed by an admin, and what they behave like stays', async () => {
+  const everyMachine = async () =>
+    (await direct(async (db) => (await getDocs(collection(db, 'machines'))).docs.map((entry) => machineFrom(entry.id, entry.data()))));
+  const change = (type: ReturnType<typeof machineTypeDef>, next: Partial<MachineTypeChanges>) => ({
+    label: type.label,
+    english: type.english,
+    kind: type.kind,
+    meterUnit: type.meterUnit,
+    ...next,
+  });
+
+  it('are put right by an admin at any time — names, behaviour and meter unit — and logged', async () => {
     signIn('admin1');
     const id = await createMachineType('ට්‍රක්', 'Truck', 'excavator', BUILT_IN_TYPES, admin);
     const types = await typesNow();
-    await renameMachineType(machineTypeDef(types, id), 'ටිපර්', 'Tipper', types, admin);
+    await updateMachineType(
+      machineTypeDef(types, id),
+      { label: 'ටිපර්', english: 'Tipper', kind: 'none', meterUnit: 'km' },
+      types,
+      await everyMachine(),
+      people,
+      admin,
+    );
 
-    expect(await data(`machineTypes/${id}`)).toEqual({ label: 'ටිපර්', english: 'Tipper', kind: 'excavator', meterUnit: 'h' });
+    expect(await data(`machineTypes/${id}`)).toEqual({ label: 'ටිපර්', english: 'Tipper', kind: 'none', meterUnit: 'km' });
     const entry = (await auditLog()).find((row) => row.action === 'machine.typeUpdate');
-    expect(entry).toMatchObject({ entityId: id, summary: 'ට්‍රක් → ටිපර්' });
+    expect(entry).toMatchObject({ entityId: id });
+    expect(entry?.summary).toContain('නම: ට්‍රක් → ටිපර්');
+    expect(entry?.summary).toContain('මීටරය: h → km');
   });
 
-  it('are renamed to nothing taken or empty, and the built-in two are not renamed at all', async () => {
+  it('keeps the crew a machine has: behaviour cannot change to one that does not suit them', async () => {
+    signIn('admin1');
+    const id = await createMachineType('ලෝඩරය', '', 'excavator', BUILT_IN_TYPES, admin);
+    const types = await typesNow();
+    await direct(async (db) => setDoc(doc(db, 'machines', 'ld1'), { totalHours: 0, serviceDueAt: {}, type: id }));
+    const crewed = [{ ...operator, machineId: 'ld1' }];
+    const mine = machineTypeDef(types, id);
+
+    await expect(
+      updateMachineType(mine, change(mine, { kind: 'none' }), types, await everyMachine(), crewed, admin),
+    ).rejects.toThrow(/ld1/);
+    await expect(
+      updateMachineType(mine, change(mine, { kind: 'compressor' }), types, await everyMachine(), crewed, admin),
+    ).rejects.toThrow(/ld1/);
+    expect(await data(`machineTypes/${id}`)).toMatchObject({ kind: 'excavator' });
+    // A change that suits them is fine, and so is one once they are gone.
+    await updateMachineType(mine, change(mine, { label: 'Loader 2' }), types, await everyMachine(), crewed, admin);
+    await updateMachineType(machineTypeDef(await typesNow(), id), change(mine, { label: 'Loader 2', kind: 'none' }), await typesNow(), await everyMachine(), [], admin);
+    expect(await data(`machineTypes/${id}`)).toMatchObject({ label: 'Loader 2', kind: 'none' });
+  });
+
+  it('can have the built-in two renamed and given another meter unit, kept as what differs', async () => {
+    signIn('admin1');
+    const types = await typesNow();
+    const digger = machineTypeDef(types, 'excavator');
+    await updateMachineType(digger, change(digger, { label: 'ඩිගර්', english: 'Digger', meterUnit: 'km' }), types, await everyMachine(), people, admin);
+
+    expect(await data('machineTypes/excavator')).toEqual({ label: 'ඩිගර්', english: 'Digger', meterUnit: 'km' });
+    const after = await typesNow();
+    expect(after.get('excavator')).toMatchObject({ label: 'ඩිගර්', english: 'Digger', meterUnit: 'km', kind: 'excavator', builtIn: true });
+    // What they behave like stays.
+    await expect(
+      updateMachineType(machineTypeDef(after, 'excavator'), change(machineTypeDef(after, 'excavator'), { kind: 'none' }), after, await everyMachine(), people, admin),
+    ).rejects.toThrow();
+    expect(after.get('compressor')).toMatchObject({ label: 'කම්පසර්' });
+  });
+
+  it('are put right to a name that is not taken or empty, and by an admin alone', async () => {
     signIn('admin1');
     const id = await createMachineType('ට්‍රක්', '', 'none', BUILT_IN_TYPES, admin);
     const types = await typesNow();
     const mine = machineTypeDef(types, id);
-    await expect(renameMachineType(mine, 'කම්පසර්', '', types, admin)).rejects.toThrow(/දැනටමත්/);
-    await expect(renameMachineType(mine, ' ', '', types, admin)).rejects.toThrow();
-    await expect(renameMachineType(machineTypeDef(types, 'excavator'), 'Mine', '', types, admin)).rejects.toThrow();
+    await expect(updateMachineType(mine, change(mine, { label: 'කම්පසර්' }), types, [], people, admin)).rejects.toThrow(/දැනටමත්/);
+    await expect(updateMachineType(mine, change(mine, { label: ' ' }), types, [], people, admin)).rejects.toThrow();
     expect(await data(`machineTypes/${id}`)).toMatchObject({ label: 'ට්‍රක්' });
 
     signIn('sup1');
-    await expect(renameMachineType(mine, 'Mine', '', types, supervisor)).rejects.toThrow();
+    await expect(updateMachineType(mine, change(mine, { label: 'Mine' }), types, [], people, supervisor)).rejects.toThrow();
   });
 
   it('are removed only while no machine is of them', async () => {
@@ -518,7 +579,8 @@ describe('machine types an admin adds', () => {
     await expect(restoreMachineType(machineTypeDef(hidden, 'compressor'), supervisor)).rejects.toThrow();
     signIn('admin1');
     await restoreMachineType(machineTypeDef(hidden, 'compressor'), admin);
-    expect(await data('machineTypes/compressor')).toBeUndefined();
+    // Only the removal is taken back; the record stays, holding nothing.
+    expect(await data('machineTypes/compressor')).toEqual({});
     expect(pickableTypes(await typesNow()).map((type) => type.id)).toEqual(['excavator', 'compressor']);
   });
 });
@@ -550,6 +612,30 @@ describe('the meter of a machine, put right by hand', () => {
     await expect(updateMachine(await machineNow('ex2'), excavator, [], BUILT_IN_TYPES, supervisor, -3)).rejects.toThrow();
     expect(await data('machines/ex2')).toMatchObject({ totalHours: 10 });
     expect(await auditLog()).toHaveLength(0);
+  });
+
+  it('adds what a machine with no crew has moved on to this month’s use, and only then', async () => {
+    const month = new Date().toISOString().slice(0, 7);
+    signIn('sup1');
+    await updateMachine(await machineNow('ex2'), { ...excavator, meterUnit: 'km' }, [], BUILT_IN_TYPES, supervisor, 1204);
+    // The unit changed with it: not a reading of the same thing, so nothing is added.
+    expect(await data(`machines/ex2/months/${month}`)).toBeUndefined();
+
+    await updateMachine(await machineNow('ex2'), { ...excavator, meterUnit: 'km' }, [], BUILT_IN_TYPES, supervisor, 1260.5);
+    expect(await data(`machines/ex2/months/${month}`)).toMatchObject({ month, hours: 56.5 });
+    await updateMachine(await machineNow('ex2'), { ...excavator, meterUnit: 'km' }, [], BUILT_IN_TYPES, supervisor, 1300);
+    expect(await data(`machines/ex2/months/${month}`)).toMatchObject({ hours: 96 });
+
+    // A reading put right downwards is a correction, not use.
+    await updateMachine(await machineNow('ex2'), { ...excavator, meterUnit: 'km' }, [], BUILT_IN_TYPES, supervisor, 1290);
+    expect(await data(`machines/ex2/months/${month}`)).toMatchObject({ hours: 96 });
+  });
+
+  it('adds nothing for a machine with a crew on it — its days do that', async () => {
+    const month = new Date().toISOString().slice(0, 7);
+    signIn('admin1');
+    await updateMachine(await machineNow('ex1'), excavator, [operator], BUILT_IN_TYPES, admin, 7500);
+    expect(await data(`machines/ex1/months/${month}`)).toBeUndefined();
   });
 
   it('is set when a machine is set up', async () => {
