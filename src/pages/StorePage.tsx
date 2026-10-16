@@ -1,4 +1,4 @@
-import { Boxes, Minus, PackagePlus, Pencil, Plus, Search, Trash2, TriangleAlert } from 'lucide-react';
+import { Boxes, Minus, PackagePlus, Pencil, Plus, Search, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 
 import { useSession } from '../auth/AuthContext';
@@ -89,30 +89,6 @@ export function StorePage() {
         <Summary label="තොග අවසන්" value={String(alerts.filter((alert) => alert.status === 'out').length)} tone="out" />
         <Summary label="තොගයේ වටිනාකම" value={rupees(value)} />
       </div>
-
-      {alerts.length > 0 && (
-        <Panel tone="deep" className="mb-6 p-4">
-          <p className="mb-3 flex items-center gap-2 text-sm font-extrabold text-signal">
-            <TriangleAlert className="size-5" /> තොග අනතුරු ඇඟවීම්
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {alerts.map(({ item, status }) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => setChanging({ item, mode: 'restock' })}
-                className="flex items-center gap-2 rounded-xl bg-well px-3 py-2 text-left hover:bg-black/30"
-              >
-                <span className="text-sm font-bold">{item.name}</span>
-                <span className="text-xs text-white/65">
-                  {quantity(item.quantity, item.unit)} / අවම {quantity(item.minQuantity, item.unit)}
-                </span>
-                <Badge tone={status}>{STOCK_LABEL[status]}</Badge>
-              </button>
-            ))}
-          </div>
-        </Panel>
-      )}
 
       <Panel className="mb-8 p-4 sm:p-5">
         <div className="mb-4 flex flex-wrap items-center gap-3">
