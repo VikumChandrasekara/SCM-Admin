@@ -51,7 +51,9 @@ export async function saveDayEdit(person: Person, date: string, edit: DayEdit, b
   if (invalid) throw new Error(invalid);
 
   const machineId = person.machineId;
-  const field = tallyField(person);
+  // Someone whose loads come from the bills has no figure typed in: their feet
+  // stay as they were, so an edit moves nothing there.
+  const field = tallyField(person) ?? 'feet';
   const around = await fetchDays(machineId, addDays(date, -WINDOW_DAYS), addDays(date, WINDOW_DAYS));
   const previousDate = addDays(date, -1);
   const nextDate = addDays(date, 1);

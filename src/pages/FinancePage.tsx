@@ -463,7 +463,6 @@ function FinanceReport({ finance, previousGross }: { finance: Finance; previousG
               <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
                 <CrewStat label="බෝනස් එකතුව" value={rupees(crew.bonusTotal)} />
                 <CrewStat label="ඇඩ්වාන්ස් එකතුව" value={rupees(crew.advanceTotal)} />
-                <CrewStat label="කෑම එකතුව" value={rupees(crew.foodTotal)} />
                 <CrewStat label="ගෙවිය යුතු ශේෂය එකතුව" value={rupees(crew.netTotal)} />
                 <CrewStat label="වැඩ කළ දින" value={quantity(crew.workedDays)} />
                 <CrewStat label="වැඩ කළ දිනයකට" value={crew.perWorkedDay != null ? rupees(crew.perWorkedDay) : '—'} />
@@ -507,7 +506,7 @@ function FinanceReport({ finance, previousGross }: { finance: Finance; previousG
 
               {crew.negative.length > 0 && (
                 <p className="mb-5 rounded-xl bg-alarm/30 px-4 py-3 text-sm font-semibold">
-                  ඇඩ්වාන්ස් සහ කෑම පඩියට වඩා වැඩි: {crew.negative.map((row) => nameOf(row.person)).join(', ')}
+                  ඇඩ්වාන්ස් පඩියට වඩා වැඩි: {crew.negative.map((row) => nameOf(row.person)).join(', ')}
                 </p>
               )}
             </>
@@ -526,12 +525,11 @@ function FinanceReport({ finance, previousGross }: { finance: Finance; previousG
                     <th className={cx(th, 'text-right')}>බෝනස්</th>
                     <th className={cx(th, 'text-right')}>මුළු වැටුප</th>
                     <th className={cx(th, 'text-right')}>ඇඩ්වාන්ස්</th>
-                    <th className={cx(th, 'text-right')}>කෑම</th>
                     <th className={cx(th, 'text-right')}>ගෙවිය යුතු ශේෂය</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {salaryPages.rows.map(({ person, pay, advances, food }) => (
+                  {salaryPages.rows.map(({ person, pay, advances }) => (
                     <tr key={person.id} className="border-b border-hairline/60 last:border-0">
                       <td className={td}>
                         <span className="font-bold">{nameOf(person)}</span>
@@ -544,7 +542,6 @@ function FinanceReport({ finance, previousGross }: { finance: Finance; previousG
                       <td className={cx(td, 'text-right tabular-nums')}>{pay.bonusPay > 0 ? money(pay.bonusPay) : '—'}</td>
                       <td className={cx(td, 'text-right font-extrabold tabular-nums')}>{money(pay.gross)}</td>
                       <td className={cx(td, 'text-right text-white/75 tabular-nums')}>{money(advances)}</td>
-                      <td className={cx(td, 'text-right text-white/75 tabular-nums')}>{money(food)}</td>
                       <td className={cx(td, 'text-right font-extrabold tabular-nums', pay.net < 0 && 'text-red-300')}>
                         {money(pay.net)}
                       </td>
@@ -556,9 +553,6 @@ function FinanceReport({ finance, previousGross }: { finance: Finance; previousG
                     <td className={cx(td, 'text-right tabular-nums')}>{money(finance.salaryTotal)}</td>
                     <td className={cx(td, 'text-right tabular-nums')}>
                       {money(finance.salaries.reduce((sum, row) => sum + row.advances, 0))}
-                    </td>
-                    <td className={cx(td, 'text-right tabular-nums')}>
-                      {money(finance.salaries.reduce((sum, row) => sum + row.food, 0))}
                     </td>
                     <td className={cx(td, 'text-right tabular-nums')}>
                       {money(finance.salaries.reduce((sum, row) => sum + row.pay.net, 0))}

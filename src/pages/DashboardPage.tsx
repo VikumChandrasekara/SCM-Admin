@@ -20,6 +20,7 @@ import { db } from '../db';
 import { serviceAlertsFor, stockAlerts } from '../lib/alerts';
 import { dateTime, money, monthBounds, monthLabel, quantity, rupees } from '../lib/format';
 import { LANDOWNER_MATERIALS, landownerShare, type LandownerPayment, type LandownerShare } from '../lib/landowner';
+import { operatorLoads } from '../lib/loads';
 import {
   ROLES,
   SALE_MATERIAL,
@@ -98,7 +99,12 @@ export function DashboardPage() {
 
   if (!ready) return <Loading />;
 
-  const monthTally = tally.data ?? monthFrom(month, undefined);
+  // An operator's loads are those of the bills that name them — see payFor.
+  const storedTally = tally.data ?? monthFrom(month, undefined);
+  const monthTally =
+    selected?.role === 'operator'
+      ? { ...storedTally, loads: operatorLoads(sales.data ?? [], selected.id, month, now) }
+      : storedTally;
   // The landowner's month: worked out from the month's sales, and whether it was paid.
   const share = sales.data && landownerRates.data ? landownerShare(sales.data, landownerRates.data, now) : null;
   const landownerPaid = landownerPayments.data?.find((entry) => entry.month === month) ?? null;
@@ -203,7 +209,7 @@ export function DashboardPage() {
                 icon={<HandCoins className="size-5" />}
                 label="ණය මුදල් ප්‍රමාණය"
                 value={pay.deductions}
-                caption="මේ මාසයේ ඇඩ්වාන්ස් + කෑම බිල්පත්"
+                caption="මේ මාසයේ ඇඩ්වාන්ස්"
               />
               <MoneyTile
                 icon={<Wallet className="size-5" />}
@@ -260,7 +266,7 @@ export function DashboardPage() {
                   icon={<HandCoins className="size-5" />}
                   label="ණය මුදල් ප්‍රමාණය"
                   value={pay.deductions}
-                  caption="මේ මාසයේ ඇඩ්වාන්ස් + කෑම බිල්පත්"
+                  caption="මේ මාසයේ ඇඩ්වාන්ස්"
                   className="lg:flex-1"
                 />
                 <MoneyTile
@@ -486,11 +492,9 @@ function countOrHours(value: number): string {
 }
 
 function grossCaption(person: Person, pay: NonNullable<ReturnType<typeof payFor>>): string {
-  // A driller paid per load: 6/9 always, the other kinds only when there are some
-  // or a rate for them — most months a driller sells little but 6/9.
+  // A driller paid per load: every kind is listed — 6/9, සක්කර, බෝල්දාස්, C1 — with 0 where none went.
   const parts = pay.loadPay
     ? pay.loadPay.lines
-        .filter((line) => line.label === '6/9' || line.loads > 0 || line.rate > 0)
         .map((line) => `${line.label} ලෝඩ් ${line.loads} × ${money(line.rate)}`)
     : [`${WAGE_BASIS_LABEL[person.wageBasis].unit} ${countOrHours(pay.wageUnits)} × ${money(person.dailyWage)}`];
   if (pay.bonusPay > 0) parts.push(`බෝනස් ${money(pay.bonusPay)}`);

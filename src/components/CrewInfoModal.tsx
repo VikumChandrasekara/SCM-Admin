@@ -107,11 +107,12 @@ export function CrewInfoModal({ person, date, onClose }: { person: Person; date:
       )
     : [];
 
-  // Loads for an excavator crew and for a compressor crew paid per load, අඩි
-  // for the rest.
+  // Only the feet a compressor crew drilled are typed in. An excavator
+  // operator's loads, and a driller's paid per load, are those of the bills
+  // that name them.
   const field = tallyField(live);
-  const whole = field === 'loads';
-  const storedTally = day.data ? day.data[field] : 0;
+  const storedTally = day.data && field ? day.data[field] : 0;
+  const billLoads = pay ? (pay.loadPay?.loads ?? pay.bonusLoads) : null;
   // A driller paid per load has a rate for each kind of load sold — 6/9,
   // සක්කර, බෝල්දාස්, C1 and the rest — what is picked here, before it is saved.
   const perLoadDriller = paidPerLoad({ role: live.role, wageBasis });
@@ -153,11 +154,11 @@ export function CrewInfoModal({ person, date, onClose }: { person: Person; date:
 
   function saveDayTally() {
     const value = Number(tally);
-    if (tally == null || !Number.isFinite(value) || value < 0) return;
+    if (!field || tally == null || !Number.isFinite(value) || value < 0) return;
     void run(
       'tally',
-      () => saveTally(live.machineId, date, field, whole ? Math.round(value) : value, live, profile),
-      `${whole ? 'ලෝඩ්' : 'අඩි'} ගණන සුරැකුණා.`,
+      () => saveTally(live.machineId, date, field, value, live, profile),
+      'අඩි ගණන සුරැකුණා.',
     ).then((saved) => saved && setTally(null));
   }
 
@@ -323,35 +324,45 @@ export function CrewInfoModal({ person, date, onClose }: { person: Person; date:
         </div>
 
         <div>
-          <SectionLabel trailing={<span className="text-xs text-white/55">{date}</span>}>
-            {whole ? 'පැටවූ ලෝඩ් ගණන' : 'අඩි ගණන'}
-          </SectionLabel>
-          <div className="flex items-end gap-2 rounded-card bg-well p-4">
-            <Field label="මෙම දිනයට" className="flex-1">
-              <Input
-                type="number"
-                min="0"
-                step={whole ? '1' : 'any'}
-                value={tally ?? String(storedTally)}
-                onChange={(event) => setTally(event.target.value)}
-                disabled={!live.machineId}
-              />
-            </Field>
-            <Button
-              busy={busy === 'tally'}
-              disabled={tally == null || Number(tally) === storedTally}
-              onClick={saveDayTally}
-            >
-              සුරකින්න
-            </Button>
-          </div>
-          <p className="mt-2 px-1 text-xs text-white/55">
-            මෙය සකසන්නේ සුපවයිසර් / පරිපාලක පමණි — මාසයේ එකතුව වෙනස වන ප්‍රමාණයෙන් යාවත්කාලීන වේ.
-          </p>
-          {perLoadDriller && (
-            <p className="mt-1 px-1 text-xs text-amber-hi">
-              මෙම පඩිය ගණනය කරන්නේ විකුණුම් බිල්පත් වල ලෝඩ් වලිනි — මෙහි ලෝඩ් ගණන සටහනක් පමණි, පඩියට බලපාන්නේ නැත.
-            </p>
+          {field ? (
+            <>
+              <SectionLabel trailing={<span className="text-xs text-white/55">{date}</span>}>අඩි ගණන</SectionLabel>
+              <div className="flex items-end gap-2 rounded-card bg-well p-4">
+                <Field label="මෙම දිනයට" className="flex-1">
+                  <Input
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={tally ?? String(storedTally)}
+                    onChange={(event) => setTally(event.target.value)}
+                    disabled={!live.machineId}
+                  />
+                </Field>
+                <Button
+                  busy={busy === 'tally'}
+                  disabled={tally == null || Number(tally) === storedTally}
+                  onClick={saveDayTally}
+                >
+                  සුරකින්න
+                </Button>
+              </div>
+              <p className="mt-2 px-1 text-xs text-white/55">
+                මෙය සකසන්නේ සුපවයිසර් / පරිපාලක පමණි — මාසයේ එකතුව වෙනස වන ප්‍රමාණයෙන් යාවත්කාලීන වේ.
+              </p>
+            </>
+          ) : (
+            <>
+              <SectionLabel>{live.role === 'operator' ? 'පැටවූ ලෝඩ් ගණන (6/9)' : 'ලෝඩ් ගණන'}</SectionLabel>
+              <div className="rounded-card bg-well p-4">
+                <p className="text-2xl font-extrabold tabular-nums text-amber-hi">
+                  {billLoads == null ? '—' : quantity(billLoads)}
+                </p>
+                <p className="mt-1 text-xs text-white/60">
+                  මේ මාසයේ තහවුරු කළ බිල්පත් වල ලෝඩ් — මෙය අතින් ඇතුළත් නොකරයි. බිල්පතක් සාදන විට මෙම
+                  {live.role === 'operator' ? ' ඔපරේටර්' : ' ඩ්‍රිලර්'} තෝරන්න.
+                </p>
+              </div>
+            </>
           )}
 
           <SectionLabel>

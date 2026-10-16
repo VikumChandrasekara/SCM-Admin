@@ -19,6 +19,7 @@ import {
   resetService,
   setServiceDue,
   updateMachine,
+  updateReadings,
 } from '../src/data/machines';
 import {
   BUILT_IN_TYPES,
@@ -652,6 +653,47 @@ describe('what a machine runs on, when it is set up', () => {
     expect(await data('machines/pt1')).toMatchObject({ fuel: 'petrol' });
     await updateMachine(await machineNow('pt1'), { ...excavator, fuel: 'diesel' }, [], BUILT_IN_TYPES, supervisor);
     expect(await data('machines/pt1')).toMatchObject({ fuel: 'diesel' });
+  });
+});
+
+describe('the quick meter and fuel box', () => {
+  it('puts the meter, its unit and the litres in the machine right, and logs each', async () => {
+    signIn('sup1');
+    await updateReadings(await machineNow('ex2'), { meter: 1204, meterUnit: 'km', fuelLevel: 80 }, [], supervisor);
+
+    expect(await data('machines/ex2')).toMatchObject({ totalHours: 1204, meterUnit: 'km', fuelLevel: 80 });
+    const [entry] = await auditLog();
+    expect(entry.summary).toContain('මීටරය: 10 h → 1204 km');
+    expect(entry.summary).toContain('ඉන්ධන ප්‍රමාණය: — → 80 L');
+  });
+
+  it('leaves the fuel as it was when none is given, and does nothing when nothing changed', async () => {
+    signIn('sup1');
+    await updateReadings(await machineNow('ex2'), { meter: 10, meterUnit: 'h', fuelLevel: 50 }, [], supervisor);
+    await updateReadings(await machineNow('ex2'), { meter: 30, meterUnit: 'h', fuelLevel: null }, [], supervisor);
+    expect(await data('machines/ex2')).toMatchObject({ totalHours: 30, fuelLevel: 50 });
+
+    const before = (await auditLog()).length;
+    await updateReadings(await machineNow('ex2'), { meter: 30, meterUnit: 'h', fuelLevel: 50 }, [], supervisor);
+    expect(await auditLog()).toHaveLength(before);
+  });
+
+  it('adds what a machine with no crew has moved on to this month, and not for a crew’s machine', async () => {
+    const month = new Date().toISOString().slice(0, 7);
+    signIn('admin1');
+    await updateReadings(await machineNow('ex2'), { meter: 60, meterUnit: 'h', fuelLevel: null }, [], admin);
+    expect(await data(`machines/ex2/months/${month}`)).toMatchObject({ hours: 50 });
+    await updateReadings(await machineNow('ex1'), { meter: 7500, meterUnit: 'h', fuelLevel: null }, [operator], admin);
+    expect(await data(`machines/ex1/months/${month}`)).toBeUndefined();
+  });
+
+  it('refuses a negative meter or fuel, and any crew member', async () => {
+    signIn('sup1');
+    await expect(updateReadings(await machineNow('ex2'), { meter: -1, meterUnit: 'h', fuelLevel: null }, [], supervisor)).rejects.toThrow();
+    await expect(updateReadings(await machineNow('ex2'), { meter: 5, meterUnit: 'h', fuelLevel: -2 }, [], supervisor)).rejects.toThrow();
+    signIn('op1');
+    await expect(updateReadings(await machineNow('ex2'), { meter: 99, meterUnit: 'h', fuelLevel: 9 }, [], operator)).rejects.toThrow();
+    expect(await data('machines/ex2')).toMatchObject({ totalHours: 10 });
   });
 });
 

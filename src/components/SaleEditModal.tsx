@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 
 import { useSession } from '../auth/AuthContext';
+import { useLiveData } from '../data/LiveData';
 import { updateSale } from '../data/sales';
 import { errorMessage } from '../lib/errors';
 import { money, quantity, rupees } from '../lib/format';
@@ -9,6 +10,7 @@ import {
   SALE_MATERIAL,
   SALE_TYPE,
   customerKeyOf,
+  nameOf,
   saleNumber,
   type PaymentType,
   type Sale,
@@ -33,6 +35,12 @@ export function SaleEditModal({ sale, onClose }: { sale: Sale; onClose: () => vo
   const [customerPhone, setCustomerPhone] = useState(sale.customerPhone);
   const [vehicleNo, setVehicleNo] = useState(sale.vehicleNo);
   const [note, setNote] = useState(sale.note);
+  // Whose loads the bill is: a bill from before bills said so is given its operator and driller here.
+  const { crew } = useLiveData();
+  const operators = crew.filter((person) => person.role === 'operator');
+  const drillers = crew.filter((person) => person.role === 'compressor');
+  const [operatorId, setOperatorId] = useState(sale.operatorId || (operators.length === 1 ? operators[0].id : ''));
+  const [drillerId, setDrillerId] = useState(sale.drillerId || (drillers.length === 1 ? drillers[0].id : ''));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -55,9 +63,21 @@ export function SaleEditModal({ sale, onClose }: { sale: Sale; onClose: () => vo
     setBusy(true);
     setError(null);
     try {
+      const operator = operators.find((person) => person.id === operatorId);
+      const driller = drillers.find((person) => person.id === drillerId);
       await updateSale(
         sale.code,
-        { quantity: count, customerName, customerPhone, vehicleNo, material, paymentType: payment, note },
+        {
+          quantity: count,
+          customerName,
+          customerPhone,
+          vehicleNo,
+          material,
+          paymentType: payment,
+          note,
+          operator: operator ? { id: operator.id, name: nameOf(operator) } : undefined,
+          driller: driller ? { id: driller.id, name: nameOf(driller) } : undefined,
+        },
         profile,
       );
       toast.success('බිල්පත යාවත්කාලීන කළා.');
@@ -132,6 +152,28 @@ export function SaleEditModal({ sale, onClose }: { sale: Sale; onClose: () => vo
           />
           {sale.prepaid && <span className="mt-1 block text-xs text-white/55">කලින් ගෙවීම මුදලින් පමණි.</span>}
         </div>
+
+        {operators.length > 1 && (
+          <div>
+            <span className="mb-1.5 block text-[13px] font-semibold text-white/75">ලෝඩ් කළ ඔපරේටර්</span>
+            <Segmented
+              value={operatorId}
+              onChange={setOperatorId}
+              options={operators.map((person) => ({ value: person.id, label: nameOf(person) }))}
+            />
+          </div>
+        )}
+
+        {drillers.length > 1 && (
+          <div>
+            <span className="mb-1.5 block text-[13px] font-semibold text-white/75">වැඩ කළ ඩ්‍රිලර්</span>
+            <Segmented
+              value={drillerId}
+              onChange={setDrillerId}
+              options={drillers.map((person) => ({ value: person.id, label: nameOf(person) }))}
+            />
+          </div>
+        )}
 
         <div className="grid gap-4 sm:grid-cols-2">
           <Field

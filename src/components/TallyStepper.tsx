@@ -28,10 +28,16 @@ interface Pending {
  * Give it `key={day.date}`, so a different day starts from its own figure.
  */
 export function TallyStepper({ person, day }: { person: Person; day: Day }) {
+  // Only feet are typed in. An operator's loads, and a driller's paid per
+  // load, are those of the bills that name them: nothing to step.
+  return tallyField(person) ? <FeetStepper person={person} day={day} /> : null;
+}
+
+function FeetStepper({ person, day }: { person: Person; day: Day }) {
   const { profile } = useSession();
   const toast = useToast();
-  const field = tallyField(person);
-  const whole = field === 'loads';
+  const field = 'feet' as const;
+  const whole = false as boolean;
 
   const [draft, setDraft] = useState<number | null>(null);
   const timer = useRef<number | undefined>(undefined);

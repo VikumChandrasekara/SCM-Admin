@@ -28,6 +28,10 @@ const sale = (name: string, amount: number, overrides: Partial<Sale> = {}): Sale
   verifiedByName: '',
   verifiedAt: new Date('2026-10-02T07:00:00Z'),
   cancelledAt: null,
+  operatorId: '',
+  operatorName: '',
+  drillerId: '',
+  drillerName: '',
   ...overrides,
 });
 

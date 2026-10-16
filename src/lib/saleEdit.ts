@@ -24,12 +24,17 @@ export interface SaleEdit {
   material: SaleMaterial;
   paymentType: PaymentType;
   note: string;
+  /** Whose loads it is — left out, the bill keeps who it names now. */
+  operator?: { id: string; name: string } | null;
+  driller?: { id: string; name: string } | null;
 }
 
 /** The fields written for [edit] on [sale]; the sum is worked at the price the bill was written at. */
 export function saleEditFields(sale: Sale, edit: SaleEdit) {
   const customerName = edit.customerName.trim();
   return {
+    ...(edit.operator ? { operatorId: edit.operator.id, operatorName: edit.operator.name } : {}),
+    ...(edit.driller ? { drillerId: edit.driller.id, drillerName: edit.driller.name } : {}),
     quantity: edit.quantity,
     amount: edit.quantity * sale.unitPrice,
     customerName,
@@ -72,6 +77,12 @@ export function saleEditSummary(sale: Sale, fields: ReturnType<typeof saleEditFi
     lines.push(`ගෙවීම: ${PAYMENT_TYPE_LABEL[sale.paymentType]} → ${PAYMENT_TYPE_LABEL[fields.paymentType]}`);
   }
   if (fields.note !== sale.note) lines.push(`සටහන: ${dash(sale.note)} → ${dash(fields.note)}`);
+  if (fields.operatorId !== undefined && fields.operatorId !== sale.operatorId) {
+    lines.push(`ඔපරේටර්: ${dash(sale.operatorName)} → ${dash(fields.operatorName ?? '')}`);
+  }
+  if (fields.drillerId !== undefined && fields.drillerId !== sale.drillerId) {
+    lines.push(`ඩ්‍රිලර්: ${dash(sale.drillerName)} → ${dash(fields.drillerName ?? '')}`);
+  }
   return lines.length > 0 ? lines.join(' · ') : null;
 }
 

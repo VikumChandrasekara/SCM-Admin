@@ -390,11 +390,12 @@ export function paidPerLoad(person: Pick<Person, 'role' | 'wageBasis'>): boolean
 }
 
 /**
- * Which daily figure staff enter for [person] — loads for an excavator crew
- * and for a compressor crew paid per load, අඩි otherwise.
+ * The daily figure staff type in for [person]: the feet a compressor crew
+ * drilled — or none. Loads are never typed in: an excavator operator's and a
+ * driller's come from the sales bills that name them (see loads.ts).
  */
-export function tallyField(person: Pick<Person, 'role' | 'wageBasis'>): 'loads' | 'feet' {
-  return ROLES[person.role].tracksBonus || paidPerLoad(person) ? 'loads' : 'feet';
+export function tallyField(person: Pick<Person, 'role' | 'wageBasis'>): 'feet' | null {
+  return ROLES[person.role].tracksBonus || paidPerLoad(person) ? null : 'feet';
 }
 
 /** A stored rate, or [fallback] when the record has none. */
@@ -629,6 +630,8 @@ export interface Machine {
   id: string;
   /** Null until someone says. */
   fuel: FuelType | null;
+  /** Litres of fuel in the machine, as staff last counted them. Null until someone says. */
+  fuelLevel: number | null;
   /**
    * What the machine is charged, in rupees for each [rateBasis] its crew record
    * — one of the finance report's expenses. Null until someone says: an
@@ -668,6 +671,8 @@ export interface MachineDetails {
   meterUnit?: MeterUnit;
   /** Left out by callers that do not set it: the machine's fuel is then not touched. */
   fuel?: FuelType;
+  /** Litres in the machine; left out, it is not touched. */
+  fuelLevel?: number;
   /** Left out by callers that do not set them: the machine's rate is then not touched. */
   rate?: number;
   rateBasis?: RateBasis;
@@ -684,6 +689,7 @@ export function machineFrom(id: string, data: DocumentData): Machine {
     totalHours: num(data.totalHours),
     meterUnit: meterUnitById(data.meterUnit),
     fuel: fuelTypeById(data.fuel),
+    fuelLevel: typeof data.fuelLevel === 'number' && data.fuelLevel >= 0 ? data.fuelLevel : null,
     rate: typeof data.rate === 'number' && data.rate >= 0 ? data.rate : null,
     rateBasis: rateBasisById(data.rateBasis),
     serviceDueAt: amountsFrom(data.serviceDueAt, SERVICE_TASKS),
@@ -1254,8 +1260,8 @@ export function auditEntryFrom(id: string, data: DocumentData): AuditEntry {
 // ---- bills ------------------------------------------------------------------
 
 /**
- * What a bill is for. Advances and food come out of a crew member's pay; the
- * rest are the site's own costs, and the finance page lists each as an expense
+ * What a bill is for. Only advances come out of a crew member's pay; food and
+ * the rest are the site's own costs, and the finance page lists each as an expense
  * of its own. Diesel, oil, explosives and parts are not bills — they are
  * counted from what is drawn from the store. `water` is stored as it always
  * was and now covers the electricity bill too. Mirrors BillCategory in the app
@@ -1279,7 +1285,7 @@ export const BILL: Record<
   { label: string; english: string; /** Taken out of the crew member's pay. */ deduction: boolean }
 > = {
   advance: { label: 'ඇඩ්වාන්ස්', english: 'Advance', deduction: true },
-  food: { label: 'කෑම', english: 'Food', deduction: true },
+  food: { label: 'කෑම', english: 'Food', deduction: false },
   royalty: { label: 'රාජ භාගය', english: 'Royalty', deduction: false },
   repair: { label: 'අලුත්වැඩියා', english: 'Repairs', deduction: false },
   water: { label: 'වතුර / විදුලි බිල', english: 'Water / electricity bill', deduction: false },
@@ -1538,6 +1544,15 @@ export interface Sale {
   createdBy: string;
   createdByName: string;
   createdAt: Date | null;
+  /**
+   * The excavator operator who loaded it — the loads, and the bonus on them, are
+   * theirs. Empty on a bill written before bills said so.
+   */
+  operatorId: string;
+  operatorName: string;
+  /** The driller whose work it was: paid per load, by material. Empty when not said. */
+  drillerId: string;
+  drillerName: string;
   verifiedBy: string | null;
   verifiedByName: string;
   verifiedAt: Date | null;
@@ -1570,6 +1585,10 @@ export function saleFrom(id: string, data: DocumentData): Sale {
     createdBy: str(data.createdBy),
     createdByName: str(data.createdByName),
     createdAt: toDate(data.createdAt),
+    operatorId: str(data.operatorId),
+    operatorName: str(data.operatorName),
+    drillerId: str(data.drillerId),
+    drillerName: str(data.drillerName),
     verifiedBy: str(data.verifiedBy) || null,
     verifiedByName: str(data.verifiedByName),
     verifiedAt: toDate(data.verifiedAt),

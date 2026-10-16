@@ -535,6 +535,18 @@ describe('what a machine runs on', () => {
   });
 });
 
+describe('the litres of fuel in a machine', () => {
+  it('is a number of nothing or more, put right by staff', async () => {
+    const machine = { totalHours: 0, serviceDueAt: {} };
+    await assertSucceeds(setDoc(doc(as('sup1'), 'machines', 'fl1'), { ...machine, fuelLevel: 80 }));
+    await assertSucceeds(setDoc(doc(as('sup1'), 'machines', 'fl2'), { ...machine, fuelLevel: 0 }));
+    await assertFails(setDoc(doc(as('sup1'), 'machines', 'fl3'), { ...machine, fuelLevel: -1 }));
+    await assertFails(setDoc(doc(as('sup1'), 'machines', 'fl4'), { ...machine, fuelLevel: '80' }));
+    await assertSucceeds(updateDoc(doc(as('sup1'), 'machines', 'fl1'), { fuelLevel: 40, totalHours: 12 }));
+    await assertFails(updateDoc(doc(as('op1'), 'machines', 'ex1'), { fuelLevel: 40 }));
+  });
+});
+
 describe('what a machine is charged', () => {
   it('is a rate of nothing or more, per hour, load or foot', async () => {
     const machine = { totalHours: 0, serviceDueAt: {} };
@@ -1535,6 +1547,35 @@ describe('sales', () => {
     await assertSucceeds(updateDoc(doc(as('admin1'), 'sales', 'FIXB2345'), correction()));
     await seedSale('FIXC2345', 30, 'cancelled');
     await assertSucceeds(updateDoc(doc(as('admin1'), 'sales', 'FIXC2345'), correction()));
+  });
+
+  it('a bill names the operator and driller whose loads it is, and a correction may put that right', async () => {
+    const named = { operatorId: 'op1', operatorName: 'Sanjeewa', drillerId: 'dr1', drillerName: 'Dharme' };
+    await assertSucceeds(addSale(as('sup1'), 'NAMA2345', sale('sup1', 'NAMA2345', named)));
+    // Both are text and short; a bill need not name them (older bills do not).
+    await assertFails(addSale(as('sup1'), 'NAMB2345', sale('sup1', 'NAMB2345', { number: 2, operatorId: 7 })));
+    await assertFails(addSale(as('sup1'), 'NAMC2345', sale('sup1', 'NAMC2345', { number: 2, drillerName: 'x'.repeat(101) })));
+    await assertFails(addSale(as('sup1'), 'NAMD2345', sale('sup1', 'NAMD2345', { number: 2, drillerId: 'x'.repeat(129) })));
+
+    await seedSale('NAME2345', 2, 'verified', { createdBy: 'sup1', verifiedBy: 'sup1' });
+    await assertSucceeds(updateDoc(doc(as('admin1'), 'sales', 'NAME2345'), correction(named)));
+    await assertSucceeds(updateDoc(doc(as('sup1'), 'sales', 'NAME2345'), correction({ operatorId: 'op2', operatorName: 'Other' })));
+    await assertFails(updateDoc(doc(as('admin1'), 'sales', 'NAME2345'), correction({ operatorId: 7 })));
+    await assertFails(updateDoc(doc(as('admin1'), 'sales', 'NAME2345'), correction({ drillerName: 'x'.repeat(101) })));
+    await assertFails(updateDoc(doc(as('op1'), 'sales', 'NAME2345'), correction(named)));
+  });
+
+  it('the operator and the driller a bill names list it — their loads are counted from it — and no one else’s', async () => {
+    await seedSale('LSTA2345', 2, 'verified', { operatorId: 'op1', drillerId: 'comp1', createdBy: 'sup1' });
+    await seedSale('LSTB2345', 2, 'verified', { operatorId: 'op2', drillerId: 'comp2', createdBy: 'sup1' });
+
+    await assertSucceeds(getDocs(query(collection(as('op1'), 'sales'), where('operatorId', '==', 'op1'))));
+    await assertSucceeds(getDocs(query(collection(as('comp1'), 'sales'), where('drillerId', '==', 'comp1'))));
+    // Someone else's loads, or every bill, is not theirs to list.
+    await assertFails(getDocs(query(collection(as('op1'), 'sales'), where('operatorId', '==', 'op2'))));
+    await assertFails(getDocs(query(collection(as('comp1'), 'sales'), where('drillerId', '==', 'comp2'))));
+    await assertFails(getDocs(collection(as('op1'), 'sales')));
+    await assertFails(getDocs(collection(as('comp1'), 'sales')));
   });
 
   it('a corrected bill still adds up, at the price it was written at', async () => {

@@ -1,4 +1,4 @@
-import { drillerLoads, type DrillerLoads } from './loads';
+import { drillerLoads, operatorLoads, type DrillerLoads } from './loads';
 import {
   BILL,
   ROLES,
@@ -39,7 +39,7 @@ export interface PayFigures {
   bonusLoads: number | null;
   /** මුදල් ප්‍රමාණය — everything earned this month: [wagePay] + [bonusPay]. */
   gross: number;
-  /** ණය මුදල් ප්‍රමාණය — advances and food charged to them this month. */
+  /** ණය මුදල් ප්‍රමාණය — the advances charged to them this month. */
   deductions: number;
   /** ලැබිය යුතු මුදල් ප්‍රමාණය — what is still owed to them. */
   net: number;
@@ -107,9 +107,9 @@ function wageUnitsOf(basis: Person['wageBasis'], month: MonthTally, workedDays: 
 }
 
 /**
- * [sales] are the month's sales bills. A driller's loads and bonus come from
- * them rather than from the crew's own tally: what the yard sold is what the
- * driller's work came to. Without them a driller has no loads yet.
+ * [sales] are the month's sales bills. An operator's and a driller's loads and
+ * bonus come from the bills that name them, not from any tally typed in: what
+ * the yard sold is what their work came to. Without them neither has loads yet.
  */
 export function payFor(
   person: Person,
@@ -126,12 +126,18 @@ export function payFor(
   const workedDays = monthDays.filter(dayWorked).length;
   const leaveDays = leaveDaysFor(month.month, today, workedDays);
 
-  const monthLoads = role.bonusOnSixNine || paidPerLoad(person) ? drillerLoads(sales, month.month, now) : null;
+  // The loads of the bills that name this person — nobody types them in. An
+  // operator's are all of them, a driller's are split by material.
+  const tally: MonthTally = role.tracksBonus
+    ? { ...month, loads: operatorLoads(sales, person.id, month.month, now) }
+    : month;
+  const monthLoads =
+    role.bonusOnSixNine || paidPerLoad(person) ? drillerLoads(sales, month.month, now, person.id) : null;
   const loadPay = monthLoads && paidPerLoad(person) ? loadPayOf(person, monthLoads) : null;
-  const wageUnits = loadPay ? loadPay.loads : wageUnitsOf(person.wageBasis, month, workedDays);
+  const wageUnits = loadPay ? loadPay.loads : wageUnitsOf(person.wageBasis, tally, workedDays);
   const wagePay = loadPay ? loadPay.pay : wageUnits * person.dailyWage;
 
-  const bonusLoads = role.tracksBonus ? month.loads : role.bonusOnSixNine && monthLoads ? monthLoads.sixNine : null;
+  const bonusLoads = role.tracksBonus ? tally.loads : role.bonusOnSixNine && monthLoads ? monthLoads.sixNine : null;
   const bonusPay = bonusLoads == null ? 0 : bonusEarned(bonusLoads);
   const gross = wagePay + bonusPay;
 
@@ -152,11 +158,14 @@ export function payFor(
       : person.wageBasis === 'foot'
         ? (day?.feet ?? 0)
         : person.wageBasis === 'load'
-          ? (day?.loads ?? 0)
+          ? role.tracksBonus && day
+            ? operatorLoads(sales, person.id, day.date, now)
+            : 0
           : day != null && dayWorked(day)
             ? 1
             : 0;
-  const dayLoadPay = paidPerLoad(person) && day ? loadPayOf(person, drillerLoads(sales, day.date, now)) : null;
+  const dayLoadPay =
+    paidPerLoad(person) && day ? loadPayOf(person, drillerLoads(sales, day.date, now, person.id)) : null;
   const dayEarnings = paidPerLoad(person)
     ? (dayLoadPay?.pay ?? 0)
     : dayWageUnits * person.dailyWage;

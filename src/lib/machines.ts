@@ -115,8 +115,11 @@ export function typeNameError(label: string, english: string): string | null {
 
 /** Why [details] cannot be saved, or null when they can. */
 export function detailsError(
-  details: Pick<MachineDetails, 'name' | 'model' | 'registrationNo' | 'notes' | 'rate'>,
+  details: Pick<MachineDetails, 'name' | 'model' | 'registrationNo' | 'notes' | 'rate' | 'fuelLevel'>,
 ): string | null {
+  if (details.fuelLevel != null && !(Number.isFinite(details.fuelLevel) && details.fuelLevel >= 0)) {
+    return 'ඉන්ධන ප්‍රමාණය ඍණ නොවන සංඛ්‍යාවක් විය යුතුය.';
+  }
   if (details.rate != null && !(Number.isFinite(details.rate) && details.rate >= 0)) {
     return 'යන්ත්‍රයේ ගාස්තුව ඍණ නොවන සංඛ්‍යාවක් විය යුතුය.';
   }
@@ -140,6 +143,7 @@ export function cleanDetails(details: MachineDetails): MachineDetails {
     // Only when it is set: firestore refuses an undefined field.
     ...(details.meterUnit ? { meterUnit: details.meterUnit } : {}),
     ...(details.fuel ? { fuel: details.fuel } : {}),
+    ...(details.fuelLevel != null ? { fuelLevel: details.fuelLevel } : {}),
     ...(details.rate != null ? { rate: details.rate } : {}),
     ...(details.rateBasis ? { rateBasis: details.rateBasis } : {}),
     name: details.name.trim(),
@@ -175,6 +179,9 @@ export function machineDiff(
   }
   if (next.fuel && next.fuel !== before.fuel) {
     lines.push(`ඉන්ධන: ${before.fuel ? FUEL_LABEL[before.fuel] : '—'} → ${FUEL_LABEL[next.fuel]}`);
+  }
+  if (next.fuelLevel != null && next.fuelLevel !== before.fuelLevel) {
+    lines.push(`ඉන්ධන ප්‍රමාණය: ${before.fuelLevel == null ? '—' : `${before.fuelLevel} L`} → ${next.fuelLevel} L`);
   }
   const basis = next.rateBasis ?? before.rateBasis;
   if ((next.rate != null && next.rate !== before.rate) || basis !== before.rateBasis) {

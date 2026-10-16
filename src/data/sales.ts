@@ -111,6 +111,13 @@ export interface SaleInput {
   customerPhone: string;
   vehicleNo: string;
   note: string;
+  /**
+   * The excavator operator who loaded it and the driller whose work it was —
+   * what their loads, bonus and pay are counted from. Empty only when there is
+   * no one of that kind to name.
+   */
+  operator: { id: string; name: string } | null;
+  driller: { id: string; name: string } | null;
 }
 
 /**
@@ -173,6 +180,10 @@ export async function createSale(input: SaleInput, by: Person): Promise<string> 
       createdBy: by.id,
       createdByName: nameOf(by),
       createdAt: serverTimestamp(),
+      operatorId: input.operator?.id ?? '',
+      operatorName: input.operator?.name ?? '',
+      drillerId: input.driller?.id ?? '',
+      drillerName: input.driller?.name ?? '',
     });
     tx.set(
       doc(collection(db, 'auditLog')),
@@ -181,7 +192,7 @@ export async function createSale(input: SaleInput, by: Person): Promise<string> 
         'sale',
         code,
         `බිල්පත ${padSaleNumber(number)}`,
-        `${input.prepaid ? 'කලින් ගෙවූ · ' : ''}${SALE_TYPE[input.type].label} · ${input.quantity} ${SALE_TYPE[input.type].unit} × රු.${unitPrice} = රු.${amount} · ${customerName}${vehicleNo ? ` · ${vehicleNo}` : ''}`,
+        `${input.prepaid ? 'කලින් ගෙවූ · ' : ''}${SALE_TYPE[input.type].label} · ${input.quantity} ${SALE_TYPE[input.type].unit} × රු.${unitPrice} = රු.${amount} · ${customerName}${vehicleNo ? ` · ${vehicleNo}` : ''}${input.operator ? ` · ඔපරේටර් ${input.operator.name}` : ''}${input.driller ? ` · ඩ්‍රිලර් ${input.driller.name}` : ''}`,
         by,
       ),
     );

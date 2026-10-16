@@ -1,10 +1,12 @@
 import type { CrewMonth } from '../data/finance';
 import { dateKey, money, monthBounds, quantity } from './format';
 import { landownerChargeOf, paysLandowner, saleLoads, type LandownerRate } from './landowner';
+import { drillerLoads, operatorLoads } from './loads';
 import {
   BILL,
   DEFAULT_SHELLS_PER_KG,
   RATE_BASIS_LABEL,
+  ROLES,
   SALE_MATERIAL,
   SALE_TYPE,
   saleNumber,
@@ -41,7 +43,8 @@ import { DEFAULT_ROYALTY_RATES, monthRoyaltyOf, type MonthRoyalty, type RoyaltyR
  *
  *   - from the store, at what it cost when it was drawn: diesel, oil, the
  *     shells (කරල්), the other explosives, and parts;
- *   - crew pay (පඩි) and the food (කෑම) charged to it, which are told apart;
+ *   - crew pay (පඩි), and the food (කෑම) bills, which are the site's own cost
+ *     and not taken out of anyone's pay;
  *   - what the machine is charged for each hour it worked;
  *   - the landowner (බදු හිමියා), for each load of 6/9, සක්කර or කෝරි ඩස්ට්;
  *   - the රාජ භාගය, worked out from the gel and ammonia the drillers signed off
@@ -50,8 +53,9 @@ import { DEFAULT_ROYALTY_RATES, monthRoyaltyOf, type MonthRoyalty, type RoyaltyR
  *   - the bills: repairs, the water / electricity bill, loan instalments and
  *     the rest.
  *
- * Crew pay counts in full — advances and food charged to a crew member are
- * part of it, paid early, so they are not counted again as bills.
+ * Crew pay counts in full — advances charged to a crew member are part of it,
+ * paid early, so they are not counted again as bills. Food is not: it is its
+ * own expense, whoever it was bought for.
  *
  * Fuel, oil, explosives and parts count in the month they were *used*, at what
  * they cost when they were drawn from the store. What was bought is reported
@@ -74,8 +78,6 @@ export interface SalaryRow {
   pay: PayFigures;
   /** Advances paid out during the month — part of the pay, paid early. */
   advances: number;
-  /** Food paid for them and taken off their pay. */
-  food: number;
 }
 
 /** A priced line of stock: bought, or used. */
@@ -149,8 +151,8 @@ export const EXPENSE_LABEL: Record<ExpenseCategory, { label: string; detail: str
   shells: { label: 'කරල්', detail: 'වෙඩි කරල් — ගබඩාවෙන් භාවිත කළ' },
   explosives: { label: 'වෙඩි බඩු — අනෙක්', detail: 'කැප්, වෙඩි නූල්, ඇමෝනියා, යාරමීලා, වෙඩි කුඩු, ඩීසල් මිශ්‍ර, බිට්, කටු' },
   parts: { label: 'කොටස් සහ සර්විස්', detail: 'ෆිල්ටර් සහ සර්විස් කොටස්' },
-  wages: { label: 'පඩි', detail: 'කණ්ඩායම් වැටුප් — ඇඩ්වාන්ස් ඇතුළුව, කෑම නැතිව' },
-  food: { label: 'කෑම', detail: 'කෑම බිල්පත් — පඩියෙන් අඩු කළ සහ අඩු නොකළ' },
+  wages: { label: 'පඩි', detail: 'කණ්ඩායම් වැටුප් — ඇඩ්වාන්ස් ඇතුළුව' },
+  food: { label: 'කෑම', detail: 'කෑම බිල්පත්' },
   machine: { label: 'යන්ත්‍රයට පැයකට', detail: 'එක්ස්කවේටර් වැඩ කළ පැය × පැයක ගාස්තුව' },
   landowner: { label: 'බදු හිමියා', detail: 'ලෝඩ් එකකට ගාස්තුව' },
   royalty: { label: 'රාජ භාගය', detail: 'ජෙල් සහ ඇමෝනියා භාවිතයෙන් ගණනය කළ' },
@@ -470,20 +472,16 @@ export function financeFor({
       person,
       pay: payFor(person, days, tally, bills, null, today, sales, now),
       advances: sum(theirs.filter((bill) => bill.category === 'advance').map((bill) => bill.amount)),
-      food: sum(theirs.filter((bill) => bill.category === 'food').map((bill) => bill.amount)),
     };
   });
   const salaryTotal = sum(salaries.map((row) => row.pay.gross));
   const monthEnd = monthBounds(month).to;
 
-  // The food charged to a crew member is part of their gross pay, paid early —
-  // so it comes out of the pay here and is counted as food instead, once.
-  const foodInPay = sum(salaries.map((row) => row.food));
-  spend('wages', salaryTotal - foodInPay);
-  spend('food', foodInPay);
+  // Food is not taken from anyone's pay: its bills are counted once, below, as food.
+  spend('wages', salaryTotal);
   details.set(
     'wages',
-    `${salaries.length} දෙනෙක් · වැඩ කළ දින ${sum(salaries.map((row) => row.pay.workedDays))} — ඇඩ්වාන්ස් ඇතුළුව, කෑම නැතිව`,
+    `${salaries.length} දෙනෙක් · වැඩ කළ දින ${sum(salaries.map((row) => row.pay.workedDays))} — ඇඩ්වාන්ස් ඇතුළුව`,
   );
 
   // ---- the machine ----
@@ -501,7 +499,13 @@ export function financeFor({
     const rate = own ? (machine?.rate ?? 0) : person.role === 'operator' ? machineHourly : 0;
     const basis: RateBasis = own ? (machine?.rateBasis ?? 'hour') : 'hour';
     if (!own && person.role !== 'operator') continue;
-    const counted = basis === 'hour' ? tally.hours : basis === 'load' ? tally.loads : tally.feet;
+    // Loads are those of the bills that name the person, never a typed-in tally.
+    const loadsOf = () => {
+      if (ROLES[person.role].tracksBonus) return operatorLoads(sales, person.id, month, now, false);
+      const own = drillerLoads(sales, month, now, person.id);
+      return own.sixNine + own.sakka + own.boldas + own.c1 + own.other;
+    };
+    const counted = basis === 'hour' ? tally.hours : basis === 'load' ? loadsOf() : tally.feet;
     if (!(counted > 0)) continue;
 
     const charge = counted * rate;
@@ -536,7 +540,7 @@ export function financeFor({
       date: monthEnd,
       kind: 'salary',
       category: 'wages',
-      description: `${nameOf(row.person)} — වැටුප් ශේෂය (ඇඩ්වාන්ස් සහ කෑම අඩු කළ පසු)`,
+      description: `${nameOf(row.person)} — වැටුප් ශේෂය (ඇඩ්වාන්ස් අඩු කළ පසු)`,
       income: 0,
       expense: row.pay.net,
     });
@@ -804,15 +808,14 @@ export interface CrewSummary {
   byMachine: { key: string; label: string; value: number }[];
   bonusTotal: number;
   advanceTotal: number;
-  foodTotal: number;
-  /** What is still owed to the crew once advances and food are taken off. */
+  /** What is still owed to the crew once advances are taken off. */
   netTotal: number;
   workedDays: number;
   /** Gross pay per worked day, or null when nobody worked. */
   perWorkedDay: number | null;
   highest: SalaryRow | null;
   lowest: SalaryRow | null;
-  /** Anyone whose advances and food come to more than their pay. */
+  /** Anyone whose advances come to more than their pay. */
   negative: SalaryRow[];
 }
 
@@ -833,7 +836,6 @@ export function crewSummaryFor(salaries: readonly SalaryRow[]): CrewSummary {
     byMachine: [...machines.values()].sort((a, b) => b.value - a.value),
     bonusTotal: sum(salaries.map((row) => row.pay.bonusPay)),
     advanceTotal: sum(salaries.map((row) => row.advances)),
-    foodTotal: sum(salaries.map((row) => row.food)),
     netTotal: sum(salaries.map((row) => row.pay.net)),
     workedDays,
     perWorkedDay: workedDays > 0 ? gross / workedDays : null,

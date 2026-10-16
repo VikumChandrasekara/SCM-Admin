@@ -48,6 +48,11 @@ const sale = (code: string, material: SaleMaterial | null, loads: number, overri
   verifiedByName: '',
   verifiedAt: new Date('2026-10-12T07:00:00Z'),
   cancelledAt: null,
+  // Whose loads the bills are: the one person these tests pay, unless a test says otherwise.
+  operatorId: 'p1',
+  operatorName: '',
+  drillerId: 'p1',
+  drillerName: '',
   ...overrides,
 });
 
@@ -168,6 +173,33 @@ describe('a driller paid per load', () => {
     expect(figures.deductions).toBe(1000);
     expect(figures.net).toBe(1000);
   });
+
+  it('is not deducted from for food — only advances come off the pay', () => {
+    const bill = (id: string, category: 'advance' | 'food', amount: number) => ({
+      id,
+      category,
+      amount,
+      date: '2026-10-05',
+      note: '',
+      operatorId: 'p1',
+      operatorName: 'Ruwan',
+      createdBy: 'u1',
+      createdByName: '',
+      createdAt: null,
+    });
+    const figures = payFor(
+      driller,
+      [],
+      tally(),
+      [bill('b1', 'advance', 1000), bill('b2', 'food', 700)],
+      null,
+      today,
+      [sale('SIX00001', 'six_nine', 4)],
+      now,
+    );
+    expect(figures.deductions).toBe(1000);
+    expect(figures.net).toBe(1000);
+  });
 });
 
 describe('a driller saved before each kind of load had a rate', () => {
@@ -227,17 +259,87 @@ describe("a driller's bonus", () => {
 describe('the excavator crew', () => {
   const operator = person('operator', { wageBasis: 'day', dailyWage: 4000 });
 
-  it('keeps its bonus on the loads it tallies, whatever the sales say', () => {
-    const figures = pay(operator, [sale('SIX00001', 'six_nine', 500)], { loads: 320 });
-    expect(figures.bonusLoads).toBe(320);
+  it('has its loads and bonus from the bills that name it — never from a tally typed in', () => {
+    // 300 6/9 loads on bills that name p1; a typed-in tally of 50, a bill for someone else and a load of සක්කර are ignored.
+    const figures = pay(
+      operator,
+      [
+        sale('SIX00001', 'six_nine', 300),
+        sale('SAK00001', 'sakka', 20),
+        sale('OTHER001', 'six_nine', 400, { operatorId: 'p2' }),
+      ],
+      { loads: 50 },
+    );
+    expect(figures.bonusLoads).toBe(300);
     expect(figures.bonusPay).toBe(30_000);
     expect(figures.loadPay).toBeNull();
   });
 
-  it('is not given the load rates, even if some are stored on the record', () => {
-    const figures = pay(person('operator', { wageBasis: 'load', dailyWage: 50, sakkaLoadWage: 999 }), [], { loads: 10 });
+  it('counts the 6/9 loads alone, and only loads that have gone, in this month', () => {
+    const figures = pay(operator, [
+      sale('SIX00001', 'six_nine', 3),
+      sale('SAK00001', 'sakka', 4),
+      sale('DUS00001', 'kory_dust', 2),
+      sale('OLD00001', null, 1),
+      sale('WAIT0001', 'six_nine', 9, { status: 'pending', verifiedAt: null, createdAt: new Date(now - 60 * 60 * 1000) }),
+      sale('CANC0001', 'six_nine', 9, { status: 'cancelled' }),
+      sale('LAST0001', 'six_nine', 9, { date: '2026-09-28' }),
+    ]);
+    expect(figures.bonusLoads).toBe(3);
+  });
+
+  it('is paid per load on the 6/9 loads of its bills, at the one rate', () => {
+    const perLoad = person('operator', { wageBasis: 'load', dailyWage: 500, sakkaLoadWage: 999 });
+    const figures = pay(perLoad, [sale('SIX00001', 'six_nine', 8), sale('SAK00001', 'sakka', 2)], { loads: 10_000 });
+    // The load rates for the other materials are a driller's; an operator is paid the one rate on a 6/9 load.
     expect(figures.loadPay).toBeNull();
-    expect(figures.wagePay).toBe(500);
+    expect(figures.wageUnits).toBe(8);
+    expect(figures.wagePay).toBe(4000);
+  });
+
+  it('earns the day’s wage on the loads of that day’s bills', () => {
+    const perLoad = person('operator', { wageBasis: 'load', dailyWage: 500 });
+    const day = { ...emptyDay('2026-10-12') };
+    const figures = pay(
+      perLoad,
+      [sale('SIX00001', 'six_nine', 3), sale('NEXT0001', 'six_nine', 5, { date: '2026-10-13' })],
+      { day },
+    );
+    expect(figures.dayEarnings).toBe(1500);
+  });
+
+  it('counts a bill that names no operator for whoever wrote it, if they are the operator', () => {
+    const figures = pay(operator, [
+      sale('MINE0001', 'six_nine', 7, { operatorId: '', createdBy: 'p1' }),
+      sale('NONE0001', 'six_nine', 5, { operatorId: '', createdBy: 'someone-else' }),
+    ]);
+    expect(figures.bonusLoads).toBe(7);
+  });
+});
+
+describe('two operators and two drillers', () => {
+  const op1 = person('operator', { id: 'op1', dailyWage: 4000 });
+  const op2 = person('operator', { id: 'op2', dailyWage: 4000 });
+  const dr1 = person('compressor', { id: 'dr1', wageBasis: 'load', dailyWage: 500 });
+  const dr2 = person('compressor', { id: 'dr2', wageBasis: 'load', dailyWage: 500 });
+  const bills = [
+    sale('A0000001', 'six_nine', 6, { operatorId: 'op1', drillerId: 'dr1' }),
+    sale('B0000001', 'six_nine', 4, { operatorId: 'op2', drillerId: 'dr1' }),
+    sale('C0000001', 'six_nine', 3, { operatorId: 'op2', drillerId: 'dr2' }),
+  ];
+
+  it('each get the loads of the bills that name them, and no one else’s', () => {
+    expect(pay(op1, bills).bonusLoads).toBe(6);
+    expect(pay(op2, bills).bonusLoads).toBe(7);
+    expect(pay(dr1, bills).loadPay?.loads).toBe(10);
+    expect(pay(dr2, bills).loadPay?.loads).toBe(3);
+    expect(pay(dr1, bills).wagePay).toBe(5000);
+  });
+
+  it('are paid nothing for a bill that names neither of them', () => {
+    const unnamed = [sale('D0000001', 'six_nine', 5, { operatorId: '', drillerId: '', createdBy: 'boss' })];
+    expect(pay(op1, unnamed).bonusLoads).toBe(0);
+    expect(pay(dr1, unnamed).loadPay?.loads).toBe(0);
   });
 });
 

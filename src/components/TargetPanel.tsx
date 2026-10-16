@@ -58,12 +58,12 @@ export function TargetPanel({
         <div className="grid items-center gap-5 md:grid-cols-[minmax(0,15rem)_minmax(0,1fr)]">
           <div className="space-y-2.5">
             <Row label="මාසේ දිනයන් ගණන" value={daysInMonth(month.month)} />
-            <Row label={role.tracksBonus ? 'පැටවූ ලෝඩ් ගණන' : '6/9 ලෝඩ් ගණන'} value={bonusLoads} />
+            <Row label={role.tracksBonus ? 'පැටවූ ලෝඩ් ගණන (6/9)' : '6/9 ලෝඩ් ගණන'} value={bonusLoads} />
             {role.tracksBonus ? null : loadPay ? (
               <>
-                {/* 6/9 is the row above, since the bonus is counted on it; the rest show once some have gone. */}
+                {/* 6/9 is the row above, since the bonus is counted on it; the rest always show, 0 when none went. */}
                 {loadPay.lines
-                  .filter((line) => line.label !== '6/9' && line.loads > 0)
+                  .filter((line) => line.label !== '6/9')
                   .map((line) => (
                     <Row key={line.label} label={`${line.label} ලෝඩ්`} value={line.loads} />
                   ))}

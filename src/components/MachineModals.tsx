@@ -9,6 +9,7 @@ import {
   createMachine,
   deleteMachine,
   updateMachine,
+  updateReadings,
   useMachineDays,
   useMachineMonths,
 } from '../data/machines';
@@ -615,6 +616,104 @@ export function MachineTypesModal({
           <ErrorNote>{error}</ErrorNote>
         </div>
       )}
+    </Modal>
+  );
+}
+
+/**
+ * The two things checked when work starts: the meter — in hours or kilometres —
+ * and the litres of fuel in the machine. A box of its own, so it takes a few
+ * seconds and not the whole details form.
+ */
+export function ReadingsModal({ machine, onClose }: { machine: Machine; onClose: () => void }) {
+  const { profile } = useSession();
+  const { people } = useLiveData();
+  const toast = useToast();
+
+  const [meter, setMeter] = useState(String(machine.totalHours));
+  const [unit, setUnit] = useState<MeterUnit>(machine.meterUnit);
+  const [fuel, setFuel] = useState(machine.fuelLevel == null ? '' : String(machine.fuelLevel));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const crew = crewOn(machine.id, people);
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await updateReadings(
+        machine,
+        { meter: meter.trim() === '' ? Number.NaN : Number(meter), meterUnit: unit, fuelLevel: fuel.trim() === '' ? null : Number(fuel) },
+        crew,
+        profile,
+      );
+      toast.success(`${machine.id} යන්ත්‍රයේ මීටරය සහ ඉන්ධන සුරැකුණා.`);
+      onClose();
+    } catch (failure) {
+      setError(errorMessage(failure));
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal
+      open
+      size="sm"
+      title={`${machine.id} — මීටරය සහ ඉන්ධන`}
+      subtitle={machineTitle(machine)}
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>
+            අවලංගු
+          </Button>
+          <Button type="submit" form="readings-form" busy={busy}>
+            සුරකින්න
+          </Button>
+        </>
+      }
+    >
+      <form id="readings-form" onSubmit={submit} className="space-y-4">
+        <Field
+          label="දැනට ඇති මීටරය"
+          hint={crew.length > 0 ? 'කණ්ඩායම ඇතුළත් කරන ඊළඟ කියවීමෙන් මෙය නැවත යාවත්කාලීන වේ.' : undefined}
+        >
+          <div className="flex flex-wrap gap-2">
+            <Input
+              autoFocus
+              className="min-w-0 flex-1"
+              type="number"
+              inputMode="decimal"
+              min="0"
+              step="any"
+              required
+              value={meter}
+              onChange={(event) => setMeter(event.target.value)}
+            />
+            <Segmented
+              value={unit}
+              onChange={setUnit}
+              options={METER_UNITS.map((value) => ({ value, label: METER_UNIT_LABEL[value] }))}
+            />
+          </div>
+        </Field>
+        <Field
+          label="යන්ත්‍රයේ ඇති ඉන්ධන ප්‍රමාණය (ලීටර්)"
+          hint={machine.fuel ? `${FUEL_LABEL[machine.fuel]} — ටැංකියේ දැනට ඇති ලීටර් ගණන.` : 'ටැංකියේ දැනට ඇති ලීටර් ගණන.'}
+        >
+          <Input
+            type="number"
+            inputMode="decimal"
+            min="0"
+            step="any"
+            placeholder="L"
+            value={fuel}
+            onChange={(event) => setFuel(event.target.value)}
+          />
+        </Field>
+        {error && <ErrorNote>{error}</ErrorNote>}
+      </form>
     </Modal>
   );
 }

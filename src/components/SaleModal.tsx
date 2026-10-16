@@ -3,6 +3,7 @@ import { useState, type FormEvent } from 'react';
 
 import { useSession } from '../auth/AuthContext';
 import { permissionsFor } from '../auth/permissions';
+import { useLiveData } from '../data/LiveData';
 import { createSale, useSalesPrices } from '../data/sales';
 import { errorMessage } from '../lib/errors';
 import { money, quantity, rupees } from '../lib/format';
@@ -13,6 +14,7 @@ import {
   SALE_TYPE,
   SALE_TYPES,
   TIPPER_SIZES,
+  nameOf,
   unitPriceOf,
   type PaymentType,
   type SaleMaterial,
@@ -45,6 +47,15 @@ export function SaleModal({ onClose, onCreated }: { onClose: () => void; onCreat
   const [customerPhone, setCustomerPhone] = useState('');
   const [vehicleNo, setVehicleNo] = useState('');
   const [note, setNote] = useState('');
+  // The bill says whose loads it is: the operator who loaded it and the driller whose work it was.
+  // Taken for granted only when there is no choice — the one there is, or the operator selling from their own phone.
+  const { crew } = useLiveData();
+  const operators = crew.filter((person) => person.role === 'operator');
+  const drillers = crew.filter((person) => person.role === 'compressor');
+  const [operatorId, setOperatorId] = useState(
+    profile.role === 'operator' ? profile.id : operators.length === 1 ? operators[0].id : '',
+  );
+  const [drillerId, setDrillerId] = useState(drillers.length === 1 ? drillers[0].id : '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -69,6 +80,10 @@ export function SaleModal({ onClose, onCreated }: { onClose: () => void; onCreat
     // A prepaid load's vehicle may not be known until it comes.
     if (!prepaid && !vehicleNo.trim()) return setError('වාහන අංකය ඇතුළත් කරන්න.');
     if (!material) return setError('ද්‍රව්‍යය තෝරන්න.');
+    const operator = operators.find((person) => person.id === operatorId) ?? null;
+    const driller = drillers.find((person) => person.id === drillerId) ?? null;
+    if (operators.length > 0 && !operator) return setError('ලෝඩ් කළ ඔපරේටර් තෝරන්න.');
+    if (drillers.length > 0 && !driller) return setError('වැඩ කළ ඩ්‍රිලර් තෝරන්න.');
 
     setBusy(true);
     setError(null);
@@ -84,6 +99,8 @@ export function SaleModal({ onClose, onCreated }: { onClose: () => void; onCreat
           customerPhone,
           vehicleNo,
           note,
+          operator: operator && { id: operator.id, name: nameOf(operator) },
+          driller: driller && { id: driller.id, name: nameOf(driller) },
         },
         profile,
       );
@@ -281,6 +298,30 @@ export function SaleModal({ onClose, onCreated }: { onClose: () => void; onCreat
             />
             {prepaid && <span className="mt-1 block text-xs text-white/55">කලින් ගෙවීම මුදලින් පමණි.</span>}
           </div>
+
+          {operators.length > 1 && (
+            <div>
+              <span className="mb-1.5 block text-[13px] font-semibold text-white/75">ලෝඩ් කළ ඔපරේටර්</span>
+              <Segmented
+                value={operatorId}
+                onChange={setOperatorId}
+                options={operators.map((person) => ({ value: person.id, label: nameOf(person) }))}
+              />
+              <span className="mt-1 block text-xs text-white/55">මෙම බිල්පතේ ලෝඩ් සහ බෝනස් ඔහුට එකතු වේ.</span>
+            </div>
+          )}
+
+          {drillers.length > 1 && (
+            <div>
+              <span className="mb-1.5 block text-[13px] font-semibold text-white/75">වැඩ කළ ඩ්‍රිලර්</span>
+              <Segmented
+                value={drillerId}
+                onChange={setDrillerId}
+                options={drillers.map((person) => ({ value: person.id, label: nameOf(person) }))}
+              />
+              <span className="mt-1 block text-xs text-white/55">ද්‍රව්‍යය අනුව ලෝඩ් එකකට ගෙවීම ඔහුට එකතු වේ.</span>
+            </div>
+          )}
 
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="පාරිභෝගිකයාගේ නම">

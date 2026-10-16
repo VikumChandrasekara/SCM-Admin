@@ -87,13 +87,50 @@ export interface DrillerLoads {
 export const noDrillerLoads = (): DrillerLoads => ({ sixNine: 0, sakka: 0, boldas: 0, c1: 0, other: 0 });
 
 /**
+ * The loads an excavator operator is paid and given a bonus on: those of the
+ * bills that name them. Only loads that have gone count — bills verified, as in
+ * [loadAnalysis] — dated within [datePrefix], a month (`2026-10`) or a day.
+ *
+ * A bill that names no operator counts for whoever wrote it, if that was an
+ * operator selling from their own phone; a bill from before bills named one is
+ * given its operator once, in the data, rather than guessed at here.
+ *
+ * The operator's loads are the 6/9 loads — the ladder and the count shown to
+ * them are on 6/9 alone. [onlySixNine] false counts a load of any material,
+ * which is what the machine did and is charged on.
+ */
+export function operatorLoads(
+  sales: readonly Sale[],
+  personId: string,
+  datePrefix: string,
+  now = Date.now(),
+  onlySixNine = true,
+): number {
+  let loads = 0;
+  for (const sale of sales) {
+    if (!sale.date.startsWith(datePrefix) || saleStatus(sale, now) !== 'verified') continue;
+    if (onlySixNine && sale.material !== 'six_nine') continue;
+    const mine = sale.operatorId ? sale.operatorId === personId : sale.createdBy === personId;
+    if (mine) loads += saleLoads(sale);
+  }
+  return loads;
+}
+
+/**
  * The loads that have gone — bills verified, as in [loadAnalysis] — dated
  * within [datePrefix], a month (`2026-10`) or a single day (`2026-10-20`).
+ * With [drillerId] only the bills that name that driller; without, all of them.
  */
-export function drillerLoads(sales: readonly Sale[], datePrefix: string, now = Date.now()): DrillerLoads {
+export function drillerLoads(
+  sales: readonly Sale[],
+  datePrefix: string,
+  now = Date.now(),
+  drillerId?: string,
+): DrillerLoads {
   const loads = noDrillerLoads();
   for (const sale of sales) {
     if (!sale.date.startsWith(datePrefix) || saleStatus(sale, now) !== 'verified') continue;
+    if (drillerId !== undefined && sale.drillerId !== drillerId) continue;
     const count = saleLoads(sale);
     if (sale.material === 'six_nine') loads.sixNine += count;
     else if (sale.material === 'sakka') loads.sakka += count;

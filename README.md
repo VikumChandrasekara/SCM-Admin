@@ -144,6 +144,22 @@ is the set one (or the default) and its amount is quantity × price, so no
 bill can be written at any other price. Bills already written keep the price
 they were written at.
 
+**Loads come from bills.** An operator's and a driller's loads are not
+counted by hand: a bill names the operator who loaded it and the driller whose
+work it was (`operatorId`/`operatorName`, `drillerId`/`drillerName`), and
+each one's loads are those of the verified bills that name them — a tipper
+bill is one trip, a tractor bill its loads. Where the yard has one operator or
+one driller the bill takes them by itself; with several, the bill cannot be
+written until one is picked, and an operator writing a bill is the operator.
+The month's bonus ladder (300 / 400 / 500), a per-load wage, a per-load
+driller's pay by material and a machine charged by the load all read the same
+bills. A bill from before this carries no names: for the operator it counts
+for whoever wrote it, and the admin can name both from the bill's edit form.
+Only feet are still entered by hand (a day-wage driller), from the person's
+day. Staff may put the names right on any bill; `firestore.rules` checks they
+are short text, and lets the named operator or driller list the bills that
+name them so their own console can show the month.
+
 Every bill has an 8-character code, such as `K7Q2-M9XA`, with no 0/O or 1/I
 to misread, and a QR code carrying it. The code is the sale's document ID.
 Anyone signed in can look a sale up by its code, but only staff can list
@@ -296,7 +312,7 @@ crosses a slow line, and how often.
   to be created once, so a repeat is refused as a whole instead of counted
   twice.
 - **Running totals go through transactions.** Bills move the advance
-  figure, and ලෝඩ් / අඩි move the month. These are written in transactions,
+  figure, and අඩි move the month. These are written in transactions,
   which are never queued and check the server first, so a retry finds the
   work already done. They need a connection; offline, they fail and say so.
   With no connection at all, a නොබැඳි badge and banner show in the header.

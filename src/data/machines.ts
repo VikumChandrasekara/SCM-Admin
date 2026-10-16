@@ -10,6 +10,7 @@ import {
   serverTimestamp,
   where,
   writeBatch,
+  type WriteBatch,
 } from 'firebase/firestore';
 
 import { db } from '../db';
@@ -44,6 +45,7 @@ import {
   type Machine,
   type MachineDetails,
   type MachineTypes,
+  type MeterUnit,
   type Person,
   type ServiceTask,
   type StoreItem,
@@ -411,14 +413,72 @@ export async function updateMachine(
   // when it falls back (a correction), nor on a crew's machine, whose hours come
   // from the days they close.
   const unitKept = (details.meterUnit ?? machine.meterUnit) === machine.meterUnit;
-  if (meterMoves && meterHours != null && meterHours > machine.totalHours && crew.length === 0 && unitKept) {
-    const used = Math.round((meterHours - machine.totalHours) * 1000) / 1000;
-    const month = dateKey(new Date()).slice(0, 7);
-    batch.set(monthRef(machine.id, month), { month, hours: increment(used) }, { merge: true });
-  }
+  if (meterMoves && meterHours != null && unitKept) addMonthUse(batch, machine, meterHours, crew);
   batch.set(
     doc(collection(db, 'auditLog')),
     auditEntry('machine.update', 'machine', machine.id, machine.id, summary, by),
+  );
+  await commit(batch);
+}
+
+/**
+ * What a machine with no crew has moved on since its meter was last put right is
+ * this month's use. Not a reading that falls back (a correction), nor a crew's
+ * machine, whose hours come from the days they close.
+ */
+function addMonthUse(batch: WriteBatch, machine: Machine, meterHours: number, crew: readonly Person[]): void {
+  if (crew.length > 0 || !(meterHours > machine.totalHours)) return;
+  const used = Math.round((meterHours - machine.totalHours) * 1000) / 1000;
+  const month = dateKey(new Date()).slice(0, 7);
+  batch.set(monthRef(machine.id, month), { month, hours: increment(used) }, { merge: true });
+}
+
+/** What the quick meter and fuel box saves. */
+export interface Readings {
+  meter: number;
+  meterUnit: MeterUnit;
+  /** Litres in the machine; null leaves it as it was. */
+  fuelLevel: number | null;
+}
+
+/**
+ * Puts a machine's meter, what the meter counts and the litres of fuel in it right —
+ * the few things staff check when work starts. Any staff may do it, a supervisor
+ * from their phone as well; each change is a line in the audit log.
+ */
+export async function updateReadings(
+  machine: Machine,
+  next: Readings,
+  crew: readonly Person[],
+  by: Person,
+): Promise<void> {
+  const bad = meterError(next.meter);
+  if (bad) throw new Error(bad);
+  if (next.fuelLevel != null && !(Number.isFinite(next.fuelLevel) && next.fuelLevel >= 0)) {
+    throw new Error('ඉන්ධන ප්‍රමාණය ඍණ නොවන සංඛ්‍යාවක් විය යුතුය.');
+  }
+
+  const lines: string[] = [];
+  const set: Record<string, number | string> = {};
+  if (next.meterUnit !== machine.meterUnit) {
+    set.meterUnit = next.meterUnit;
+  }
+  if (next.meter !== machine.totalHours || next.meterUnit !== machine.meterUnit) {
+    set.totalHours = next.meter;
+    lines.push(`මීටරය: ${meterReading(machine.totalHours, machine.meterUnit)} → ${meterReading(next.meter, next.meterUnit)}`);
+  }
+  if (next.fuelLevel != null && next.fuelLevel !== machine.fuelLevel) {
+    set.fuelLevel = next.fuelLevel;
+    lines.push(`ඉන්ධන ප්‍රමාණය: ${machine.fuelLevel == null ? '—' : `${machine.fuelLevel} L`} → ${next.fuelLevel} L`);
+  }
+  if (lines.length === 0) return;
+
+  const batch = writeBatch(db);
+  batch.update(doc(db, 'machines', machine.id), set);
+  if (next.meterUnit === machine.meterUnit) addMonthUse(batch, machine, next.meter, crew);
+  batch.set(
+    doc(collection(db, 'auditLog')),
+    auditEntry('machine.update', 'machine', machine.id, machine.id, lines.join(' · '), by),
   );
   await commit(batch);
 }

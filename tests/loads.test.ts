@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { drillerLoads, loadAnalysis } from '../src/lib/loads';
-import type { Sale } from '../src/lib/model';
+import { drillerLoads, loadAnalysis, operatorLoads } from '../src/lib/loads';
+import { tallyField, type Sale } from '../src/lib/model';
 
 const now = new Date('2026-10-25T12:00:00Z').getTime();
 
@@ -30,6 +30,10 @@ const sale = (code: string, overrides: Partial<Sale> = {}): Sale => ({
   verifiedByName: '',
   verifiedAt: new Date('2026-10-20T07:00:00Z'),
   cancelledAt: null,
+  operatorId: '',
+  operatorName: '',
+  drillerId: '',
+  drillerName: '',
   ...overrides,
 });
 
@@ -149,5 +153,71 @@ describe('the loads a driller is paid on', () => {
       now,
     );
     expect(counted).toEqual({ sixNine: 1, sakka: 0, boldas: 0, c1: 0, other: 0 });
+  });
+});
+
+describe('the loads a named driller is paid on', () => {
+  const bills = [
+    sale('A0000001', { material: 'six_nine', drillerId: 'dr1' }),
+    sale('B0000001', { material: 'six_nine', drillerId: 'dr2' }),
+    sale('C0000001', { ...tractor, material: 'sakka', drillerId: 'dr2' }),
+    sale('D0000001', { material: 'sakka', drillerId: '' }),
+  ];
+
+  it('counts only the bills that name them', () => {
+    expect(drillerLoads(bills, '2026-10', now, 'dr1')).toEqual({ sixNine: 1, sakka: 0, boldas: 0, c1: 0, other: 0 });
+    expect(drillerLoads(bills, '2026-10', now, 'dr2')).toEqual({ sixNine: 1, sakka: 2, boldas: 0, c1: 0, other: 0 });
+    expect(drillerLoads(bills, '2026-10', now, 'nobody')).toEqual({ sixNine: 0, sakka: 0, boldas: 0, c1: 0, other: 0 });
+  });
+});
+
+describe('the loads an operator is paid on', () => {
+  const six = { material: 'six_nine' as const };
+  const bills = [
+    sale('A0000001', { ...six, operatorId: 'op1' }),
+    sale('B0000001', { ...six, ...tractor, operatorId: 'op1' }),
+    sale('C0000001', { ...six, operatorId: 'op2' }),
+    // Written before bills named an operator: it goes to whoever wrote it.
+    sale('D0000001', { ...six, operatorId: '', createdBy: 'op1' }),
+    sale('E0000001', { ...six, operatorId: '', createdBy: 'boss' }),
+  ];
+
+  it('counts the bills that name them, and the unnamed ones they wrote', () => {
+    expect(operatorLoads(bills, 'op1', '2026-10', now)).toBe(1 + 2 + 1);
+    expect(operatorLoads(bills, 'op2', '2026-10', now)).toBe(1);
+    expect(operatorLoads(bills, 'boss', '2026-10', now)).toBe(1);
+  });
+
+  it('is the 6/9 loads alone — other materials are not on their ladder', () => {
+    const mixed = [
+      sale('F0000001', { ...six, operatorId: 'op1' }),
+      sale('G0000001', { material: 'sakka', operatorId: 'op1' }),
+      sale('H0000001', { material: 'kory_dust', operatorId: 'op1' }),
+      sale('I0000001', { material: null, operatorId: 'op1' }),
+    ];
+    expect(operatorLoads(mixed, 'op1', '2026-10', now)).toBe(1);
+    // What the machine did, and is charged on, is every load.
+    expect(operatorLoads(mixed, 'op1', '2026-10', now, false)).toBe(4);
+  });
+
+  it('counts a single day, and only loads that have gone', () => {
+    const more = [
+      ...bills,
+      sale('F0000001', { ...six, operatorId: 'op1', date: '2026-10-21' }),
+      sale('G0000001', { ...six, operatorId: 'op1', status: 'cancelled' }),
+      sale('H0000001', { ...six, operatorId: 'op1', status: 'pending', verifiedAt: null, createdAt: new Date(now - 60 * 60 * 1000) }),
+      sale('I0000001', { ...six, operatorId: 'op1', date: '2026-09-30' }),
+    ];
+    expect(operatorLoads(more, 'op1', '2026-10-21', now)).toBe(1);
+    expect(operatorLoads(more, 'op1', '2026-10-22', now)).toBe(0);
+    expect(operatorLoads(more, 'op1', '2026-10', now)).toBe(5);
+  });
+});
+
+describe('what is typed in by hand for a day', () => {
+  it('is only feet — never loads for an operator or a per-load driller', () => {
+    expect(tallyField({ role: 'operator', wageBasis: 'day' })).toBeNull();
+    expect(tallyField({ role: 'compressor', wageBasis: 'load' })).toBeNull();
+    expect(tallyField({ role: 'compressor', wageBasis: 'day' })).toBe('feet');
   });
 });

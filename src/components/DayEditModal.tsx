@@ -54,7 +54,10 @@ export function DayEditModal({
   const { machines } = useLiveData();
   const toast = useToast();
   const role = ROLES[person.role];
-  const field = tallyField(person);
+  // Only feet are typed in. Someone whose loads come from the bills has no
+  // figure here: their feet stay as they were, so an edit moves nothing there.
+  const typedField = tallyField(person);
+  const field = typedField ?? 'feet';
   const machineHours = machines.get(person.machineId)?.totalHours ?? 0;
 
   // The days around it: the readings this day's own have to sit between.
@@ -171,8 +174,8 @@ export function DayEditModal({
       ) : (
         <form id="day-edit-form" onSubmit={submit} className="space-y-6">
           <section>
-            <SectionLabel>මීටර සහ {field === 'loads' ? 'ලෝඩ්' : 'අඩි'}</SectionLabel>
-            <div className="grid gap-4 sm:grid-cols-3">
+            <SectionLabel>මීටර{typedField ? ' සහ අඩි' : ''}</SectionLabel>
+            <div className={cx('grid gap-4', typedField ? 'sm:grid-cols-3' : 'sm:grid-cols-2')}>
               <Field label="ON මීටරය">
                 <Input type="number" inputMode="decimal" step="any" min="0" value={on} onChange={(event) => setOn(event.target.value)} />
               </Field>
@@ -190,16 +193,18 @@ export function DayEditModal({
                   onChange={(event) => setOff(event.target.value)}
                 />
               </Field>
-              <Field label={field === 'loads' ? 'ලෝඩ් ගණන' : 'අඩි ගණන'}>
-                <Input
-                  type="number"
-                  inputMode="decimal"
-                  step={field === 'loads' ? '1' : 'any'}
-                  min="0"
-                  value={tally}
-                  onChange={(event) => setTally(event.target.value)}
-                />
-              </Field>
+              {typedField && (
+                <Field label="අඩි ගණන">
+                  <Input
+                    type="number"
+                    inputMode="decimal"
+                    step="any"
+                    min="0"
+                    value={tally}
+                    onChange={(event) => setTally(event.target.value)}
+                  />
+                </Field>
+              )}
             </div>
           </section>
 

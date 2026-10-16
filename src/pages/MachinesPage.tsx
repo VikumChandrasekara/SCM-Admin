@@ -1,4 +1,4 @@
-import { Clock, Pencil, Plus, Settings2, Tractor, Trash2, Users } from 'lucide-react';
+import { Clock, Gauge, Pencil, Plus, Settings2, Tractor, Trash2, Users } from 'lucide-react';
 import { useState } from 'react';
 
 import { useSession } from '../auth/AuthContext';
@@ -8,6 +8,7 @@ import {
   MachineHoursModal,
   MachineModal,
   MachineTypesModal,
+  ReadingsModal,
 } from '../components/MachineModals';
 import { Pagination, usePagination } from '../components/Pagination';
 import {
@@ -58,6 +59,7 @@ export function MachinesPage() {
   const [assigning, setAssigning] = useState<Machine | null>(null);
   const [viewing, setViewing] = useState<Machine | null>(null);
   const [deleting, setDeleting] = useState<Machine | null>(null);
+  const [reading, setReading] = useState<Machine | null>(null);
   const [managingTypes, setManagingTypes] = useState(false);
 
   // Machines in use first, retired ones after, each by number.
@@ -183,6 +185,9 @@ export function MachinesPage() {
                       </td>
                       <td className={cx(td, 'text-right tabular-nums')}>
                         {meterReading(machine.totalHours, machine.meterUnit)}
+                        {machine.fuelLevel != null && (
+                          <span className="block text-xs text-white/60">ඉන්ධන {hours(machine.fuelLevel)} L</span>
+                        )}
                       </td>
                       <td className={cx(td, 'text-right font-bold tabular-nums')}>
                         {/* Hours its crew worked, or the kilometres its meter has moved on, this month. */}
@@ -203,6 +208,9 @@ export function MachinesPage() {
                         <div className="flex justify-end gap-1">
                           <IconButton label="වැඩ කර ඇති පැය" onClick={() => setViewing(machine)}>
                             <Clock className="size-4" />
+                          </IconButton>
+                          <IconButton label="මීටරය සහ ඉන්ධන" onClick={() => setReading(machine)}>
+                            <Gauge className="size-4" />
                           </IconButton>
                           <IconButton label="කණ්ඩායම" onClick={() => setAssigning(machine)}>
                             <Users className="size-4" />
@@ -240,6 +248,7 @@ export function MachinesPage() {
       )}
       {assigning && <AssignCrewModal machine={liveOf(assigning)} onClose={() => setAssigning(null)} />}
       {viewing && <MachineHoursModal machine={liveOf(viewing)} onClose={() => setViewing(null)} />}
+      {reading && <ReadingsModal machine={liveOf(reading)} onClose={() => setReading(null)} />}
       {deleting && <DeleteMachineModal machine={liveOf(deleting)} onClose={() => setDeleting(null)} />}
       {managingTypes && <MachineTypesModal onClose={() => setManagingTypes(false)} />}
     </>

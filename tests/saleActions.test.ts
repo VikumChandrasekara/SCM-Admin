@@ -244,6 +244,26 @@ describe('correcting a bill', () => {
     expect(await auditLog()).toHaveLength(1);
   });
 
+  it('puts the operator and driller on a bill, and logs who they became', async () => {
+    await seedBills(1);
+    signIn('admin1');
+
+    await updateSale(
+      codeOf(1),
+      { ...edit, operator: { id: 'op1', name: 'Sanjeewa' }, driller: { id: 'dr1', name: 'Dharme' } },
+      admin,
+    );
+    expect(await data(`sales/${codeOf(1)}`)).toMatchObject({
+      operatorId: 'op1',
+      operatorName: 'Sanjeewa',
+      drillerId: 'dr1',
+      drillerName: 'Dharme',
+    });
+    const [entry] = await auditLog();
+    expect(entry.summary).toContain('ඔපරේටර්');
+    expect(entry.summary).toContain('ඩ්‍රිලර්');
+  });
+
   it('says so when the bill has been removed in the meantime', async () => {
     signIn('admin1');
     await expect(updateSale(codeOf(1), edit, admin)).rejects.toThrow('ඉවත් කර ඇත');

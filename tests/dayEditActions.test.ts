@@ -94,7 +94,7 @@ beforeEach(async () => {
     await setDoc(doc(db, 'machines', 'ex1', 'days', '2026-10-07'), {
       date: '2026-10-07',
       closingHours: 6789.7,
-      loads: 4,
+      feet: 4,
       inspection: { diesel: true },
       fillings: { '1': { onHours: 6780.5, amounts: { diesel: 220 }, lockedAt: LOCKED } },
     });
@@ -102,7 +102,7 @@ beforeEach(async () => {
       date: '2026-10-08',
       fillings: { '1': { onHours: 6789.7, amounts: {} } },
     });
-    await setDoc(doc(db, 'machines', 'ex1', 'months', '2026-10'), { month: '2026-10', loads: 4, hours: 18.5 });
+    await setDoc(doc(db, 'machines', 'ex1', 'months', '2026-10'), { month: '2026-10', feet: 4, hours: 18.5 });
 
     await setDoc(doc(db, 'store', 'fill-diesel'), {
       name: 'Diesel',
@@ -129,13 +129,13 @@ beforeEach(async () => {
 /** The day as stored, as the form starts from it, with [change] applied. */
 async function editing(date: string, change: (edit: DayEdit) => void): Promise<DayEdit> {
   const day = dayFrom(date, await data(`machines/ex1/days/${date}`));
-  const edit = draftOf(day, 'loads', ROLES.operator);
+  const edit = draftOf(day, 'feet', ROLES.operator);
   change(edit);
   return edit;
 }
 
 describe('putting a day right from the history page', () => {
-  it('corrects an OK’d fill, the loads and a mark — the store, the month and the log follow', async () => {
+  it('corrects an OK’d fill, the feet and a mark — the store, the month and the log follow', async () => {
     signIn('sup1');
     const edit = await editing('2026-10-07', (draft) => {
       draft.fillings[1] = { diesel: 250 };
@@ -148,12 +148,12 @@ describe('putting a day right from the history page', () => {
 
     const stored = await data('machines/ex1/days/2026-10-07');
     expect(stored).toMatchObject({
-      loads: 6,
+      feet: 6,
       inspection: { diesel: false, surroundings: true },
       fillings: { '1': { onHours: 6780.5, amounts: { diesel: 250 }, lockedAt: LOCKED } },
     });
     // The month moves by the difference, not by the new figure.
-    expect(await data('machines/ex1/months/2026-10')).toMatchObject({ loads: 6, hours: 18.5 });
+    expect(await data('machines/ex1/months/2026-10')).toMatchObject({ feet: 6, hours: 18.5 });
 
     // 30 L more went into the machine, so 30 L less is on the shelf — once, with a movement to show it.
     expect((await data('store/fill-diesel'))?.quantity).toBe(470);
@@ -166,7 +166,7 @@ describe('putting a day right from the history page', () => {
     expect(entry).toMatchObject({ action: 'day.edit', entityType: 'operator', entityId: 'op1', source: 'panel', createdBy: 'sup1' });
     expect(entry.summary).toContain('2026-10-07');
     expect(entry.summary).toContain('220 → 250 L');
-    expect(entry.summary).toContain('ලෝඩ් 4 → 6');
+    expect(entry.summary).toContain('අඩි 4 → 6');
     expect(entry.summary).toContain('Diesel -30 L');
   });
 
@@ -240,7 +240,7 @@ describe('putting a day right from the history page', () => {
     await expect(saveDayEdit(crew, '2026-10-20', same, supervisor)).rejects.toThrow(/වාර්තාවක් නැත/);
 
     expect(await all('auditLog')).toEqual(before);
-    expect((await data('machines/ex1/days/2026-10-07'))?.loads).toBe(4);
+    expect((await data('machines/ex1/days/2026-10-07'))?.feet).toBe(4);
   });
 
   it('is refused for the crew — an OK’d fill is theirs no longer to change — and leaves the day as it was', async () => {

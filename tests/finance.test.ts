@@ -43,6 +43,10 @@ const sale = (code: string, overrides: Partial<Sale>): Sale => ({
   verifiedByName: '',
   verifiedAt: new Date('2026-10-02T07:00:00Z'),
   cancelledAt: null,
+  operatorId: '',
+  operatorName: '',
+  drillerId: '',
+  drillerName: '',
   ...overrides,
 });
 
@@ -114,10 +118,10 @@ describe('machine charge in finance', () => {
 
 describe('machine charge at the rate each machine was given', () => {
   const machine = (id: string, extra: object = {}) => machineFrom(id, { totalHours: 100, ...extra });
-  const money = (month: CrewMonth[], machines: Machine[], hourly = 6000) =>
+  const money = (month: CrewMonth[], machines: Machine[], hourly = 6000, sales: Sale[] = []) =>
     financeFor({
       month: '2026-10',
-      sales: [],
+      sales,
       bills: [],
       movements: [],
       crewMonths: month,
@@ -143,15 +147,23 @@ describe('machine charge at the rate each machine was given', () => {
   it('can be for each load, or each foot', () => {
     const op = person('op1', 'operator');
     const dr = person('dr1', 'compressor');
+    // The operator's loads are those of the bills that name them — one tipper load (3 cubes) and 2 tractor loads — not the typed-in 40.
+    const bills = [
+      sale('LOAD0001', { type: 'tractor', quantity: 2, operatorId: 'op1', drillerId: 'dr1' }),
+      sale('LOAD0002', { type: 'tipper', quantity: 3, operatorId: 'op1', drillerId: 'dr1' }),
+      sale('ELSE0001', { type: 'tractor', quantity: 9, operatorId: 'op2', drillerId: 'dr2' }),
+    ];
     const report = money(
       [tallied(op, { loads: 40, hours: 12 }), tallied(dr, { feet: 300, hours: 9 })],
       [machine(op.machineId, { rate: 500, rateBasis: 'load' }), machine(dr.machineId, { rate: 20, rateBasis: 'foot' })],
+      6000,
+      bills,
     );
-    expect(report.machineTotal).toBe(40 * 500 + 300 * 20);
+    expect(report.machineTotal).toBe(3 * 500 + 300 * 20);
     // Hours do not count when the charge is not by the hour.
     expect(report.machineHours).toBe(0);
     expect(report.ledger.filter((entry) => entry.kind === 'machine').map((entry) => entry.description)).toEqual([
-      expect.stringContaining('ලෝඩ් 40'),
+      expect.stringContaining('ලෝඩ් 3'),
       expect.stringContaining('අඩි 300'),
     ]);
   });
@@ -340,7 +352,7 @@ describe('what the work cost', () => {
 
   const bills = [
     billFrom('w1', { category: 'water', amount: 1500, date: '2026-10-04' }),
-    // Charged to the operator: already part of their pay.
+    // Food is the site's own cost, even when it names the operator: it is not taken out of their pay.
     billFrom('f1', { category: 'food', amount: 500, date: '2026-10-04', operatorId: 'op1', operatorName: 'op1' }),
   ];
 
@@ -353,8 +365,8 @@ describe('what the work cost', () => {
       oil: 5 * 1000,
       shells: 20 * 500,
       parts: 2500,
-      // Both crews' pay, less the food charged to it.
-      wages: 14000 - 500,
+      // Both crews' pay, in full.
+      wages: 14000,
       food: 500,
       machine: 60000,
       utilities: 1500,
@@ -373,10 +385,10 @@ describe('what the work cost', () => {
     ]);
   });
 
-  it('tells the food apart from the pay it was charged to, and counts it once', () => {
+  it('counts food as its own expense, never taken out of anyone’s pay', () => {
     const rows = byCategory(month);
     expect(rows.food).toBe(500);
-    expect(rows.wages + rows.food).toBe(month.salaryTotal);
+    expect(rows.wages).toBe(month.salaryTotal);
     // Only the diesel is shared by every load.
     expect(month.expenseRows.filter((row) => row.shared).map((row) => row.key)).toEqual(['diesel']);
   });
@@ -384,7 +396,7 @@ describe('what the work cost', () => {
   it('counts fuel and parts as they are used, and reports what was bought beside', () => {
     expect(month.usageTotal).toBe(45100);
     expect(month.purchaseTotal).toBe(3600);
-    expect(month.expenses).toBe(14000 + 1500 + 45100 + 60000);
+    expect(month.expenses).toBe(14000 + 500 + 1500 + 45100 + 60000);
     expect(month.profit).toBe(-month.expenses);
   });
 

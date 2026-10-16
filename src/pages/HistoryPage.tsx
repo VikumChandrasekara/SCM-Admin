@@ -144,10 +144,8 @@ export function HistoryPage() {
           <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-6">
             <Total label="දින" value={String(days.length)} />
             <Total label="වැඩ කළ පැය" value={hours(days.reduce((sum, day) => sum + (workedHours(day) ?? 0), 0))} />
-            <Total
-              label={tallyField(person) === 'loads' ? 'ලෝඩ්' : 'අඩි'}
-              value={tallyField(person) === 'loads' ? String(days.reduce((sum, day) => sum + day.loads, 0)) : hours(days.reduce((sum, day) => sum + day.feet, 0))}
-            />
+            {/* Feet are typed in; an operator's and a per-load driller's loads come from the bills, not from any day. */}
+            {tallyField(person) && <Total label="අඩි" value={hours(days.reduce((sum, day) => sum + day.feet, 0))} />}
             {role.fillItems.map((item) => (
               <Total key={item} label={FILL_LABEL[item]} value={quantity(days.reduce((sum, day) => sum + totalFilled(day, item), 0), 'L')} />
             ))}
@@ -165,7 +163,7 @@ export function HistoryPage() {
                       <th className={cx(th, 'text-right')}>ON</th>
                       <th className={cx(th, 'text-right')}>OFF</th>
                       <th className={cx(th, 'text-right')}>පැය</th>
-                      <th className={cx(th, 'text-right')}>{tallyField(person) === 'loads' ? 'ලෝඩ්' : 'අඩි'}</th>
+                      {tallyField(person) && <th className={cx(th, 'text-right')}>අඩි</th>}
                       {role.fillItems.map((item) => (
                         <th key={item} className={cx(th, 'text-right')}>
                           {FILL_LABEL[item]}
@@ -188,9 +186,9 @@ export function HistoryPage() {
                           <td className={cx(td, 'text-right tabular-nums')}>{dayOnHours(day) == null ? '—' : hours(dayOnHours(day)!)}</td>
                           <td className={cx(td, 'text-right tabular-nums')}>{dayOffHours(day) == null ? '—' : hours(dayOffHours(day)!)}</td>
                           <td className={cx(td, 'text-right font-bold tabular-nums')}>{worked == null ? '—' : hours(worked)}</td>
-                          <td className={cx(td, 'text-right font-bold text-amber-hi tabular-nums')}>
-                            {tallyField(person) === 'loads' ? day.loads : hours(day.feet)}
-                          </td>
+                          {tallyField(person) && (
+                            <td className={cx(td, 'text-right font-bold text-amber-hi tabular-nums')}>{hours(day.feet)}</td>
+                          )}
                           {role.fillItems.map((item) => (
                             <td key={item} className={cx(td, 'text-right tabular-nums')}>
                               {totalFilled(day, item) ? quantity(totalFilled(day, item), 'L') : '—'}
