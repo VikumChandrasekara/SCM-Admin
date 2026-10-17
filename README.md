@@ -111,8 +111,8 @@ hydraulic oils, petrol, black oil (කළු තෙල්). They have a page of 
 **ඉන්ධන සහ ඔයිල්**, and are left out of the store's list, tiles and alerts
 (a store item with `direct: true`; the fixed ids `fill-diesel`,
 `fill-engineOil`, `fill-compressorOil`, `fill-hydraulic` stay, so the phone
-app keeps finding them). Each has a price. Every purchase is a **record** —
-how much, at what price (the item's, unless changed), when (now, unless
+app keeps finding them). An item has no price of its own. Every purchase is a
+**record** — how much, at what price (typed in each time), when (now, unless
 changed) and a note — added with the clipboard icon on its row. The amount is
 worked out as quantity × price. A row opens to show its records, newest first,
 50 to a page, and each can be put right or removed; the row's **භාවිතය** and

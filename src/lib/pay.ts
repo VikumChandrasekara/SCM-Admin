@@ -131,13 +131,13 @@ export function payFor(
   const tally: MonthTally = role.tracksBonus
     ? { ...month, loads: operatorLoads(sales, person.id, month.month, now) }
     : month;
-  const monthLoads =
-    role.bonusOnSixNine || paidPerLoad(person) ? drillerLoads(sales, month.month, now, person.id) : null;
+  const monthLoads = paidPerLoad(person) ? drillerLoads(sales, month.month, now, person.id) : null;
   const loadPay = monthLoads && paidPerLoad(person) ? loadPayOf(person, monthLoads) : null;
   const wageUnits = loadPay ? loadPay.loads : wageUnitsOf(person.wageBasis, tally, workedDays);
   const wagePay = loadPay ? loadPay.pay : wageUnits * person.dailyWage;
 
-  const bonusLoads = role.tracksBonus ? tally.loads : role.bonusOnSixNine && monthLoads ? monthLoads.sixNine : null;
+  // Only the excavator crew has a bonus; a driller is paid on what the wage counts, nothing more.
+  const bonusLoads = role.tracksBonus ? tally.loads : null;
   const bonusPay = bonusLoads == null ? 0 : bonusEarned(bonusLoads);
   const gross = wagePay + bonusPay;
 

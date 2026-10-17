@@ -216,43 +216,25 @@ describe('a driller saved before each kind of load had a rate', () => {
   });
 });
 
-describe("a driller's bonus", () => {
-  const perLoad = person('compressor', { wageBasis: 'load', dailyWage: 500, sakkaLoadWage: 500 });
-
-  it('is counted on the loads of 6/9 alone', () => {
-    // 250 of 6/9 and 100 of සක්කර: 350 loads sold, but only 250 are 6/9.
-    const figures = pay(perLoad, [sale('SIX00001', 'six_nine', 250), sale('SAK00001', 'sakka', 100)]);
-    expect(figures.bonusLoads).toBe(250);
+describe('a driller has no bonus', () => {
+  it('is paid for every load at its rate and nothing more, however many 6/9 loads there are', () => {
+    const perLoad = person('compressor', { wageBasis: 'load', dailyWage: 500, sakkaLoadWage: 500 });
+    // 800 loads of 6/9 would have been the top of the old ladder.
+    const figures = pay(perLoad, [sale('SIX00001', 'six_nine', 800), sale('SAK00001', 'sakka', 100)]);
+    expect(figures.bonusLoads).toBeNull();
     expect(figures.bonusPay).toBe(0);
-    // They are all paid for, at the wage, though.
-    expect(figures.wagePay).toBe(350 * 500);
+    expect(figures.wagePay).toBe(900 * 500);
+    expect(figures.gross).toBe(figures.wagePay);
   });
 
-  it('climbs the same ladder as the excavator crew: 300, 400, 500', () => {
-    const at = (loads: number) => pay(perLoad, [sale('SIX00001', 'six_nine', loads)]).bonusPay;
-    expect(at(299)).toBe(0);
-    expect(at(300)).toBe(30_000);
-    expect(at(400)).toBe(60_000);
-    expect(at(500)).toBe(90_000);
-    expect(at(800)).toBe(90_000);
-  });
-
-  it('is part of what they are paid', () => {
-    const figures = pay(perLoad, [sale('SIX00001', 'six_nine', 300)]);
-    expect(figures.wagePay).toBe(150_000);
-    expect(figures.bonusPay).toBe(30_000);
-    expect(figures.gross).toBe(180_000);
-  });
-
-  it('is earned on whatever basis they are paid — a driller paid by the foot gets it too', () => {
+  it('is the same on any basis — paid by the foot, the sales add nothing', () => {
     const byFoot = person('compressor', { wageBasis: 'foot', dailyWage: 40 });
     const figures = pay(byFoot, [sale('SIX00001', 'six_nine', 400)], { feet: 1000 });
     expect(figures.loadPay).toBeNull();
-    // The wage is still the feet drilled; the sales only feed the bonus.
-    expect(figures.wageUnits).toBe(1000);
     expect(figures.wagePay).toBe(40_000);
-    expect(figures.bonusLoads).toBe(400);
-    expect(figures.bonusPay).toBe(60_000);
+    expect(figures.bonusLoads).toBeNull();
+    expect(figures.bonusPay).toBe(0);
+    expect(figures.gross).toBe(40_000);
   });
 });
 

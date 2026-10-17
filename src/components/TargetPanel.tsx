@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 
 import { hours, money, rupees } from '../lib/format';
-import { ROLES, WAGE_BASIS_LABEL, type MonthTally, type Person } from '../lib/model';
+import { WAGE_BASIS_LABEL, type MonthTally, type Person } from '../lib/model';
 import type { LoadPay } from '../lib/pay';
 import {
   BONUS_PER_TIER,
@@ -24,8 +24,8 @@ function unitCount(basis: Person['wageBasis'], value: number): string {
  *
  * [wageUnits] and [wagePay] come from payFor — the same figures the dashboard
  * tiles beside this panel show, so the two never disagree. So do [loadPay] and
- * [bonusLoads]: the loads the bonus is counted on, which for the excavator crew
- * are the ones they tally and for a driller the month's loads of 6/9.
+ * [bonusLoads]: the 6/9 loads the bonus is counted on — the excavator crew's;
+ * nobody else has a bonus, so for a driller it is null.
  */
 export function TargetPanel({
   person,
@@ -44,7 +44,6 @@ export function TargetPanel({
   loadPay: LoadPay | null;
   bonusLoads: number | null;
 }) {
-  const role = ROLES[person.role];
   const basis = WAGE_BASIS_LABEL[person.wageBasis];
   return (
     <section className="rounded-panel p-5 text-white shadow-panel ring-1 ring-lime-hi/20 panel-lime">
@@ -58,19 +57,7 @@ export function TargetPanel({
         <div className="grid items-center gap-5 md:grid-cols-[minmax(0,15rem)_minmax(0,1fr)]">
           <div className="space-y-2.5">
             <Row label="මාසේ දිනයන් ගණන" value={daysInMonth(month.month)} />
-            <Row label={role.tracksBonus ? 'පැටවූ ලෝඩ් ගණන (6/9)' : '6/9 ලෝඩ් ගණන'} value={bonusLoads} />
-            {role.tracksBonus ? null : loadPay ? (
-              <>
-                {/* 6/9 is the row above, since the bonus is counted on it; the rest always show, 0 when none went. */}
-                {loadPay.lines
-                  .filter((line) => line.label !== '6/9')
-                  .map((line) => (
-                    <Row key={line.label} label={`${line.label} ලෝඩ්`} value={line.loads} />
-                  ))}
-              </>
-            ) : (
-              <Row label={`${basis.unit} ගණන`} value={unitCount(person.wageBasis, wageUnits)} />
-            )}
+            <Row label="පැටවූ ලෝඩ් ගණන (6/9)" value={bonusLoads} />
             <Row label="ඉලක්කය" value={currentTarget(bonusLoads)} />
             <Row label="ඉලක්කයට ඉතිරි දින" value={daysRemaining(month.month, today)} />
             <p className="pt-1 text-[11.5px] leading-relaxed font-medium text-white/75">
@@ -86,7 +73,12 @@ export function TargetPanel({
         <div className="grid items-center gap-5 md:grid-cols-[minmax(0,15rem)_minmax(0,1fr)]">
           <div className="space-y-2.5">
             <Row label="මාසේ දිනයන් ගණන" value={daysInMonth(month.month)} />
-            <Row label={`${basis.unit} ගණන`} value={unitCount(person.wageBasis, wageUnits)} />
+            {loadPay ? (
+              // A driller paid per load: every kind of load, 0 where none went.
+              loadPay.lines.map((line) => <Row key={line.label} label={`${line.label} ලෝඩ්`} value={line.loads} />)
+            ) : (
+              <Row label={`${basis.unit} ගණන`} value={unitCount(person.wageBasis, wageUnits)} />
+            )}
             <Row label="ඉතිරි දින" value={daysRemaining(month.month, today)} />
           </div>
           <div className="rounded-card bg-black/20 p-5 text-center ring-1 ring-white/10">

@@ -228,13 +228,8 @@ export interface RoleSpec {
   inspectionItems: readonly InspectionItem[];
   serviceTasks: readonly ServiceTask[];
   tracksBlasting: boolean;
-  /** A bonus ladder on the loads the crew's own daily tally counts — the excavator crew's. */
+  /** A bonus ladder on the month's 6/9 loads — the excavator crew's alone; no one else has a bonus. */
   tracksBonus: boolean;
-  /**
-   * A bonus ladder on the month's verified loads of 6/9 alone, taken from the
-   * sales bills rather than from anything the crew tallies — the drillers'.
-   */
-  bonusOnSixNine: boolean;
   isCrew: boolean;
 }
 
@@ -252,7 +247,6 @@ export const ROLES: Record<RoleId, RoleSpec> = {
     serviceTasks: ['engineOil', 'dieselFilter', 'hydraulicFilter', 'majorService'],
     tracksBlasting: false,
     tracksBonus: true,
-    bonusOnSixNine: false,
     isCrew: true,
   },
   compressor: {
@@ -265,7 +259,6 @@ export const ROLES: Record<RoleId, RoleSpec> = {
     serviceTasks: ['engineOil', 'dieselFilter', 'majorService'],
     tracksBlasting: true,
     tracksBonus: false,
-    bonusOnSixNine: true,
     isCrew: true,
   },
   supervisor: {
@@ -278,7 +271,6 @@ export const ROLES: Record<RoleId, RoleSpec> = {
     serviceTasks: [],
     tracksBlasting: false,
     tracksBonus: false,
-    bonusOnSixNine: false,
     isCrew: false,
   },
   admin: {
@@ -291,7 +283,6 @@ export const ROLES: Record<RoleId, RoleSpec> = {
     serviceTasks: [],
     tracksBlasting: false,
     tracksBonus: false,
-    bonusOnSixNine: false,
     isCrew: false,
   },
   // The owner of the land. Signs in to the phone app to see the loads he is
@@ -306,7 +297,6 @@ export const ROLES: Record<RoleId, RoleSpec> = {
     serviceTasks: [],
     tracksBlasting: false,
     tracksBonus: false,
-    bonusOnSixNine: false,
     isCrew: false,
   },
 };

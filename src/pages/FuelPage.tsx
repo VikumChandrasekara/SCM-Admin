@@ -46,9 +46,9 @@ function toInput(date: Date): string {
 
 /**
  * Fuel and oil bought and used straight away — diesel, the oils, petrol, black
- * oil. Nothing is stocked, so there is no count: each item has a price, and
- * every purchase is a record (how much, at what price, when) that adds to what
- * the item has cost and to the month's expenses on the finance page.
+ * oil. Nothing is stocked, so there is no count, and an item has no price of
+ * its own: every purchase is a record (how much, at what price, when) that adds
+ * to what the item has cost and to the month's expenses on the finance page.
  */
 export function FuelPage() {
   const { store, ready } = useLiveData();
@@ -90,7 +90,7 @@ export function FuelPage() {
           <EmptyState
             icon={<Droplets className="size-7" />}
             title="තවම අයිතම නැත"
-            detail="ඩීසල්, ඔයිල්, පෙට්‍රල්, කළු තෙල් වැනි දේ එකතු කර, මිල සකසා, භාවිත සටහන් කරන්න."
+            detail="ඩීසල්, ඔයිල්, පෙට්‍රල්, කළු තෙල් වැනි දේ එකතු කර, ඒවායේ භාවිත සටහන් කරන්න."
           />
         ) : (
           <TableFrame>
@@ -98,7 +98,6 @@ export function FuelPage() {
               <thead>
                 <tr className="border-b border-hairline">
                   <th className={th}>අයිතමය</th>
-                  <th className={cx(th, 'text-right')}>ඒකක මිල</th>
                   <th className={cx(th, 'text-right')}>භාවිතය</th>
                   <th className={cx(th, 'text-right')}>වටිනාකම</th>
                   <th className={cx(th, 'text-right')}>ක්‍රියා</th>
@@ -124,9 +123,6 @@ export function FuelPage() {
                             </span>
                           </button>
                         </td>
-                        <td className={cx(td, 'text-right tabular-nums')}>
-                          {item.unitPrice > 0 ? money(item.unitPrice) : <span className="text-signal">මිල සකසන්න</span>}
-                        </td>
                         <td className={cx(td, 'text-right text-base font-extrabold tabular-nums')}>
                           {quantity(item.usedQuantity, item.unit)}
                         </td>
@@ -147,7 +143,7 @@ export function FuelPage() {
                       </tr>
                       {isOpen && (
                         <tr className="border-b border-hairline/60 bg-black/10">
-                          <td colSpan={5} className="px-3 py-4">
+                          <td colSpan={4} className="px-3 py-4">
                             <FuelRecords item={item} />
                           </td>
                         </tr>
@@ -234,7 +230,6 @@ function FuelItemModal({ item, onClose }: { item: StoreItem | null; onClose: () 
   const toast = useToast();
   const [name, setName] = useState(item?.name ?? '');
   const [unit, setUnit] = useState(item?.unit ?? 'L');
-  const [price, setPrice] = useState(item && item.unitPrice > 0 ? String(item.unitPrice) : '');
   const [note, setNote] = useState(item?.note ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -249,7 +244,8 @@ function FuelItemModal({ item, onClose }: { item: StoreItem | null; onClose: () 
         name,
         unit: unit.trim() || 'ගණන',
         minQuantity: item?.minQuantity ?? 0,
-        unitPrice: Math.max(parse(price) ?? 0, 0),
+        // No price of its own: each record says what it cost.
+        unitPrice: item?.unitPrice ?? 0,
         piecesPerKg: item?.piecesPerKg ?? null,
         note,
       };
@@ -291,12 +287,6 @@ function FuelItemModal({ item, onClose }: { item: StoreItem | null; onClose: () 
             <UnitPicker value={unit} onChange={setUnit} />
           </Field>
         </div>
-        <Field
-          label="ඒකක මිල (රු.)"
-          hint="සටහනක් එකතු කරන විට මෙම මිල ස්වයංක්‍රීයව ඇතුළත් වේ — එහිදී වෙනස් කළ හැක."
-        >
-          <Input type="number" min="0" step="any" value={price} onChange={(event) => setPrice(event.target.value)} />
-        </Field>
         <Field label="සටහන">
           <Textarea value={note} onChange={(event) => setNote(event.target.value)} />
         </Field>
@@ -311,7 +301,8 @@ function FuelRecordModal({ item, record, onClose }: { item: StoreItem; record?: 
   const { profile } = useSession();
   const toast = useToast();
   const [amount, setAmount] = useState(record ? String(record.quantity) : '');
-  const [price, setPrice] = useState(String(record ? record.unitPrice : item.unitPrice || ''));
+  // No default: the price is whatever this purchase cost.
+  const [price, setPrice] = useState(record ? String(record.unitPrice) : '');
   const [at, setAt] = useState(toInput(record?.at ?? new Date()));
   const [note, setNote] = useState(record?.note ?? '');
   const [busy, setBusy] = useState(false);
