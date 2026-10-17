@@ -52,7 +52,9 @@ export function StorePage() {
   const [deleting, setDeleting] = useState<StoreItem | null>(null);
 
   const needle = search.trim().toLowerCase();
-  const shown = store.filter(
+  // What is bought and used straight away has a page of its own (ඉන්ධන සහ ඔයිල්), not a count to keep.
+  const stocked = store.filter((item) => !item.direct);
+  const shown = stocked.filter(
     (item) =>
       (filter === 'all' || (filter === 'alerts' ? stockStatus(item) !== 'ok' : item.link != null)) &&
       (!needle || item.name.toLowerCase().includes(needle)),
@@ -63,7 +65,7 @@ export function StorePage() {
   if (!ready) return <Loading />;
 
   const alerts = stockAlerts(store);
-  const value = store.reduce((sum, item) => sum + Math.max(item.quantity, 0) * item.unitPrice, 0);
+  const value = stocked.reduce((sum, item) => sum + Math.max(item.quantity, 0) * item.unitPrice, 0);
 
   return (
     <>
@@ -84,7 +86,7 @@ export function StorePage() {
       />
 
       <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Summary label="අයිතම" value={String(store.length)} />
+        <Summary label="අයිතම" value={String(stocked.length)} />
         <Summary label="තොග අඩුයි" value={String(alerts.filter((alert) => alert.status === 'low').length)} tone="low" />
         <Summary label="තොග අවසන්" value={String(alerts.filter((alert) => alert.status === 'out').length)} tone="out" />
         <Summary label="තොගයේ වටිනාකම" value={rupees(value)} />
@@ -115,9 +117,9 @@ export function StorePage() {
         {shown.length === 0 ? (
           <EmptyState
             icon={<Boxes className="size-7" />}
-            title={store.length === 0 ? 'ගබඩාවේ තවම අයිතම නැත' : 'ගැළපෙන අයිතම නැත'}
+            title={stocked.length === 0 ? 'ගබඩාවේ තවම අයිතම නැත' : 'ගැළපෙන අයිතම නැත'}
             detail={
-              store.length === 0 && permissions.editItems
+              stocked.length === 0 && permissions.editItems
                 ? 'ඩීසල්, ඔයිල්, කැප් වැනි අයිතම එකතු කර ඒවා කණ්ඩායම් භාවිතයට සම්බන්ධ කරන්න.'
                 : undefined
             }

@@ -11,7 +11,15 @@ import {
 } from 'firebase/firestore';
 
 import { db } from '../db';
-import { linkDocId, movementFrom, storeItemFrom, type Person, type StockLink, type StoreItem } from '../lib/model';
+import {
+  DIRECT_LINKS,
+  linkDocId,
+  movementFrom,
+  storeItemFrom,
+  type Person,
+  type StockLink,
+  type StoreItem,
+} from '../lib/model';
 import type { LinkPlan } from '../lib/storeLink';
 import { auditEntry } from './audit';
 import { commit } from './commit';
@@ -43,7 +51,7 @@ export interface ItemInput {
 
 /** Admin only. A linked item takes the fixed id its link dictates. */
 export async function createItem(
-  input: ItemInput & { quantity: number; link: StockLink | null },
+  input: ItemInput & { quantity: number; link: StockLink | null; direct?: boolean },
   by: Person,
 ): Promise<void> {
   const ref = input.link ? doc(db, 'store', linkDocId(input.link)) : doc(collection(db, 'store'));
@@ -63,6 +71,7 @@ export async function createItem(
     piecesPerKg: input.piecesPerKg,
     link: input.link,
     note: input.note.trim(),
+    direct: input.direct === true,
     createdAt: serverTimestamp(),
     // The opening count is a count: usage recorded before now is already in it.
     countedAt: serverTimestamp(),
@@ -220,6 +229,7 @@ function linkInTransaction(
         piecesPerKg: stored.piecesPerKg,
         link: option.link,
         note: stored.note,
+        direct: stored.direct || DIRECT_LINKS.includes(option.link),
         createdAt: source.data().createdAt ?? serverTimestamp(),
         countedAt: source.data().countedAt ?? null,
         updatedAt: serverTimestamp(),
@@ -244,6 +254,7 @@ function linkInTransaction(
       piecesPerKg: null,
       link: option.link,
       note: '',
+      direct: DIRECT_LINKS.includes(option.link),
       createdAt: serverTimestamp(),
       // Not counted yet, so what the crews use from now on is drawn from it.
       countedAt: null,

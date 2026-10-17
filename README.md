@@ -12,6 +12,7 @@ React 19 · TypeScript · Vite · Tailwind CSS 4 · Firebase JS SDK 12
 | Page | Admin | Supervisor |
 | --- | --- | --- |
 | පාලක පුවරුව | Every crew member's day side by side (පරික්ෂාව, service hours, පිරවීම in litres and rupees), plus one person's month: loads against the bonus ladder and the four money figures | Same |
+| ඉන්ධන සහ ඔයිල් | Fuel and oil bought and used straight away: each has a price and records (how much, price, when) that are expenses on the finance page | Same |
 | ගබඩාව | Add, edit and delete items. Restock, draw down and recount. Low and out-of-stock alerts. The log of every change | Same |
 | බිල්පත් | Add, edit and delete any bill | Add bills, and edit or delete their own |
 | විකුණුම් | Sales bills for tipper and tractor loads, each with a QR code, and the prices they are sold at | Same |
@@ -102,6 +103,29 @@ The daily wage and rate per foot are set on each person in පරිශීලක
 
 An advance bill is also added to the person's ඇඩ්වාන්ස් ගණන, the figure their
 app shows them. Editing or deleting the bill moves that figure back.
+
+### Fuel and oil — ඉන්ධන සහ ඔයිල්
+
+Some things are never kept on a shelf: diesel, the engine, compressor and
+hydraulic oils, petrol, black oil (කළු තෙල්). They have a page of their own,
+**ඉන්ධන සහ ඔයිල්**, and are left out of the store's list, tiles and alerts
+(a store item with `direct: true`; the fixed ids `fill-diesel`,
+`fill-engineOil`, `fill-compressorOil`, `fill-hydraulic` stay, so the phone
+app keeps finding them). Each has a price. Every purchase is a **record** —
+how much, at what price (the item's, unless changed), when (now, unless
+changed) and a note — added with the clipboard icon on its row. The amount is
+worked out as quantity × price. A row opens to show its records, newest first,
+50 to a page, and each can be put right or removed; the row's **භාවිතය** and
+**වටිනාකම** are the totals of its records (kept on the item as
+`usedQuantity` / `usedAmount`, moved in the same write as each record).
+
+Records live in `fuelRecords` (`itemId`, `itemName`, `unit`, `quantity`,
+`unitPrice`, `amount`, `at`, `date`, `note`); they need the composite index
+`itemId` + `at` in `firestore.indexes.json`. The **finance page** counts each
+record as an expense in the month of `at` — diesel under ඩීසල්, the oils under
+ඔයිල්, anything else (petrol, black oil) under ඉන්ධන සහ ඔයිල් — වෙනත් — and
+what the crews' පිරවීම draws of these items is *not* costed a second time.
+Supervisors and the admin keep the page alike.
 
 ### How the store is drawn down
 

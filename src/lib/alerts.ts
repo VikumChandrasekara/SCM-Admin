@@ -26,6 +26,8 @@ export interface ServiceAlert {
 /** Out of stock first, then low, each by name. */
 export function stockAlerts(store: readonly StoreItem[]): StockAlert[] {
   return store
+    // What is bought and used on the day is never "out of stock".
+    .filter((item) => !item.direct)
     .flatMap((item): StockAlert[] => {
       const status = stockStatus(item);
       return status === 'ok' ? [] : [{ item, status }];

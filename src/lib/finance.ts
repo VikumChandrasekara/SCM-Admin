@@ -18,6 +18,7 @@ import {
   sourceLabel,
   type Bill,
   type BillCategory,
+  type FuelRecord,
   type Machine,
   type Movement,
   type Payment,
@@ -116,6 +117,7 @@ export function stockGroupOf(itemId: string, link: StockLink | null | undefined)
 /** What a rupee of expense was spent on. */
 export type ExpenseCategory =
   | StockGroup
+  | 'fuel'
   | 'wages'
   | 'food'
   | 'machine'
@@ -130,6 +132,7 @@ export type ExpenseCategory =
 export const EXPENSE_CATEGORIES: readonly ExpenseCategory[] = [
   'diesel',
   'oil',
+  'fuel',
   'shells',
   'explosives',
   'parts',
@@ -148,6 +151,7 @@ export const EXPENSE_CATEGORIES: readonly ExpenseCategory[] = [
 export const EXPENSE_LABEL: Record<ExpenseCategory, { label: string; detail: string }> = {
   diesel: { label: 'ඩීසල්', detail: 'පිරවීම් වලින් භාවිත කළ — ලෝඩ් සියල්ලටම බෙදේ' },
   oil: { label: 'ඔයිල් සහ කූලන්ට්', detail: 'එන්ජින්, හයිඩ්‍රොලික්, කම්පසර් ඔයිල් සහ කූලන්ට්' },
+  fuel: { label: 'ඉන්ධන සහ ඔයිල් — වෙනත්', detail: 'ඉන්ධන සහ ඔයිල් පිටුවේ සටහන් — පෙට්‍රල්, කළු තෙල් වැනි, ගෙන ආ විගස භාවිත කළ' },
   shells: { label: 'කරල්', detail: 'වෙඩි කරල් — ගබඩාවෙන් භාවිත කළ' },
   explosives: { label: 'වෙඩි බඩු — අනෙක්', detail: 'කැප්, වෙඩි නූල්, ඇමෝනියා, යාරමීලා, වෙඩි කුඩු, ඩීසල් මිශ්‍ර, බිට්, කටු' },
   parts: { label: 'කොටස් සහ සර්විස්', detail: 'ෆිල්ටර් සහ සර්විස් කොටස්' },
@@ -351,6 +355,7 @@ export function financeFor({
   sales,
   bills,
   movements,
+  fuelRecords = [],
   crewMonths,
   payments = [],
   store,
@@ -365,6 +370,11 @@ export function financeFor({
   sales: readonly Sale[];
   bills: readonly Bill[];
   movements: readonly Movement[];
+  /**
+   * Fuel and oil bought and used straight away, as recorded on the ඉන්ධන සහ ඔයිල් page
+   * and dated in [month] — each is an expense of its own, at what it cost.
+   */
+  fuelRecords?: readonly FuelRecord[];
   crewMonths: readonly CrewMonth[];
   /** Every payment against a credit account — only this month's are counted. */
   payments?: readonly Payment[];
@@ -614,6 +624,9 @@ export function financeFor({
 
   // ---- the store ----
   const priceNow = new Map(store.map((item) => [item.id, item.unitPrice]));
+  // What is bought and used straight away is costed by its records, once — never
+  // again from the crews' use of the same item.
+  const directIds = new Set(store.filter((item) => item.direct).map((item) => item.id));
   const linkOf = new Map(store.map((item) => [item.id, item.link]));
   const purchases = new Map<string, StockRow>();
   const usageByMachine = new Map<string, StockRow>();
@@ -632,6 +645,7 @@ export function financeFor({
     const drawn = new Map<StockGroup, { names: string[]; value: number }>();
 
     for (const line of movement.items) {
+      if (directIds.has(line.itemId)) continue;
       const price = line.unitPrice ?? priceNow.get(line.itemId) ?? 0;
       const estimated = line.unitPrice == null;
 
@@ -679,6 +693,28 @@ export function financeFor({
         expense: taken.value,
       });
     }
+  }
+
+  // ---- fuel and oil bought and used straight away ----
+  for (const record of fuelRecords) {
+    // Diesel and the oils stay where they were counted; the rest is fuel of its own.
+    const group = stockGroupOf(record.itemId, linkOf.get(record.itemId));
+    const category: ExpenseCategory = group === 'diesel' || group === 'oil' ? group : 'fuel';
+    spend(category, record.amount);
+    ledger.push({
+      date: record.date || monthEnd,
+      kind: 'usage',
+      category,
+      description: [
+        record.itemName,
+        `${quantity(record.quantity, record.unit)} × ${money(record.unitPrice)}`,
+        record.note,
+      ]
+        .filter(Boolean)
+        .join(' · '),
+      income: 0,
+      expense: record.amount,
+    });
   }
 
   const purchaseRows = [...purchases.values()].sort(byValue);

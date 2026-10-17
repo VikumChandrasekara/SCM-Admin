@@ -378,8 +378,10 @@ export function DeleteItemModal({ item, onClose }: { item: StoreItem; onClose: (
       }
     >
       <p className="text-sm text-white/80">
-        <b>{item.name}</b> ({quantity(item.quantity, item.unit)}) ගබඩා ලැයිස්තුවෙන් ඉවත් වේ. පසුගිය චලනයන් ලොගයේ
+        <b>{item.name}</b>
+        {!item.direct && ` (${quantity(item.quantity, item.unit)})`} ගබඩා ලැයිස්තුවෙන් ඉවත් වේ. පසුගිය චලනයන් ලොගයේ
         රැඳේ.
+        {item.direct && ' එහි භාවිත සටහන් ලොගයේත් මූල්‍ය වාර්තාවේත් රැඳේ.'}
         {item.link &&
           ' මෙය කණ්ඩායම් භාවිතයට සම්බන්ධ අයිතමයකි — කණ්ඩායම් එය සටහන් කරන තාක්, පැනලය විවෘත කළ විට ප්‍රමාණය 0 ලෙස එය නැවත ස්වයංක්‍රීයව සාදයි.'}
       </p>

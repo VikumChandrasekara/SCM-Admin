@@ -956,6 +956,13 @@ export function isStockLink(value: unknown): value is StockLink {
   return LINK_OPTIONS.some((option) => option.link === value);
 }
 
+/**
+ * The fluids a crew's පිරවීම draws that are bought and used on the day, so
+ * their store item is made as a direct one (see StoreItem.direct) when it has
+ * to be made at all.
+ */
+export const DIRECT_LINKS: readonly StockLink[] = ['fill:diesel', 'fill:engineOil', 'fill:compressorOil', 'fill:hydraulic'];
+
 /** A linked item lives at a fixed id — firestore.rules insists on it. */
 export function linkDocId(link: StockLink): string {
   return link.replace(':', '-');
@@ -982,6 +989,19 @@ export interface StoreItem {
   piecesPerKg: number | null;
   link: StockLink | null;
   note: string;
+  /**
+   * Bought and used straight away, never kept on a shelf — engine oil, diesel
+   * and the like. Listed in its own section, with a price the crews' use is
+   * costed at, and left out of the store's counts and alerts.
+   */
+  direct: boolean;
+  /**
+   * For a direct item: everything recorded against it so far, in its unit and
+   * in rupees — kept with the item (moved by each record added, put right or
+   * removed) so the list needs no reading of the records themselves.
+   */
+  usedQuantity: number;
+  usedAmount: number;
   createdAt: Date | null;
   /** When the shelf was last physically counted. */
   countedAt: Date | null;
@@ -1022,9 +1042,54 @@ export function storeItemFrom(id: string, data: DocumentData): StoreItem {
     piecesPerKg: perKg != null && perKg > 0 ? perKg : null,
     link: isStockLink(data.link) ? data.link : null,
     note: str(data.note),
+    direct: data.direct === true,
+    usedQuantity: num(data.usedQuantity),
+    usedAmount: num(data.usedAmount),
     createdAt: toDate(data.createdAt),
     countedAt: toDate(data.countedAt),
     updatedAt: toDate(data.updatedAt),
+  };
+}
+
+/**
+ * One purchase-and-use of a fuel or oil bought and used straight away: how
+ * much, at what price, and when. The finance page counts [amount] in the month
+ * of [at].
+ */
+export interface FuelRecord {
+  id: string;
+  itemId: string;
+  /** The item's name when it was written, so the expense survives the item. */
+  itemName: string;
+  unit: string;
+  quantity: number;
+  /** Rupees a unit — the item's price, or what was paid. */
+  unitPrice: number;
+  /** quantity × unitPrice. */
+  amount: number;
+  /** When it was bought and used. */
+  at: Date | null;
+  /** `yyyy-MM-dd` of [at]. */
+  date: string;
+  note: string;
+  createdBy: string;
+  createdByName: string;
+}
+
+export function fuelRecordFrom(id: string, data: DocumentData): FuelRecord {
+  return {
+    id,
+    itemId: str(data.itemId),
+    itemName: str(data.itemName),
+    unit: str(data.unit),
+    quantity: num(data.quantity),
+    unitPrice: num(data.unitPrice),
+    amount: num(data.amount),
+    at: toDate(data.at),
+    date: str(data.date),
+    note: str(data.note),
+    createdBy: str(data.createdBy),
+    createdByName: str(data.createdByName),
   };
 }
 
@@ -1140,6 +1205,10 @@ export type AuditAction =
   | 'store.stock'
   // The panel tying a store item to what the crews record, with no one asked.
   | 'store.link'
+  // Records kept against a fuel or oil bought and used straight away.
+  | 'store.fuelAdd'
+  | 'store.fuelUpdate'
+  | 'store.fuelDelete'
   | 'bill.create'
   | 'bill.update'
   | 'bill.delete'
@@ -1186,6 +1255,9 @@ export const AUDIT_LABEL: Record<AuditAction, string> = {
   'store.restore': 'ගබඩා අයිතමය ආපසු ගත්තා',
   'store.stock': 'ගබඩා තොගය වෙනස් කළා',
   'store.link': 'ගබඩා අයිතමය කණ්ඩායම් භාවිතයට සම්බන්ධ කළා',
+  'store.fuelAdd': 'ඉන්ධන / ඔයිල් සටහනක් එකතු කළා',
+  'store.fuelUpdate': 'ඉන්ධන / ඔයිල් සටහනක් සංස්කරණය කළා',
+  'store.fuelDelete': 'ඉන්ධන / ඔයිල් සටහනක් ඉවත් කළා',
   'bill.create': 'බිල්පතක් සෑදුවා',
   'bill.update': 'බිල්පතක් සංස්කරණය කළා',
   'bill.delete': 'බිල්පතක් ඉවත් කළා',

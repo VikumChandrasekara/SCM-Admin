@@ -185,3 +185,30 @@ describe('every store item can be added, edited, counted and removed', () => {
     expect((await itemAt(id)).unitPrice).toBe(372.5);
   });
 });
+
+describe('items bought and used straight away', () => {
+  it.each([
+    ['the admin', 'admin1', admin],
+    ['a supervisor', 'sup1', supervisor],
+  ] as const)('are added, priced and removed by %s', async (_who, uid, by) => {
+    signIn(uid);
+    await createItem({ ...details, name: 'Petrol', unit: 'L', quantity: 0, minQuantity: 0, unitPrice: 0, link: null, direct: true }, by);
+    const item = await onlyItem();
+    expect(item).toMatchObject({ name: 'Petrol', direct: true, quantity: 0, link: null });
+
+    await updateItem(item, { ...details, name: 'Petrol', unit: 'L', minQuantity: 0, unitPrice: 365 }, by);
+    const priced = await itemAt(item.id);
+    expect(priced.unitPrice).toBe(365);
+    // Editing does not take it off the section.
+    expect(priced.direct).toBe(true);
+
+    await deleteItem(await itemAt(item.id), by);
+    expect(await data(`store/${item.id}`)).toBeUndefined();
+  });
+
+  it('a crew-drawn fluid is marked direct without losing its link', async () => {
+    signIn('admin1');
+    await createItem({ ...details, name: 'ඩීසල්', unit: 'L', quantity: 0, link: 'fill:diesel', direct: true }, admin);
+    expect(await itemAt('fill-diesel')).toMatchObject({ link: 'fill:diesel', direct: true });
+  });
+});

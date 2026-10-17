@@ -12,6 +12,7 @@ import {
   DashboardPage,
   ExplosivesPage,
   FinancePage,
+  FuelPage,
   GetAppPage,
   HistoryPage,
   LoginPage,
@@ -48,6 +49,7 @@ export function App() {
               <Route element={<RequireSession />}>
                 <Route index element={<DashboardPage />} />
                 <Route path="store" element={<StorePage />} />
+                <Route path="fuel" element={<FuelPage />} />
                 <Route path="bills" element={<BillsPage />} />
                 <Route path="explosives" element={<ExplosivesPage />} />
                 <Route path="history" element={<HistoryPage />} />

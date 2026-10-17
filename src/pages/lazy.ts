@@ -8,6 +8,7 @@ const load = {
   shell: () => import('../components/Shell'),
   dashboard: () => import('./DashboardPage'),
   store: () => import('./StorePage'),
+  fuel: () => import('./FuelPage'),
   bills: () => import('./BillsPage'),
   explosives: () => import('./ExplosivesPage'),
   getApp: () => import('./GetAppPage'),
@@ -26,6 +27,7 @@ const load = {
 export const Shell = lazy(() => load.shell().then((module) => ({ default: module.Shell })));
 export const DashboardPage = lazy(() => load.dashboard().then((module) => ({ default: module.DashboardPage })));
 export const StorePage = lazy(() => load.store().then((module) => ({ default: module.StorePage })));
+export const FuelPage = lazy(() => load.fuel().then((module) => ({ default: module.FuelPage })));
 export const BillsPage = lazy(() => load.bills().then((module) => ({ default: module.BillsPage })));
 export const ExplosivesPage = lazy(() => load.explosives().then((module) => ({ default: module.ExplosivesPage })));
 export const GetAppPage = lazy(() => load.getApp().then((module) => ({ default: module.GetAppPage })));
@@ -45,6 +47,7 @@ const byPath: Record<string, () => Promise<unknown>> = {
   // shell around it.
   '/': () => Promise.all([load.shell(), load.dashboard()]),
   '/store': load.store,
+  '/fuel': load.fuel,
   '/bills': load.bills,
   '/explosives': load.explosives,
   '/get-app': load.getApp,

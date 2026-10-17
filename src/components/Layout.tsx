@@ -3,6 +3,7 @@ import {
   BellRing,
   Bomb,
   ClipboardList,
+  Fuel,
   History,
   Landmark,
   LayoutDashboard,
@@ -54,6 +55,7 @@ const NAV: NavEntry[] = [
   // Not here: the floating button (below) reaches it from every page,
   // so a second entry in the header would only repeat it.
   { to: '/store', label: 'ගබඩාව', icon: Package },
+  { to: '/fuel', label: 'ඉන්ධන සහ ඔයිල්', icon: Fuel },
   { to: '/bills', label: 'බිල්පත්', icon: ReceiptText },
   { to: '/machines', label: 'යන්ත්‍ර', icon: Tractor },
   { to: '/landowner', label: 'ඉඩම් හිමියා', icon: Mountain },

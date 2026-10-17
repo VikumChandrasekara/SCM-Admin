@@ -7,6 +7,7 @@ import { RoyaltyModal } from '../components/RoyaltyModal';
 import { Button, IconButton, Loading, PageHeader, Panel, SectionLabel, TableFrame, cx, td, th } from '../components/ui';
 import { useMonthBills } from '../data/bills';
 import { useCrewMonths, useMonthMovements } from '../data/finance';
+import { useMonthFuelRecords } from '../data/fuel';
 import { useLandownerRates } from '../data/landowner';
 import { useLiveData } from '../data/LiveData';
 import { usePayments } from '../data/payments';
@@ -51,6 +52,7 @@ export function FinancePage() {
   const previousSales = useMonthSales(addMonths(month, -1));
   const bills = useMonthBills(month);
   const movements = useMonthMovements(month);
+  const fuelRecords = useMonthFuelRecords(month);
   const crewMonths = useCrewMonths(crew, month, version);
   const previousCrew = useCrewMonths(crew, addMonths(month, -1), version);
   const prices = useSalesPrices();
@@ -74,6 +76,7 @@ export function FinancePage() {
       sales.data &&
       bills.data &&
       movements.data &&
+      fuelRecords.data &&
       crewMonths.data &&
       prices.data &&
       payments.data &&
@@ -84,6 +87,7 @@ export function FinancePage() {
             sales: sales.data,
             bills: bills.data,
             movements: movements.data,
+            fuelRecords: fuelRecords.data,
             crewMonths: crewMonths.data,
             payments: payments.data,
             store,
@@ -100,6 +104,7 @@ export function FinancePage() {
       sales.data,
       bills.data,
       movements.data,
+      fuelRecords.data,
       crewMonths.data,
       prices.data,
       payments.data,
@@ -113,7 +118,7 @@ export function FinancePage() {
   );
 
   const failure =
-    sales.error ?? bills.error ?? movements.error ?? prices.error ?? payments.error ?? landowner.error ?? royaltyRates.error;
+    sales.error ?? bills.error ?? movements.error ?? fuelRecords.error ?? prices.error ?? payments.error ?? landowner.error ?? royaltyRates.error;
 
   return (
     <>
