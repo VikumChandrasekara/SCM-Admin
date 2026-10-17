@@ -133,6 +133,7 @@ export async function postUsage(
   batch.set(ref, {
     type: 'usage',
     items: lines,
+    itemIds: lines.map((line) => line.itemId),
     unmatched,
     machineId,
     date,

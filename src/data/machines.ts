@@ -269,6 +269,7 @@ export async function resetService(
     batch.set(doc(collection(db, 'storeMovements')), {
       type: 'use',
       items: [{ itemId: part.id, name: part.name, unit: part.unit, delta: -1, unitPrice: part.unitPrice }],
+      itemIds: [part.id],
       unmatched: [],
       machineId: machine.id,
       operatorName: nameOf(person),

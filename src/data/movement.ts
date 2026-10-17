@@ -15,6 +15,8 @@ export function movement(
     // The price rides along, so the finance view can value the change at
     // what it cost then rather than at whatever the item costs now.
     items: [{ itemId: item.id, name: item.name, unit: item.unit, delta, unitPrice: item.unitPrice }],
+    // What lets one item's history be asked for — an array of maps cannot be searched.
+    itemIds: [item.id],
     unmatched: [],
     note: note.trim(),
     createdBy: by.id,

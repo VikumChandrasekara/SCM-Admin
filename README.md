@@ -104,6 +104,20 @@ The daily wage and rate per foot are set on each person in පරිශීලක
 An advance bill is also added to the person's ඇඩ්වාන්ස් ගණන, the figure their
 app shows them. Editing or deleting the bill moves that figure back.
 
+### What has happened to an item
+
+On the store page, click anywhere on an item's row to open its history: every
+change to its count, newest first, 50 to a page — a crew member's use of it on a
+පිරවීම or වෙඩි බඩු sheet, a restock, a recount, a removal — each with the date
+and time, how much, the count **before** and **after**, who did it (the crew
+member and their role, or the staff member), and the machine and sheet. The
+counts are worked back from what the item holds now, the log being complete, so
+they are shown only once the pages before are known. Each movement in
+`storeMovements` carries `itemIds` (the ids of the items it touched) so one
+item's changes can be asked for; that needs the composite index `itemIds`
+(array) + `createdAt` in `firestore.indexes.json`. Both apps write `itemIds`;
+the 31 movements from before were stamped once.
+
 ### Fuel and oil — ඉන්ධන සහ ඔයිල්
 
 Some things are never kept on a shelf: diesel, the engine, compressor and

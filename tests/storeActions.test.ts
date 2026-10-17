@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import { initializeTestEnvironment, type RulesTestEnvironment } from '@firebase/rules-unit-testing';
-import { collection, doc, getDoc, getDocs, setDoc, type Firestore } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, orderBy, query, setDoc, where, type Firestore } from 'firebase/firestore';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { changeStock, createItem, deleteItem, updateItem } from '../src/data/store';
@@ -210,5 +210,26 @@ describe('items bought and used straight away', () => {
     signIn('admin1');
     await createItem({ ...details, name: 'ඩීසල්', unit: 'L', quantity: 0, link: 'fill:diesel', direct: true }, admin);
     expect(await itemAt('fill-diesel')).toMatchObject({ link: 'fill:diesel', direct: true });
+  });
+});
+
+describe('one item’s history', () => {
+  it('every change to a count names its item, so the item’s own changes can be asked for', async () => {
+    signIn('admin1');
+    await createItem({ ...details, name: 'Rope', quantity: 5, link: null }, admin);
+    const item = await onlyItem();
+    await createItem({ ...details, name: 'Wire', quantity: 9, link: null }, admin);
+    await changeStock(await itemAt(item.id), 'use', 2, 'ගේට්ටුව', admin);
+    await changeStock(await itemAt(item.id), 'restock', 10, '', admin);
+
+    const ofRope = await direct(async (db) =>
+      (
+        await getDocs(query(collection(db, 'storeMovements'), where('itemIds', 'array-contains', item.id), orderBy('createdAt', 'desc')))
+      ).docs.map((entry) => entry.data()),
+    );
+    // Its opening count and the two changes — not the wire's.
+    expect(ofRope.map((entry) => entry.type).sort()).toEqual(['create', 'restock', 'use']);
+    expect(ofRope.every((entry) => entry.itemIds.includes(item.id))).toBe(true);
+    expect(ofRope.reduce((total, entry) => total + entry.items[0].delta, 0)).toBe(5 - 2 + 10);
   });
 });

@@ -7,6 +7,7 @@ import {
   query,
   runTransaction,
   serverTimestamp,
+  where,
   writeBatch,
 } from 'firebase/firestore';
 
@@ -36,6 +37,19 @@ export function useMovements() {
     'movements',
     () => query(collection(db, 'storeMovements'), orderBy('createdAt', 'desc')),
     (snapshot) => movementFrom(snapshot.id, snapshot.data()),
+  );
+}
+
+/**
+ * One item's changes — what the crews used of it, what was added, counted or
+ * taken out — newest first, 50 to a page. Only the page on screen is read.
+ */
+export function useItemMovements(itemId: string) {
+  return useLivePages(
+    `item-movements:${itemId}`,
+    () => query(collection(db, 'storeMovements'), where('itemIds', 'array-contains', itemId), orderBy('createdAt', 'desc')),
+    (snapshot) => movementFrom(snapshot.id, snapshot.data()),
+    50,
   );
 }
 

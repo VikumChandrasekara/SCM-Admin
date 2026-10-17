@@ -108,14 +108,13 @@ export function FuelPage() {
                   const isOpen = open === item.id;
                   return (
                     <Fragment key={item.id}>
-                      <tr className="border-b border-hairline/60 last:border-0">
+                      {/* Anywhere on the row opens its records; the icons on the right keep their own clicks. */}
+                      <tr
+                        onClick={() => setOpen(isOpen ? null : item.id)}
+                        className="cursor-pointer border-b border-hairline/60 transition-colors last:border-0 hover:bg-white/5"
+                      >
                         <td className={td}>
-                          <button
-                            type="button"
-                            aria-expanded={isOpen}
-                            onClick={() => setOpen(isOpen ? null : item.id)}
-                            className="flex items-center gap-2 text-left"
-                          >
+                          <button type="button" aria-expanded={isOpen} className="flex items-center gap-2 text-left">
                             {isOpen ? <ChevronDown className="size-4 text-white/60" /> : <ChevronRight className="size-4 text-white/60" />}
                             <span>
                               <span className="block font-bold">{item.name}</span>
@@ -127,7 +126,7 @@ export function FuelPage() {
                           {quantity(item.usedQuantity, item.unit)}
                         </td>
                         <td className={cx(td, 'text-right font-bold tabular-nums')}>{item.usedAmount > 0 ? money(item.usedAmount) : '—'}</td>
-                        <td className={cx(td, 'text-right')}>
+                        <td className={cx(td, 'cursor-default text-right')} onClick={(event) => event.stopPropagation()}>
                           <div className="flex justify-end gap-1">
                             <IconButton label="සටහනක් එකතු කරන්න" onClick={() => setRecording(item)}>
                               <ClipboardPlus className="size-4" />

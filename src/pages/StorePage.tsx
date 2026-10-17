@@ -1,9 +1,10 @@
-import { Boxes, Minus, PackagePlus, Pencil, Plus, Search, Trash2 } from 'lucide-react';
-import { useState } from 'react';
+import { Boxes, ChevronDown, ChevronRight, Minus, PackagePlus, Pencil, Plus, Search, Trash2 } from 'lucide-react';
+import { Fragment, useState } from 'react';
 
 import { useSession } from '../auth/AuthContext';
 import { permissionsFor } from '../auth/permissions';
 import { DataError } from '../components/DataError';
+import { ItemHistory } from '../components/ItemHistory';
 import { Pagination, usePagination } from '../components/Pagination';
 import { DeleteItemModal, ItemModal, StockChangeModal } from '../components/StockModals';
 import {
@@ -50,6 +51,8 @@ export function StorePage() {
   const [editing, setEditing] = useState<StoreItem | 'new' | null>(null);
   const [changing, setChanging] = useState<{ item: StoreItem; mode: StockChange } | null>(null);
   const [deleting, setDeleting] = useState<StoreItem | null>(null);
+  // The item whose history is open under its row.
+  const [open, setOpen] = useState<string | null>(null);
 
   const needle = search.trim().toLowerCase();
   // What is bought and used straight away has a page of its own (ඉන්ධන සහ ඔයිල්), not a count to keep.
@@ -141,11 +144,22 @@ export function StorePage() {
               <tbody>
                 {itemRows.map((item) => {
                   const status = stockStatus(item);
+                  const isOpen = open === item.id;
                   return (
-                    <tr key={item.id} className="border-b border-hairline/60 last:border-0">
+                    <Fragment key={item.id}>
+                    {/* Anywhere on the row opens what has happened to the item; the icons on the right keep their own clicks. */}
+                    <tr
+                      onClick={() => setOpen(isOpen ? null : item.id)}
+                      className="cursor-pointer border-b border-hairline/60 transition-colors last:border-0 hover:bg-white/5"
+                    >
                       <td className={td}>
-                        <p className="font-bold">{item.name}</p>
-                        <p className="text-xs text-white/60">{item.link ? linkLabel(item.link) : item.note || 'අතින් පමණි'}</p>
+                        <div className="flex items-center gap-2">
+                          {isOpen ? <ChevronDown className="size-4 shrink-0 text-white/60" /> : <ChevronRight className="size-4 shrink-0 text-white/60" />}
+                          <div>
+                            <p className="font-bold">{item.name}</p>
+                            <p className="text-xs text-white/60">{item.link ? linkLabel(item.link) : item.note || 'අතින් පමණි'}</p>
+                          </div>
+                        </div>
                       </td>
                       <td className={cx(td, 'text-right text-base font-extrabold tabular-nums')}>
                         {quantity(item.quantity, item.unit)}
@@ -160,7 +174,7 @@ export function StorePage() {
                       <td className={td}>
                         <Badge tone={status}>{STOCK_LABEL[status]}</Badge>
                       </td>
-                      <td className={cx(td, 'text-right')}>
+                      <td className={cx(td, 'cursor-default text-right')} onClick={(event) => event.stopPropagation()}>
                         <div className="flex justify-end gap-1">
                           <IconButton label="තොග එකතු කරන්න" onClick={() => setChanging({ item, mode: 'restock' })}>
                             <Plus className="size-4" />
@@ -181,6 +195,14 @@ export function StorePage() {
                         </div>
                       </td>
                     </tr>
+                    {isOpen && (
+                      <tr className="border-b border-hairline/60 bg-black/10">
+                        <td colSpan={7} className="px-3 py-4">
+                          <ItemHistory item={item} />
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
                   );
                 })}
               </tbody>
